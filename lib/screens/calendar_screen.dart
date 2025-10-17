@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'bill_manager_screen.dart';
+import 'analytics_screen.dart';
+import 'settings_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -11,6 +14,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late List<Map<String, dynamic>> _eventsData;
+  int _selectedTabIndex = 2;
 
   @override
   void initState() {
@@ -204,6 +208,89 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade100),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildNavItem(0, Icons.home_outlined, 'Home'),
+            _buildNavItem(1, Icons.analytics_outlined, 'Analytics'),
+            _buildNavItem(2, Icons.calendar_today_outlined, 'Calendar'),
+            _buildNavItem(3, Icons.settings_outlined, 'Settings'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _selectedTabIndex == index;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedTabIndex = index;
+        });
+
+        // Handle navigation for different tabs
+        if (index == 0) { // Home tab
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const BillManagerScreen(),
+            ),
+            (route) => false,
+          );
+        } else if (index == 1) { // Analytics tab
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AnalyticsScreen(),
+            ),
+            (route) => false,
+          );
+        } else if (index == 3) { // Settings tab
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const SettingsScreen(),
+            ),
+            (route) => false,
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
@@ -240,6 +327,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
         ),
       ),
+      bottomNavigationBar: _buildBottomNav(),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16),

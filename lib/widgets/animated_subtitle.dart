@@ -136,7 +136,7 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
           child: Text(
             _displayText,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: FontWeight.w400,
               color: Color(0xFF6B7280),
             ),

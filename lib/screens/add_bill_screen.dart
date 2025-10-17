@@ -148,7 +148,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
+            color: Color(0xFFFF8C00),
           ),
         ),
         leading: IconButton(

@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
-import 'package:bill_manager/widgets/custom_icons.dart';
+import 'bill_manager_screen.dart';
+import 'analytics_screen.dart';
+import 'calendar_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  int _selectedTabIndex = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +43,7 @@ class SettingsScreen extends StatelessWidget {
           },
         ),
       ),
+      bottomNavigationBar: _buildBottomNav(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -196,6 +206,83 @@ class SettingsScreen extends StatelessWidget {
                 color: Color(0xFF6B7280),
               ),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade100),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildNavItem(0, Icons.home_outlined, 'Home'),
+            _buildNavItem(1, Icons.analytics_outlined, 'Analytics'),
+            _buildNavItem(2, Icons.calendar_today_outlined, 'Calendar'),
+            _buildNavItem(3, Icons.settings_outlined, 'Settings'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _selectedTabIndex == index;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedTabIndex = index;
+        });
+
+        // Handle navigation for different tabs
+        if (index == 0) { // Home tab
+          Navigator.pop(context);
+        } else if (index == 1) { // Analytics tab
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AnalyticsScreen(),
+            ),
+            (route) => false,
+          );
+        } else if (index == 2) { // Calendar tab
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CalendarScreen(),
+            ),
+            (route) => false,
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              ),
             ),
           ],
         ),
