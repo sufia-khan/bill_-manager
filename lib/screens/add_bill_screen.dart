@@ -15,11 +15,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
   final _dueController = TextEditingController();
   final _notesController = TextEditingController();
 
-  String _selectedCategory = 'Other';
+  String _selectedCategory = 'Subscriptions';
   String _selectedRepeat = 'Monthly';
   DateTime? _selectedDueDate;
 
   final List<Map<String, dynamic>> _categories = [
+    {'name': 'Subscriptions', 'emoji': '📋'},
     {'name': 'Rent', 'emoji': '🏠'},
     {'name': 'Utilities', 'emoji': '💡'},
     {'name': 'Electricity', 'emoji': '⚡'},
@@ -27,7 +28,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
     {'name': 'Gas', 'emoji': '🔥'},
     {'name': 'Internet', 'emoji': '🌐'},
     {'name': 'Phone', 'emoji': '📱'},
-    {'name': 'Subscriptions', 'emoji': '📋'},
     {'name': 'Streaming', 'emoji': '📺'},
     {'name': 'Groceries', 'emoji': '🛒'},
     {'name': 'Transport', 'emoji': '🚌'},
@@ -153,7 +153,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
         ),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF6B7280)),
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFF8C00), size: 20),
         ),
         actions: [
           TextButton(
@@ -184,26 +184,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 controller: _titleController,
                 label: 'Bill Title',
                 hint: 'e.g., Electricity Bill',
-                prefix: const Icon(Icons.description_outlined, size: 20),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter a bill title';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 20),
-
-              // Vendor field
-              _buildTextField(
-                controller: _vendorController,
-                label: 'Vendor/Payee',
-                hint: 'e.g., Power Company',
-                prefix: const Icon(Icons.business_outlined, size: 20),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a vendor name';
                   }
                   return null;
                 },
@@ -216,7 +199,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 controller: _amountController,
                 label: 'Amount',
                 hint: '0.00',
-                prefix: const Icon(Icons.attach_money_outlined, size: 20),
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -262,7 +244,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
                     controller: _dueController,
                     label: 'Due Date',
                     hint: 'Select date',
-                    prefix: const Icon(Icons.calendar_today_outlined, size: 20),
                     readOnly: true,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
@@ -281,18 +262,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
               const SizedBox(height: 20),
 
-              // Repeat dropdown
-              _buildDropdownField(
-                label: 'Repeat',
-                value: _selectedRepeat,
-                items: _repeatOptions,
-                prefix: const Icon(Icons.repeat_outlined, size: 20),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedRepeat = value!;
-                  });
-                },
-              ),
+              // Repeat selector
+              _buildRepeatSelector(),
 
               const SizedBox(height: 20),
 
@@ -301,7 +272,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 controller: _notesController,
                 label: 'Notes (Optional)',
                 hint: 'Add any additional details...',
-                prefix: const Icon(Icons.note_outlined, size: 20),
                 maxLines: 3,
                 validator: null,
               ),
@@ -343,7 +313,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required Widget prefix,
     TextInputType? keyboardType,
     int? maxLines,
     String? Function(String?)? validator,
@@ -355,8 +324,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
       children: [
         Row(
           children: [
-            prefix,
-            const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
@@ -388,11 +355,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
             hintText: hint,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              borderSide: const BorderSide(color: Color(0xFFFFE5CC)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              borderSide: const BorderSide(color: Color(0xFFFFE5CC)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -418,7 +385,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
     required String label,
     required String value,
     required List<String> items,
-    required Widget prefix,
     required void Function(String?) onChanged,
   }) {
     return Column(
@@ -426,8 +392,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
       children: [
         Row(
           children: [
-            prefix,
-            const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
@@ -484,8 +448,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
       children: [
         const Row(
           children: [
-            Icon(Icons.category_outlined, size: 20),
-            SizedBox(width: 8),
             Text(
               'Category',
               style: TextStyle(
@@ -503,7 +465,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(color: const Color(0xFFFFE5CC)),
               borderRadius: BorderRadius.circular(8),
               color: Colors.white,
             ),
@@ -532,6 +494,156 @@ class _AddBillScreenState extends State<AddBillScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRepeatSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Text(
+              'Repeat',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF374151),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _showRepeatBottomSheet,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFFFE5CC)),
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.white,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedRepeat,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.keyboard_arrow_up,
+                  color: Color(0xFF6B7280),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showRepeatBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Select Repeat',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: _repeatOptions.map((option) {
+                      final isSelected = option == _selectedRepeat;
+
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedRepeat = option;
+                          });
+                          Navigator.of(context).pop();
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFFFF8C00)
+                                  : Colors.grey.shade200,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  option,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? const Color(0xFFFF8C00)
+                                        : const Color(0xFF1F2937),
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check,
+                                  color: Color(0xFFFF8C00),
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -568,68 +680,68 @@ class _AddBillScreenState extends State<AddBillScreen> {
               const SizedBox(height: 16),
               Container(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
                 ),
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1,
-                  ),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    final isSelected = category['name'] == _selectedCategory;
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: _categories.map((category) {
+                      final isSelected = category['name'] == _selectedCategory;
 
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedCategory = category['name'];
-                        });
-                        Navigator.of(context).pop();
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                              : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedCategory = category['name'];
+                          });
+                          Navigator.of(context).pop();
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          decoration: BoxDecoration(
                             color: isSelected
-                                ? const Color(0xFFFF8C00)
-                                : Colors.grey.shade200,
+                                ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFFFF8C00)
+                                  : Colors.grey.shade200,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                category['emoji'] ?? '📁',
+                                style: const TextStyle(fontSize: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  category['name'] ?? '',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? const Color(0xFFFF8C00)
+                                        : const Color(0xFF1F2937),
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check,
+                                  color: Color(0xFFFF8C00),
+                                  size: 20,
+                                ),
+                            ],
                           ),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              category['emoji'] ?? '📁',
-                              style: const TextStyle(fontSize: 28),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              category['name'] ?? '',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isSelected
-                                    ? const Color(0xFFFF8C00)
-                                    : const Color(0xFF374151),
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
