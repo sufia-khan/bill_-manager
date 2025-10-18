@@ -9,13 +9,20 @@ class BillProvider with ChangeNotifier {
   List<BillHive> _bills = [];
   bool _isLoading = false;
   String? _error;
+  bool _isInitialized = false;
 
   List<BillHive> get bills => _bills;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get isInitialized => _isInitialized;
 
   // Initialize and load bills
   Future<void> initialize() async {
+    // Prevent multiple initializations
+    if (_isInitialized || _isLoading) {
+      return;
+    }
+
     _isLoading = true;
     notifyListeners();
 
@@ -31,6 +38,7 @@ class BillProvider with ChangeNotifier {
       }
 
       _error = null;
+      _isInitialized = true;
     } catch (e) {
       _error = e.toString();
       print('Error initializing bills: $e');
@@ -191,13 +199,13 @@ class BillProvider with ChangeNotifier {
   double getThisMonthTotal() {
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0);
+    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
     return _bills
         .where(
           (bill) =>
-              bill.dueAt.isAfter(startOfMonth) &&
-              bill.dueAt.isBefore(endOfMonth),
+              !bill.dueAt.isBefore(startOfMonth) &&
+              !bill.dueAt.isAfter(endOfMonth),
         )
         .fold(0.0, (sum, bill) => sum + bill.amount);
   }
@@ -205,11 +213,16 @@ class BillProvider with ChangeNotifier {
   // Get total amount for next 7 days
   double getNext7DaysTotal() {
     final now = DateTime.now();
-    final endOf7Days = now.add(const Duration(days: 7));
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final endOf7Days = startOfToday.add(
+      const Duration(days: 7, hours: 23, minutes: 59, seconds: 59),
+    );
 
     return _bills
         .where(
-          (bill) => bill.dueAt.isAfter(now) && bill.dueAt.isBefore(endOf7Days),
+          (bill) =>
+              !bill.dueAt.isBefore(startOfToday) &&
+              !bill.dueAt.isAfter(endOf7Days),
         )
         .fold(0.0, (sum, bill) => sum + bill.amount);
   }
@@ -237,6 +250,7 @@ class BillProvider with ChangeNotifier {
     await HiveService.clearAllData();
     _bills = [];
     _error = null;
+    _isInitialized = false;
     notifyListeners();
   }
 }

@@ -6,9 +6,6 @@ import '../widgets/custom_icons.dart';
 import '../widgets/animated_subtitle.dart';
 import '../utils/formatters.dart';
 import 'add_bill_screen.dart';
-import 'settings_screen.dart';
-import 'calendar_screen.dart';
-import 'analytics_screen.dart';
 import 'notification_screen.dart';
 
 class BillManagerScreen extends StatefulWidget {
@@ -93,6 +90,11 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     _fabRotationAnimation = Tween<double>(begin: -0.05, end: 0.05).animate(
       CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
     );
+
+    // Load bills when screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<BillProvider>().initialize();
+    });
   }
 
   @override
@@ -108,6 +110,9 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   Widget build(BuildContext context) {
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
+        // Debug: Print bill count
+        print('DEBUG: Total bills in provider: ${billProvider.bills.length}');
+
         // Convert BillHive to legacy Bill format for UI
         final bills = billProvider.bills
             .map(
@@ -135,21 +140,54 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         final thisMonthTotal = billProvider.getThisMonthTotal();
         final next7DaysTotal = billProvider.getNext7DaysTotal();
 
+        // Debug: Print calculated values
+        print(
+          'DEBUG: This month total: $thisMonthTotal, count will be calculated',
+        );
+        print(
+          'DEBUG: Next 7 days total: $next7DaysTotal, count will be calculated',
+        );
+
         // Calculate counts
         final now = DateTime.now();
         final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 0);
-        final endOf7Days = now.add(const Duration(days: 7));
+        final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+        final startOfToday = DateTime(now.year, now.month, now.day);
+        final endOf7Days = startOfToday.add(
+          const Duration(days: 7, hours: 23, minutes: 59, seconds: 59),
+        );
 
-        final thisMonthCount = bills.where((bill) {
-          final dueDate = DateTime.parse('${bill.due}T00:00:00');
-          return dueDate.isAfter(startOfMonth) && dueDate.isBefore(endOfMonth);
-        }).length;
+        print('DEBUG: Date ranges - Month: $startOfMonth to $endOfMonth');
+        print('DEBUG: Date ranges - Next 7 days: $startOfToday to $endOf7Days');
 
-        final next7DaysCount = bills.where((bill) {
+        final thisMonthBills = bills.where((bill) {
           final dueDate = DateTime.parse('${bill.due}T00:00:00');
-          return dueDate.isAfter(now) && dueDate.isBefore(endOf7Days);
-        }).length;
+          final isInRange =
+              !dueDate.isBefore(startOfMonth) && !dueDate.isAfter(endOfMonth);
+          if (isInRange) {
+            print(
+              'DEBUG: Bill in this month: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
+            );
+          }
+          return isInRange;
+        }).toList();
+        final thisMonthCount = thisMonthBills.length;
+
+        final next7DaysBills = bills.where((bill) {
+          final dueDate = DateTime.parse('${bill.due}T00:00:00');
+          final isInRange =
+              !dueDate.isBefore(startOfToday) && !dueDate.isAfter(endOf7Days);
+          if (isInRange) {
+            print(
+              'DEBUG: Bill in next 7 days: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
+            );
+          }
+          return isInRange;
+        }).toList();
+        final next7DaysCount = next7DaysBills.length;
+
+        print('DEBUG: This month count: $thisMonthCount');
+        print('DEBUG: Next 7 days count: $next7DaysCount');
 
         final filteredCount = filteredBills.length;
         final filteredAmount = filteredBills.fold(
@@ -294,12 +332,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                       const SizedBox(width: 2),
                       IconButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SettingsScreen(),
-                            ),
-                          );
+                          Navigator.pushNamed(context, '/settings');
                         },
                         icon: const Icon(
                           Icons.person_outline,
@@ -362,7 +395,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
               _buildCategoriesSection(),
               const SizedBox(height: 16),
               _buildFilteredSection(filteredCount, filteredAmount),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               _buildBillsList(filteredBills),
             ],
           ),
@@ -480,6 +513,12 @@ class _BillManagerScreenState extends State<BillManagerScreen>
               fontWeight: FontWeight.w700,
               color: Color(0xFF1F2937),
             ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -646,6 +685,12 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   }
 
   Widget _buildFilteredSection(int count, double amount) {
+    final formattedAmount = _compactAmounts
+        ? formatCurrencyShort(amount)
+        : formatCurrencyFull(amount);
+    final fullAmount = formatCurrencyFull(amount);
+    final isFormatted = formattedAmount != fullAmount;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -661,14 +706,56 @@ class _BillManagerScreenState extends State<BillManagerScreen>
               color: Color(0xFF1F2937),
             ),
           ),
-          // Right side - Amount
-          Text(
-            formatCurrencyFull(amount),
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFFFF8C00),
-            ),
+          // Right side - Amount with icon
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.attach_money,
+                  color: Color(0xFFFF8C00),
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Amount: $fullAmount',
+                child: Text(
+                  formattedAmount,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFFF8C00),
+                  ),
+                ),
+              ),
+              if (isFormatted) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Tap to view full amount',
+                  child: InkWell(
+                    onTap: () => _showAmountBottomSheet(amount),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -676,6 +763,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   }
 
   Widget _buildBillsList(List<Bill> filteredBills) {
+    // Show loading indicator while bills are being loaded
+    if (context.watch<BillProvider>().isLoading && filteredBills.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(48),
+        child: const Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+        ),
+      );
+    }
+
     if (filteredBills.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(24),
@@ -773,56 +870,65 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Flexible(
-                              child: Tooltip(
-                                message:
-                                    'Amount: ${formatCurrencyFull(bill.amount)}',
-                                child: Text(
-                                  _compactAmounts
-                                      ? formatCurrencyShort(bill.amount)
-                                      : formatCurrencyFull(bill.amount),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF1F2937),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Tooltip(
-                              message:
-                                  'Tap to view full value (mobile) / Hover to view full value (desktop)',
-                              child: InkWell(
-                                onTap: () =>
-                                    _showAmountBottomSheet(bill.amount),
-                                borderRadius: BorderRadius.circular(12),
-                                child: Semantics(
-                                  label:
-                                      'View full amount: ${formatCurrencyFull(bill.amount)}',
-                                  hint:
-                                      'Double tap to view full amount in bottom sheet',
-                                  child: Container(
-                                    padding: const EdgeInsets.all(3),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade200,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(
-                                      Icons.info_outline,
-                                      size: 16,
-                                      color: Color(0xFF1F2937),
+                        Builder(
+                          builder: (context) {
+                            final formattedAmount = _compactAmounts
+                                ? formatCurrencyShort(bill.amount)
+                                : formatCurrencyFull(bill.amount);
+                            final fullAmount = formatCurrencyFull(bill.amount);
+                            final isFormatted = formattedAmount != fullAmount;
+
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Flexible(
+                                  child: Tooltip(
+                                    message: 'Amount: $fullAmount',
+                                    child: Text(
+                                      formattedAmount,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ],
+                                if (isFormatted) ...[
+                                  const SizedBox(width: 6),
+                                  Tooltip(
+                                    message: 'Tap to view full amount',
+                                    child: InkWell(
+                                      onTap: () =>
+                                          _showAmountBottomSheet(bill.amount),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Semantics(
+                                        label: 'View full amount: $fullAmount',
+                                        hint:
+                                            'Double tap to view full amount in bottom sheet',
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade200,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.info_outline,
+                                            size: 16,
+                                            color: Color(0xFF1F2937),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -1005,22 +1111,13 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         // Handle navigation for different tabs
         if (index == 1) {
           // Analytics tab
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
-          );
+          Navigator.pushNamed(context, '/analytics');
         } else if (index == 2) {
           // Calendar tab
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CalendarScreen()),
-          );
+          Navigator.pushNamed(context, '/calendar');
         } else if (index == 3) {
           // Settings tab
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SettingsScreen()),
-          );
+          Navigator.pushNamed(context, '/settings');
         }
       },
       borderRadius: BorderRadius.circular(8),
@@ -1338,69 +1435,55 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   void _showAmountBottomSheet(double amount) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
         return Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Full amount',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1F2937),
-                    ),
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              // Compact amount (First - highlighted)
               Text(
-                formatCurrencyFull(amount),
+                formatCurrencyShort(amount),
                 style: const TextStyle(
-                  fontSize: 24,
+                  fontSize: 32,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFFFF8C00),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Full amount: ${formatCurrencyFull(amount)}',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF8C00),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Close'),
-                    ),
-                  ),
-                ],
+              // Full amount (Second - below)
+              Text(
+                formatCurrencyFull(amount),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         );
