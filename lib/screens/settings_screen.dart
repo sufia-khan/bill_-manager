@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
-import 'bill_manager_screen.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,6 +18,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final user = authProvider.user;
+
+    // Get user initials for avatar
+    String getInitials(String? name, String? email) {
+      if (name != null && name.isNotEmpty) {
+        final parts = name.trim().split(' ');
+        if (parts.length >= 2) {
+          return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+        }
+        return name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase();
+      }
+      if (email != null && email.isNotEmpty) {
+        return email.substring(0, email.length >= 2 ? 2 : 1).toUpperCase();
+      }
+      return 'U';
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -71,10 +91,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: const Color(0xFFFF8C00),
                       shape: BoxShape.circle,
                     ),
-                    child: const Center(
+                    child: Center(
                       child: Text(
-                        'SK',
-                        style: TextStyle(
+                        getInitials(user?.displayName, user?.email),
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -83,22 +103,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Sufia Khan',
-                          style: TextStyle(
+                          user?.displayName ?? 'User',
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF1F2937),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'sufia.khan@example.com',
-                          style: TextStyle(
+                          user?.email ?? 'No email',
+                          style: const TextStyle(
                             fontSize: 14,
                             color: Color(0xFF6B7280),
                           ),
@@ -121,10 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Notifications',
                   trailing: const Text(
                     'On',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                    ),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     // Handle notifications tap
@@ -139,10 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Theme',
                   trailing: const Text(
                     'Light',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                    ),
+                    style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     // Handle theme tap
@@ -189,8 +203,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.logout_outlined,
                   title: 'Logout',
                   titleColor: Colors.red,
-                  onTap: () {
-                    // Handle logout
+                  onTap: () async {
+                    // Show confirmation dialog
+                    final shouldLogout = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Logout'),
+                        content: const Text('Are you sure you want to logout?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Logout',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (shouldLogout == true && mounted) {
+                      await authProvider.signOut();
+                      if (mounted) {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      }
+                    }
                   },
                 ),
               ],
@@ -201,10 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Footer
             const Text(
               'Bill Manager v1.0 • Designed with ❤️ in Orange & White',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6B7280),
-              ),
+              style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
               textAlign: TextAlign.center,
             ),
           ],
@@ -217,9 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade100),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey.shade100)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -245,23 +286,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
 
         // Handle navigation for different tabs
-        if (index == 0) { // Home tab
+        if (index == 0) {
+          // Home tab
           Navigator.pop(context);
-        } else if (index == 1) { // Analytics tab
-          Navigator.pushAndRemoveUntil(
+        } else if (index == 1) {
+          // Analytics tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const AnalyticsScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
           );
-        } else if (index == 2) { // Calendar tab
-          Navigator.pushAndRemoveUntil(
+        } else if (index == 2) {
+          // Calendar tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const CalendarScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const CalendarScreen()),
           );
         }
       },
@@ -274,14 +312,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(
               icon,
               size: 24,
-              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              color: isSelected
+                  ? const Color(0xFFFF8C00)
+                  : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+                color: isSelected
+                    ? const Color(0xFFFF8C00)
+                    : Colors.grey.shade600,
               ),
             ),
           ],
@@ -321,11 +363,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: const Color(0xFFFF8C00),
-              ),
+              child: Icon(icon, size: 20, color: const Color(0xFFFF8C00)),
             ),
             const SizedBox(width: 12),
             Expanded(

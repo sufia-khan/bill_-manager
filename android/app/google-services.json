@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1062156198667",
+    "project_id": "bill-manager-3cdaf",
+    "storage_bucket": "bill-manager-3cdaf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1062156198667:android:72a6b72d8b44b60828f80e",
+        "android_client_info": {
+          "package_name": "com.example.bill_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBX94A6RP7FkhqiiiIyq1J5Gd12R88wXiM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'bill_manager_screen.dart';
 import 'analytics_screen.dart';
 import 'settings_screen.dart';
 
@@ -212,9 +211,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade100),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey.shade100)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -240,29 +237,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
 
         // Handle navigation for different tabs
-        if (index == 0) { // Home tab
-          Navigator.pushAndRemoveUntil(
+        if (index == 0) {
+          // Home tab
+          Navigator.pop(context);
+        } else if (index == 1) {
+          // Analytics tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const BillManagerScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
           );
-        } else if (index == 1) { // Analytics tab
-          Navigator.pushAndRemoveUntil(
+        } else if (index == 3) {
+          // Settings tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const AnalyticsScreen(),
-            ),
-            (route) => false,
-          );
-        } else if (index == 3) { // Settings tab
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const SettingsScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const SettingsScreen()),
           );
         }
       },
@@ -275,14 +263,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Icon(
               icon,
               size: 24,
-              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              color: isSelected
+                  ? const Color(0xFFFF8C00)
+                  : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+                color: isSelected
+                    ? const Color(0xFFFF8C00)
+                    : Colors.grey.shade600,
               ),
             ),
           ],
@@ -293,8 +285,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
-    final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final daysInMonth = DateTime(
+      _selectedDate.year,
+      _selectedDate.month + 1,
+      0,
+    ).day;
+    final firstDayOfMonth = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      1,
+    );
     final startingWeekday = firstDayOfMonth.weekday;
 
     // Adjust for Monday as first day (0 = Monday, 6 = Sunday)
@@ -413,12 +413,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 7,
-                        childAspectRatio: 1,
-                        crossAxisSpacing: 4,
-                        mainAxisSpacing: 4,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 7,
+                            childAspectRatio: 1,
+                            crossAxisSpacing: 4,
+                            mainAxisSpacing: 4,
+                          ),
                       itemCount: adjustedWeekday + daysInMonth,
                       itemBuilder: (context, index) {
                         if (index < adjustedWeekday) {
@@ -426,8 +427,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         }
 
                         final day = index - adjustedWeekday + 1;
-                        final currentDay = DateTime(_selectedDate.year, _selectedDate.month, day);
-                        final isToday = currentDay.year == DateTime.now().year &&
+                        final currentDay = DateTime(
+                          _selectedDate.year,
+                          _selectedDate.month,
+                          day,
+                        );
+                        final isToday =
+                            currentDay.year == DateTime.now().year &&
                             currentDay.month == DateTime.now().month &&
                             currentDay.day == DateTime.now().day;
                         final events = getEventsForDay(currentDay);
@@ -443,8 +449,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               color: isToday
                                   ? const Color(0xFFFF8C00)
                                   : events.isNotEmpty
-                                      ? const Color(0xFFFFE5CC)
-                                      : Colors.transparent,
+                                  ? const Color(0xFFFFE5CC)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Column(
@@ -467,7 +473,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     width: 4,
                                     height: 4,
                                     decoration: BoxDecoration(
-                                      color: isToday ? Colors.white : const Color(0xFFFF8C00),
+                                      color: isToday
+                                          ? Colors.white
+                                          : const Color(0xFFFF8C00),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -503,7 +511,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          _isToday(_selectedDate) ? 'Today\'s Bills' : 'Bills for ${DateFormat('MMM dd').format(_selectedDate)}',
+                          _isToday(_selectedDate)
+                              ? 'Today\'s Bills'
+                              : 'Bills for ${DateFormat('MMM dd').format(_selectedDate)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

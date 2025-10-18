@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/bill.dart';
+import '../providers/bill_provider.dart';
 import '../widgets/custom_icons.dart';
 import '../widgets/animated_subtitle.dart';
 import '../utils/formatters.dart';
@@ -16,73 +18,13 @@ class BillManagerScreen extends StatefulWidget {
   State<BillManagerScreen> createState() => _BillManagerScreenState();
 }
 
-class _BillManagerScreenState extends State<BillManagerScreen> with TickerProviderStateMixin {
+class _BillManagerScreenState extends State<BillManagerScreen>
+    with TickerProviderStateMixin {
   late AnimationController _fabAnimationController;
   late Animation<double> _fabScaleAnimation;
   late Animation<double> _fabRotationAnimation;
 
-  List<Bill> bills = [
-    Bill(
-      id: '1',
-      title: 'Electricity',
-      vendor: 'PowerCo',
-      amount: 85.5,
-      due: '2025-10-20',
-      repeat: 'monthly',
-      category: 'Utilities',
-      status: 'upcoming',
-    ),
-    Bill(
-      id: '2',
-      title: 'Spotify',
-      vendor: 'Spotify',
-      amount: 9.99,
-      due: '2025-10-18',
-      repeat: 'monthly',
-      category: 'Subscriptions',
-      status: 'upcoming',
-    ),
-    Bill(
-      id: '3',
-      title: 'Rent',
-      vendor: 'Landlord',
-      amount: 1200.0,
-      due: '2025-11-01',
-      repeat: 'monthly',
-      category: 'Rent',
-      status: 'upcoming',
-    ),
-    Bill(
-      id: '4',
-      title: 'Internet',
-      vendor: 'ISP',
-      amount: 50.0,
-      due: '2025-10-14',
-      repeat: 'monthly',
-      category: 'Utilities',
-      status: 'overdue',
-    ),
-    Bill(
-      id: '5',
-      title: 'Apartment Rent',
-      vendor: 'Landlord',
-      amount: 345.0,
-      due: '2025-10-25',
-      repeat: 'monthly',
-      category: 'Rent',
-      status: 'upcoming',
-    ),
-    Bill(
-      id: '6',
-      title: 'Storage Rent',
-      vendor: 'StorageCo',
-      amount: 345.0,
-      due: '2025-10-28',
-      repeat: 'monthly',
-      category: 'Rent',
-      status: 'upcoming',
-    ),
-  ];
+  // Bills are now loaded from BillProvider - no hardcoded data!
 
   // Category data with icons
   final List<Map<String, dynamic>> categories = [
@@ -122,11 +64,14 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
   String selectedCategory = 'All';
   int _selectedTabIndex = 0;
   bool _compactAmounts = true;
-  bool _showSettings = false;
+  final bool _showSettings = false;
 
   // List to store keys for each category item for enhanced visibility detection
   // Generate enough keys for all categories plus buffer
-  final List<GlobalKey> _categoryKeys = List.generate(50, (index) => GlobalKey());
+  final List<GlobalKey> _categoryKeys = List.generate(
+    50,
+    (index) => GlobalKey(),
+  );
 
   // Scroll controller for category tabs - initialized once at widget creation
   final ScrollController _scrollController = ScrollController();
@@ -141,21 +86,13 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
       vsync: this,
     )..repeat(reverse: true);
 
-    _fabScaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.08,
-    ).animate(CurvedAnimation(
-      parent: _fabAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    _fabScaleAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
+    );
 
-    _fabRotationAnimation = Tween<double>(
-      begin: -0.05,
-      end: 0.05,
-    ).animate(CurvedAnimation(
-      parent: _fabAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    _fabRotationAnimation = Tween<double>(begin: -0.05, end: 0.05).animate(
+      CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -165,25 +102,108 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     super.dispose();
   }
 
+  // Totals are now calculated in BillProvider
+
   @override
   Widget build(BuildContext context) {
-    final filteredBills = selectedCategory == 'All'
-        ? bills
-        : bills.where((b) => b.category == selectedCategory).toList();
+    return Consumer<BillProvider>(
+      builder: (context, billProvider, child) {
+        // Convert BillHive to legacy Bill format for UI
+        final bills = billProvider.bills
+            .map(
+              (billHive) => Bill(
+                id: billHive.id,
+                title: billHive.title,
+                vendor: billHive.vendor,
+                amount: billHive.amount,
+                due: billHive.dueAt.toIso8601String().split('T')[0],
+                repeat: billHive.repeat,
+                category: billHive.category,
+                status: billHive.isPaid
+                    ? 'paid'
+                    : (billHive.dueAt.isBefore(DateTime.now())
+                          ? 'overdue'
+                          : 'upcoming'),
+              ),
+            )
+            .toList();
 
-    final thisMonthTotal = _getThisMonthTotal();
-    final next7DaysTotal = _getNext7DaysTotal();
-    final filteredCount = filteredBills.length;
-    final filteredAmount = filteredBills.fold(0.0, (sum, bill) => sum + bill.amount);
+        final filteredBills = selectedCategory == 'All'
+            ? bills
+            : bills.where((b) => b.category == selectedCategory).toList();
 
+        final thisMonthTotal = billProvider.getThisMonthTotal();
+        final next7DaysTotal = billProvider.getNext7DaysTotal();
+
+        // Calculate counts
+        final now = DateTime.now();
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0);
+        final endOf7Days = now.add(const Duration(days: 7));
+
+        final thisMonthCount = bills.where((bill) {
+          final dueDate = DateTime.parse('${bill.due}T00:00:00');
+          return dueDate.isAfter(startOfMonth) && dueDate.isBefore(endOfMonth);
+        }).length;
+
+        final next7DaysCount = bills.where((bill) {
+          final dueDate = DateTime.parse('${bill.due}T00:00:00');
+          return dueDate.isAfter(now) && dueDate.isBefore(endOf7Days);
+        }).length;
+
+        final filteredCount = filteredBills.length;
+        final filteredAmount = filteredBills.fold(
+          0.0,
+          (sum, bill) => sum + bill.amount,
+        );
+
+        return _buildScaffold(
+          context,
+          bills,
+          filteredBills,
+          thisMonthTotal,
+          thisMonthCount,
+          next7DaysTotal,
+          next7DaysCount,
+          filteredCount,
+          filteredAmount,
+          billProvider.isLoading,
+        );
+      },
+    );
+  }
+
+  Widget _buildScaffold(
+    BuildContext context,
+    List<Bill> bills,
+    List<Bill> filteredBills,
+    double thisMonthTotal,
+    int thisMonthCount,
+    double next7DaysTotal,
+    int next7DaysCount,
+    int filteredCount,
+    double filteredAmount,
+    bool isLoading,
+  ) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: null,
       body: Column(
         children: [
-          _buildUnifiedHeader(thisMonthTotal, next7DaysTotal),
+          _buildUnifiedHeader(
+            thisMonthTotal,
+            thisMonthCount,
+            next7DaysTotal,
+            next7DaysCount,
+          ),
           Expanded(
-            child: _buildBody(filteredBills, thisMonthTotal, next7DaysTotal, filteredCount, filteredAmount),
+            child: _buildBody(
+              filteredBills,
+              thisMonthTotal,
+              next7DaysTotal,
+              filteredCount,
+              filteredAmount,
+            ),
           ),
         ],
       ),
@@ -192,7 +212,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     );
   }
 
-  Widget _buildUnifiedHeader(double thisMonthTotal, double next7DaysTotal) {
+  Widget _buildUnifiedHeader(
+    double thisMonthTotal,
+    int thisMonthCount,
+    double next7DaysTotal,
+    int next7DaysCount,
+  ) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -293,7 +318,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                     child: _buildSummaryCard(
                       'This month',
                       formatCurrencyFull(thisMonthTotal),
-                      'Total due this month',
+                      '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''}',
                       const MoneyIcon(size: 18),
                     ),
                   ),
@@ -302,8 +327,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                     child: _buildSummaryCard(
                       'Next 7 days',
                       formatCurrencyFull(next7DaysTotal),
-                      'Bills due in next 7 days',
-                      Icon(Icons.calendar_today_outlined, color: const Color(0xFFFF8C00), size: 18),
+                      '$next7DaysCount bill${next7DaysCount != 1 ? 's' : ''}',
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        color: const Color(0xFFFF8C00),
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -315,8 +344,13 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     );
   }
 
-  Widget _buildBody(List<Bill> filteredBills, double thisMonthTotal, double next7DaysTotal,
-                   int filteredCount, double filteredAmount) {
+  Widget _buildBody(
+    List<Bill> filteredBills,
+    double thisMonthTotal,
+    double next7DaysTotal,
+    int filteredCount,
+    double filteredAmount,
+  ) {
     return Stack(
       children: [
         SingleChildScrollView(
@@ -326,9 +360,9 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
             children: [
               if (_showSettings) _buildSettingsSection(),
               _buildCategoriesSection(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               _buildFilteredSection(filteredCount, filteredAmount),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               _buildBillsList(filteredBills),
             ],
           ),
@@ -373,10 +407,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                 value: _compactAmounts ? 'enabled' : 'disabled',
                 child: const Text(
                   'Compact amounts',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF1F2937),
-                  ),
+                  style: TextStyle(fontSize: 14, color: Color(0xFF1F2937)),
                 ),
               ),
               Switch(
@@ -386,7 +417,9 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                     _compactAmounts = value;
                   });
                 },
-                activeTrackColor: const Color(0xFFFF8C00).withValues(alpha: 0.5),
+                activeTrackColor: const Color(
+                  0xFFFF8C00,
+                ).withValues(alpha: 0.5),
                 activeThumbColor: const Color(0xFFFF8C00),
               ),
             ],
@@ -396,63 +429,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     );
   }
 
-  Widget _buildSummaryCards(double thisMonthTotal, double next7DaysTotal) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
-            const Color(0xFFFF8C00).withValues(alpha: 0.02),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF8C00).withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Flexible(
-            flex: 1,
-            child: _buildSummaryCard(
-              'This month',
-              formatCurrencyFull(thisMonthTotal),
-              'Total due this month',
-              const MoneyIcon(size: 18),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Flexible(
-            flex: 1,
-            child: _buildSummaryCard(
-              'Next 7 days',
-              formatCurrencyFull(next7DaysTotal),
-              'Bills due in next 7 days',
-              Icon(Icons.calendar_today_outlined, color: const Color(0xFFFF8C00), size: 18),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard(String title, String amount, String subtitle, Widget icon) {
+  Widget _buildSummaryCard(
+    String title,
+    String amount,
+    String subtitle,
+    Widget icon,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -484,10 +466,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade500,
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -557,33 +536,40 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
               borderRadius: BorderRadius.circular(20),
               child: Container(
                 key: _categoryKeys[index],
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFFF8C00) : Colors.transparent,
+                  color: isSelected
+                      ? const Color(0xFFFF8C00)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: isSelected ? [
-                    BoxShadow(
-                      color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ] : null,
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isSelected)
-                      Icon(
-                        category['icon'],
-                        size: 16,
-                        color: Colors.white,
-                      ),
+                      Icon(category['icon'], size: 16, color: Colors.white),
                     if (isSelected) const SizedBox(width: 6),
                     Text(
                       category['name'],
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         color: isSelected ? Colors.white : Colors.grey.shade700,
                       ),
                     ),
@@ -619,12 +605,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
       final tabContext = tabKey.currentContext;
 
       if (tabContext != null) {
-        final RenderBox? tabRenderBox = tabContext.findRenderObject() as RenderBox?;
+        final RenderBox? tabRenderBox =
+            tabContext.findRenderObject() as RenderBox?;
         if (tabRenderBox != null) {
           final tabPosition = tabRenderBox.localToGlobal(Offset.zero);
           final tabWidth = tabRenderBox.size.width;
           final screenWidth = MediaQuery.of(context).size.width;
-          final padding = 32;
 
           // Calculate the ideal center position for the tab
           final targetCenterPosition = (screenWidth / 2) - (tabWidth / 2);
@@ -639,35 +625,15 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
 
           // Only scroll if the tab is significantly off-center (more than 30 pixels)
           if (scrollOffsetNeeded.abs() > 30) {
-            final finalTargetOffset = targetScrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent);
+            final finalTargetOffset = targetScrollOffset.clamp(
+              0.0,
+              _scrollController.position.maxScrollExtent,
+            );
             _animateScroll(finalTargetOffset);
           }
         }
       }
     });
-  }
-
-  // Simplified helper to get last visible tab index
-  int _getLastVisibleTabIndex() {
-    final screenWidth = MediaQuery.of(context).size.width - 32; // Account for padding
-
-    for (int i = 0; i < categories.length && i < _categoryKeys.length; i++) {
-      final context = _categoryKeys[i].currentContext;
-      if (context != null) {
-        final RenderBox? tabRenderBox = context.findRenderObject() as RenderBox?;
-        if (tabRenderBox != null) {
-          final tabPosition = tabRenderBox.localToGlobal(Offset.zero);
-          final tabRight = tabPosition.dx + tabRenderBox.size.width - 16; // Account for padding
-
-          // If tab is visible within screen bounds
-          if (tabRight <= screenWidth) {
-            return i;
-          }
-        }
-      }
-    }
-
-    return -1;
   }
 
   void _animateScroll(double offset) {
@@ -678,53 +644,6 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
       curve: Curves.easeOutBack,
     );
   }
-
-  Widget _buildSectionDivider() {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.grey.shade200,
-                    Colors.grey.shade300,
-                    Colors.grey.shade200,
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Icon(
-            Icons.circle,
-            size: 6,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.grey.shade200,
-                    Colors.grey.shade300,
-                    Colors.grey.shade200,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
 
   Widget _buildFilteredSection(int count, double amount) {
     return Container(
@@ -768,18 +687,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
           children: [
             Text(
               'No bills match this filter.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
             ),
             const SizedBox(height: 4),
             Text(
               'Try adding a new bill or change the category.',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade400,
-              ),
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
             ),
           ],
         ),
@@ -865,9 +778,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                           children: [
                             Flexible(
                               child: Tooltip(
-                                message: 'Amount: ${formatCurrencyFull(bill.amount)}',
+                                message:
+                                    'Amount: ${formatCurrencyFull(bill.amount)}',
                                 child: Text(
-                                  _compactAmounts ? formatCurrencyShort(bill.amount) : formatCurrencyFull(bill.amount),
+                                  _compactAmounts
+                                      ? formatCurrencyShort(bill.amount)
+                                      : formatCurrencyFull(bill.amount),
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w700,
@@ -880,13 +796,17 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                             ),
                             const SizedBox(width: 6),
                             Tooltip(
-                              message: 'Tap to view full value (mobile) / Hover to view full value (desktop)',
+                              message:
+                                  'Tap to view full value (mobile) / Hover to view full value (desktop)',
                               child: InkWell(
-                                onTap: () => _showAmountBottomSheet(bill.amount),
+                                onTap: () =>
+                                    _showAmountBottomSheet(bill.amount),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Semantics(
-                                  label: 'View full amount: ${formatCurrencyFull(bill.amount)}',
-                                  hint: 'Double tap to view full amount in bottom sheet',
+                                  label:
+                                      'View full amount: ${formatCurrencyFull(bill.amount)}',
+                                  hint:
+                                      'Double tap to view full amount in bottom sheet',
                                   child: Container(
                                     padding: const EdgeInsets.all(3),
                                     decoration: BoxDecoration(
@@ -927,67 +847,73 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                   Expanded(
                     flex: 6,
                     child: bill.status == 'paid'
-                      ? _buildPaidStatusWithIcon(bill.due)
-                      : _buildStatusBadge(bill.status, bill.due),
+                        ? _buildPaidStatusWithIcon(bill.due)
+                        : _buildStatusBadge(bill.status, bill.due),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     flex: 4,
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
-                      transitionBuilder: (Widget child, Animation<double> animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: child,
-                        );
-                      },
+                      transitionBuilder:
+                          (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            );
+                          },
                       child: Container(
-                        key: ValueKey('payment_status_${bill.id}_${bill.status}'),
+                        key: ValueKey(
+                          'payment_status_${bill.id}_${bill.status}',
+                        ),
                         height: 32, // Fixed height to prevent size changes
                         child: bill.status != 'paid'
-                          ? InkWell(
-                              onTap: () => _showMarkPaidConfirmation(bill),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF8C00),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  'Mark paid',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
+                            ? InkWell(
+                                onTap: () => _showMarkPaidConfirmation(bill),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              width: double.infinity,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  const Icon(
-                                    Icons.check_circle,
-                                    size: 18,
-                                    color: Color(0xFF059669),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF8C00),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  const SizedBox(width: 6),
-                                  const Text(
-                                    'PAID',
+                                  child: const Text(
+                                    'Mark paid',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                width: double.infinity,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle,
+                                      size: 18,
                                       color: Color(0xFF059669),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'PAID',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF059669),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
                       ),
                     ),
                   ),
@@ -1023,7 +949,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
       displayText,
       style: TextStyle(
         fontSize: 12,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
         color: textColor,
       ),
     );
@@ -1033,41 +959,13 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.check_circle,
-          size: 14,
-          color: Color(0xFF059669),
-        ),
+        const Icon(Icons.check_circle, size: 14, color: Color(0xFF059669)),
         const SizedBox(width: 4),
         Text(
           dueDate != null ? 'Paid on ${getFormattedDate(dueDate)}' : 'PAID',
           style: const TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF059669),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPaidWithAnimatedIcon() {
-    return Row(
-      key: const ValueKey('paid_status'),
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        const Icon(
-          Icons.check_circle,
-          size: 18,
-          color: Color(0xFF059669),
-        ),
-        const SizedBox(width: 6),
-        const Text(
-          'PAID',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w400,
             color: Color(0xFF059669),
           ),
         ),
@@ -1079,9 +977,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade100),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey.shade100)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1107,26 +1003,23 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
         });
 
         // Handle navigation for different tabs
-        if (index == 1) { // Analytics tab
+        if (index == 1) {
+          // Analytics tab
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const AnalyticsScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
           );
-        } else if (index == 2) { // Calendar tab
+        } else if (index == 2) {
+          // Calendar tab
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const CalendarScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const CalendarScreen()),
           );
-        } else if (index == 3) { // Settings tab
+        } else if (index == 3) {
+          // Settings tab
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const SettingsScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const SettingsScreen()),
           );
         }
       },
@@ -1139,14 +1032,18 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
             Icon(
               icon,
               size: 24,
-              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              color: isSelected
+                  ? const Color(0xFFFF8C00)
+                  : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+                color: isSelected
+                    ? const Color(0xFFFF8C00)
+                    : Colors.grey.shade600,
               ),
             ),
           ],
@@ -1182,10 +1079,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
                 height: 60,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFFFF8C00),
-                      const Color(0xFFFF6B00),
-                    ],
+                    colors: [const Color(0xFFFF8C00), const Color(0xFFFF6B00)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     stops: const [0.0, 1.0],
@@ -1294,27 +1188,8 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
             ),
           ),
         );
-});}
-     
-    double _getThisMonthTotal() {
-    final now = DateTime.now();
-    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-
-    return bills
-        .where((bill) => bill.due.startsWith(currentMonth))
-        .fold(0.0, (sum, bill) => sum + bill.amount);
-  }
-
-  double _getNext7DaysTotal() {
-    final now = DateTime.now();
-    final endOf7Days = now.add(const Duration(days: 7));
-
-    return bills
-        .where((bill) {
-          final dueDate = DateTime.parse('${bill.due}T00:00:00');
-          return dueDate.isAfter(now) && dueDate.isBefore(endOf7Days);
-        })
-        .fold(0.0, (sum, bill) => sum + bill.amount);
+      },
+    );
   }
 
   void _showMarkPaidConfirmation(Bill bill) {
@@ -1325,14 +1200,8 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
       transitionDuration: const Duration(milliseconds: 300),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         return ScaleTransition(
-          scale: CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutBack,
-          ),
-          child: FadeTransition(
-            opacity: animation,
-            child: child,
-          ),
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: FadeTransition(opacity: animation, child: child),
         );
       },
       pageBuilder: (context, animation, secondaryAnimation) {
@@ -1372,10 +1241,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
             children: [
               Text(
                 'Are you sure you want to mark this bill as paid?',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
               Container(
@@ -1416,14 +1282,14 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
               },
               style: TextButton.styleFrom(
                 foregroundColor: Colors.grey.shade600,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
               child: const Text(
                 'Cancel',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ),
             ElevatedButton(
@@ -1434,17 +1300,17 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF8C00),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
               child: const Text(
                 'Mark as Paid',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ),
           ],
@@ -1453,13 +1319,20 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
     );
   }
 
-  void _markPaid(String billId) {
-    setState(() {
-      final index = bills.indexWhere((bill) => bill.id == billId);
-      if (index != -1) {
-        bills[index] = bills[index].copyWith(status: 'paid');
-      }
-    });
+  Future<void> _markPaid(String billId) async {
+    final billProvider = context.read<BillProvider>();
+    await billProvider.markBillAsPaid(billId);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bill marked as paid!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _showAmountBottomSheet(double amount) {
@@ -1505,10 +1378,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> with TickerProvid
               const SizedBox(height: 8),
               Text(
                 'Full amount: ${formatCurrencyFull(amount)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
               Row(

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/bill_provider.dart';
 
 class AddBillScreen extends StatefulWidget {
   const AddBillScreen({super.key});
@@ -53,7 +55,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
   ];
 
   final List<String> _repeatOptions = [
-    'None', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'
+    'None',
+    'Weekly',
+    'Monthly',
+    'Quarterly',
+    'Yearly',
   ];
 
   @override
@@ -87,36 +93,51 @@ class _AddBillScreenState extends State<AddBillScreen> {
     }
   }
 
-  void _saveBill() {
+  Future<void> _saveBill() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    // Create the new bill
-    final newBill = {
-      'title': _titleController.text.trim(),
-      'vendor': _vendorController.text.trim(),
-      'amount': double.parse(_amountController.text),
-      'due': _selectedDueDate != null ? _formatDate(_selectedDueDate!) : '',
-      'repeat': _selectedRepeat,
-      'category': _selectedCategory,
-      'notes': _notesController.text.trim(),
-      'status': 'upcoming',
-    };
+    try {
+      final billProvider = context.read<BillProvider>();
 
-    // TODO: Add bill to your state management/backend
-    print('New bill: $newBill');
+      // Add bill to backend (Hive + Firebase)
+      await billProvider.addBill(
+        title: _titleController.text.trim(),
+        vendor: _vendorController.text.trim(),
+        amount: double.parse(_amountController.text),
+        dueAt: _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
+        category: _selectedCategory,
+        repeat: _selectedRepeat.toLowerCase(),
+      );
 
-    // Show success message and close
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Bill saved successfully!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      if (mounted) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bill saved successfully!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
 
-    Navigator.of(context).pop();
+        // Close screen
+        Navigator.of(context).pop(true); // Return true to indicate success
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving bill: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _selectDueDate() async {
@@ -153,7 +174,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
         ),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFF8C00), size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            color: Color(0xFFFF8C00),
+            size: 20,
+          ),
         ),
         actions: [
           TextButton(
@@ -164,10 +189,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
             ),
             child: const Text(
               'Save',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -293,10 +315,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                   ),
                   child: const Text(
                     'Save Bill',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -406,10 +425,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
         DropdownButtonFormField<String>(
           value: value,
           items: items.map((item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
+            return DropdownMenuItem<String>(value: item, child: Text(item));
           }).toList(),
           onChanged: onChanged,
           decoration: InputDecoration(
@@ -485,10 +501,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.keyboard_arrow_up,
-                  color: Color(0xFF6B7280),
-                ),
+                const Icon(Icons.keyboard_arrow_up, color: Color(0xFF6B7280)),
               ],
             ),
           ),
@@ -535,10 +548,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.keyboard_arrow_up,
-                  color: Color(0xFF6B7280),
-                ),
+                const Icon(Icons.keyboard_arrow_up, color: Color(0xFF6B7280)),
               ],
             ),
           ),
@@ -597,7 +607,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
@@ -697,7 +710,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFFFF8C00).withValues(alpha: 0.1)

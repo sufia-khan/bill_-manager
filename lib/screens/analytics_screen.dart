@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/formatters.dart';
 import '../models/bill.dart';
-import '../widgets/animated_subtitle.dart';
-import 'add_bill_screen.dart';
-import 'bill_manager_screen.dart';
 import 'settings_screen.dart';
 import 'calendar_screen.dart';
 
@@ -106,9 +103,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade100),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey.shade100)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -134,29 +129,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         });
 
         // Handle navigation for different tabs
-        if (index == 0) { // Home tab
-          Navigator.pushAndRemoveUntil(
+        if (index == 0) {
+          // Home tab
+          Navigator.pop(context);
+        } else if (index == 2) {
+          // Calendar tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const BillManagerScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const CalendarScreen()),
           );
-        } else if (index == 2) { // Calendar tab
-          Navigator.pushAndRemoveUntil(
+        } else if (index == 3) {
+          // Settings tab
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const CalendarScreen(),
-            ),
-            (route) => false,
-          );
-        } else if (index == 3) { // Settings tab
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const SettingsScreen(),
-            ),
-            (route) => false,
+            MaterialPageRoute(builder: (context) => const SettingsScreen()),
           );
         }
       },
@@ -169,14 +155,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             Icon(
               icon,
               size: 24,
-              color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+              color: isSelected
+                  ? const Color(0xFFFF8C00)
+                  : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+                color: isSelected
+                    ? const Color(0xFFFF8C00)
+                    : Colors.grey.shade600,
               ),
             ),
           ],
@@ -184,6 +174,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
     );
   }
+
   String _activeTab = 'total';
 
   // Monthly data structure with all bill statuses
@@ -243,10 +234,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 280,
-              child: _buildSummaryCards(),
-            ),
+            SizedBox(height: 280, child: _buildSummaryCards()),
             const SizedBox(height: 32),
             _buildBarChart(),
           ],
@@ -338,7 +326,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   color: isActive ? color : color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: isActive ? Colors.white : color, size: 20),
+                child: Icon(
+                  icon,
+                  color: isActive ? Colors.white : color,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 20),
               Expanded(
@@ -351,7 +343,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         color: isActive ? color : Colors.grey.shade600,
-                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: isActive
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -370,12 +364,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ],
                 ),
               ),
-              if (isActive)
-                Icon(
-                  Icons.check_circle,
-                  color: color,
-                  size: 20,
-                ),
+              if (isActive) Icon(Icons.check_circle, color: color, size: 20),
             ],
           ),
         ),
@@ -383,7 +372,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  
   Widget _buildBarChart() {
     Color activeColor;
     String chartTitle;

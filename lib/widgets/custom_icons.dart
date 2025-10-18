@@ -15,9 +15,7 @@ class MoneyIcon extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(
-        painter: MoneyIconPainter(color),
-      ),
+      child: CustomPaint(painter: MoneyIconPainter(color)),
     );
   }
 }
@@ -43,11 +41,27 @@ class MoneyIconPainter extends CustomPainter {
       final startRadius = size.width * 0.15;
       final endRadius = size.width * 0.35;
 
-      final startX = centerX + (startRadius * (i % 2 == 0 ? 1 : 0.707) * (i < 4 ? 1 : (i < 6 ? -1 : (i == 6 ? -0.707 : 0.707))));
-      final startY = centerY + (startRadius * (i % 2 == 0 ? 0.707 : 1) * (i < 4 ? (i < 2 ? 1 : -1) : (i == 4 ? -1 : 1)));
+      final startX =
+          centerX +
+          (startRadius *
+              (i % 2 == 0 ? 1 : 0.707) *
+              (i < 4 ? 1 : (i < 6 ? -1 : (i == 6 ? -0.707 : 0.707))));
+      final startY =
+          centerY +
+          (startRadius *
+              (i % 2 == 0 ? 0.707 : 1) *
+              (i < 4 ? (i < 2 ? 1 : -1) : (i == 4 ? -1 : 1)));
 
-      final endX = centerX + (endRadius * (i % 2 == 0 ? 1 : 0.707) * (i < 4 ? 1 : (i < 6 ? -1 : (i == 6 ? -0.707 : 0.707))));
-      final endY = centerY + (endRadius * (i % 2 == 0 ? 0.707 : 1) * (i < 4 ? (i < 2 ? 1 : -1) : (i == 4 ? -1 : 1)));
+      final endX =
+          centerX +
+          (endRadius *
+              (i % 2 == 0 ? 1 : 0.707) *
+              (i < 4 ? 1 : (i < 6 ? -1 : (i == 6 ? -0.707 : 0.707))));
+      final endY =
+          centerY +
+          (endRadius *
+              (i % 2 == 0 ? 0.707 : 1) *
+              (i < 4 ? (i < 2 ? 1 : -1) : (i == 4 ? -1 : 1)));
 
       canvas.drawLine(Offset(startX, startY), Offset(endX, endY), paint);
     }
@@ -78,11 +92,7 @@ class CategoryIcon extends StatelessWidget {
   final String category;
   final double size;
 
-  const CategoryIcon({
-    super.key,
-    required this.category,
-    this.size = 24.0,
-  });
+  const CategoryIcon({super.key, required this.category, this.size = 24.0});
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +114,7 @@ class CategoryIcon extends StatelessWidget {
       case 'Subscriptions':
         bgColor = const Color(0xFFF3E8FF);
         fgColor = const Color(0xFF7C3AED);
-        icon = Icon(Icons.subscriptions, color: fgColor, size: size);
+        icon = Icon(Icons.autorenew, color: fgColor, size: size);
         break;
       default:
         bgColor = const Color(0xFFF9FAFB);

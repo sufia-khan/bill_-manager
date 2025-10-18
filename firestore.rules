@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to validate bill data
+    function isValidBill() {
+      let bill = request.resource.data;
+      return bill.keys().hasAll(['id', 'title', 'vendor', 'amount', 'dueAt', 'category', 'isPaid', 'isDeleted', 'updatedAt', 'clientUpdatedAt', 'repeat'])
+        && bill.id is string
+        && bill.title is string
+        && bill.vendor is string
+        && bill.amount is number
+        && bill.amount >= 0
+        && bill.dueAt is string
+        && bill.category is string
+        && bill.isPaid is bool
+        && bill.isDeleted is bool
+        && bill.updatedAt is string
+        && bill.clientUpdatedAt is string
+        && bill.repeat is string;
+    }
+    
+    // User bills collection
+    match /users/{userId}/bills/{billId} {
+      // Allow read if user owns the bills
+      allow read: if isOwner(userId);
+      
+      // Allow create if user is authenticated and owns the resource
+      allow create: if isOwner(userId) && isValidBill();
+      
+      // Allow update if user owns the resource and data is valid
+      allow update: if isOwner(userId) && isValidBill();
+      
+      // Allow delete if user owns the resource
+      allow delete: if isOwner(userId);
+    }
+    
+    // User profile/settings (optional for future use)
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
