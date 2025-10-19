@@ -33,7 +33,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     {'name': 'Gas', 'icon': Icons.local_fire_department},
     {'name': 'Internet', 'icon': Icons.wifi},
     {'name': 'Phone', 'icon': Icons.phone},
-    {'name': 'Subscriptions', 'icon': Icons.subscriptions},
+    {'name': 'Subscriptions', 'icon': Icons.card_membership},
     {'name': 'Streaming', 'icon': Icons.tv},
     {'name': 'Groceries', 'icon': Icons.shopping_cart},
     {'name': 'Transport', 'icon': Icons.directions_bus},
@@ -160,31 +160,42 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         print('DEBUG: Date ranges - Month: $startOfMonth to $endOfMonth');
         print('DEBUG: Date ranges - Next 7 days: $startOfToday to $endOf7Days');
 
+        // Filter for UPCOMING bills only (not paid, not overdue)
         final thisMonthBills = bills.where((bill) {
           final dueDate = DateTime.parse('${bill.due}T00:00:00');
           final isInRange =
               !dueDate.isBefore(startOfMonth) && !dueDate.isAfter(endOfMonth);
-          if (isInRange) {
+          final isUpcoming = bill.status == 'upcoming'; // Only upcoming bills
+          if (isInRange && isUpcoming) {
             print(
-              'DEBUG: Bill in this month: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
+              'DEBUG: Upcoming bill in this month: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
             );
           }
-          return isInRange;
+          return isInRange && isUpcoming;
         }).toList();
         final thisMonthCount = thisMonthBills.length;
+        final thisMonthUpcomingTotal = thisMonthBills.fold(
+          0.0,
+          (sum, bill) => sum + bill.amount,
+        );
 
         final next7DaysBills = bills.where((bill) {
           final dueDate = DateTime.parse('${bill.due}T00:00:00');
           final isInRange =
               !dueDate.isBefore(startOfToday) && !dueDate.isAfter(endOf7Days);
-          if (isInRange) {
+          final isUpcoming = bill.status == 'upcoming'; // Only upcoming bills
+          if (isInRange && isUpcoming) {
             print(
-              'DEBUG: Bill in next 7 days: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
+              'DEBUG: Upcoming bill in next 7 days: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
             );
           }
-          return isInRange;
+          return isInRange && isUpcoming;
         }).toList();
         final next7DaysCount = next7DaysBills.length;
+        final next7DaysUpcomingTotal = next7DaysBills.fold(
+          0.0,
+          (sum, bill) => sum + bill.amount,
+        );
 
         print('DEBUG: This month count: $thisMonthCount');
         print('DEBUG: Next 7 days count: $next7DaysCount');
@@ -199,9 +210,9 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           context,
           bills,
           filteredBills,
-          thisMonthTotal,
+          thisMonthUpcomingTotal,
           thisMonthCount,
-          next7DaysTotal,
+          next7DaysUpcomingTotal,
           next7DaysCount,
           filteredCount,
           filteredAmount,
@@ -350,8 +361,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                   Expanded(
                     child: _buildSummaryCard(
                       'This month',
-                      formatCurrencyFull(thisMonthTotal),
-                      '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''}',
+                      thisMonthTotal,
+                      '$thisMonthCount upcoming bill${thisMonthCount != 1 ? 's' : ''}',
                       const MoneyIcon(size: 18),
                     ),
                   ),
@@ -359,8 +370,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                   Expanded(
                     child: _buildSummaryCard(
                       'Next 7 days',
-                      formatCurrencyFull(next7DaysTotal),
-                      '$next7DaysCount bill${next7DaysCount != 1 ? 's' : ''}',
+                      next7DaysTotal,
+                      '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
                       Icon(
                         Icons.calendar_today_outlined,
                         color: const Color(0xFFFF8C00),
@@ -464,10 +475,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
   Widget _buildSummaryCard(
     String title,
-    String amount,
+    double amount,
     String subtitle,
     Widget icon,
   ) {
+    final formattedAmount = _compactAmounts
+        ? formatCurrencyShort(amount)
+        : formatCurrencyFull(amount);
+    final fullAmount = formatCurrencyFull(amount);
+    final isFormatted = formattedAmount != fullAmount;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -506,14 +523,45 @@ class _BillManagerScreenState extends State<BillManagerScreen>
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            amount,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1F2937),
-            ),
-            overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Expanded(
+                child: Tooltip(
+                  message: 'Amount: $fullAmount',
+                  child: Text(
+                    formattedAmount,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F2937),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              if (isFormatted) ...[
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: 'Tap to view full amount',
+                  child: InkWell(
+                    onTap: () => _showAmountBottomSheet(amount),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 4),
           Text(

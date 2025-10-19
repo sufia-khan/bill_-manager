@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/currency_provider.dart';
+import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
@@ -160,6 +162,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   onTap: () {
                     // Handle theme tap
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Currency
+                Consumer<CurrencyProvider>(
+                  builder: (context, currencyProvider, _) {
+                    return _buildSettingsOption(
+                      icon: Icons.attach_money,
+                      title: 'Currency',
+                      trailing: Text(
+                        '${currencyProvider.selectedCurrency.code} (${currencyProvider.selectedCurrency.symbol})',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (context) => CurrencySelectorSheet(
+                            currentCurrency: currencyProvider.selectedCurrency,
+                            onCurrencySelected: (currency, convert, rate) {
+                              currencyProvider.setCurrency(
+                                currency,
+                                convert,
+                                rate,
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Currency changed to ${currency.code}',
+                                  ),
+                                  backgroundColor: const Color(0xFFFF8C00),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
                   },
                 ),
 

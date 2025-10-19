@@ -12,16 +12,26 @@ class AnimatedSubtitle extends StatefulWidget {
 class _AnimatedSubtitleState extends State<AnimatedSubtitle>
     with TickerProviderStateMixin {
   static const List<String> subtitles = [
-    "Keep track of your bills easily",
-    "Friendly reminders before due dates",
-    "Never miss a payment again",
-    "Stay on top of your finances",
-    "Manage expenses smartly",
-    "Simple. Clean. Powerful.",
-    "Track rent, utilities, and more",
-    "Organize your payments stress-free",
-    "All your bills in one place",
-    "Budget better every month",
+    "Handle bills in seconds",
+    "Organized bills, organized life",
+    "Never miss a due date",
+    "Stay ahead effortlessly",
+    "Smart tracking, zero stress",
+    "Payments always in control",
+    "Plan better, live easier",
+    "Reminders that calm you",
+    "Goodbye late fees forever",
+    "Know dues before they hit",
+    "Track, manage, relax",
+    "All payments in one place",
+    "Clear bills, clear mind",
+    "Effortless planning, always",
+    "Stay on top with ease",
+    "From overdue to on-time",
+    "Your pocket finance buddy",
+    "Spend smarter every day",
+    "Always pay on time",
+    "Stress less, stay sharp",
   ];
 
   late AnimationController _fadeController;
@@ -44,9 +54,10 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeIn));
 
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -70,7 +81,9 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
 
   void _typeNextChar() {
     final currentText = subtitles[_currentIndex];
-    final typingSpeed = _isDeleting ? const Duration(milliseconds: 50) : const Duration(milliseconds: 100);
+    final typingSpeed = _isDeleting
+        ? const Duration(milliseconds: 50)
+        : const Duration(milliseconds: 100);
 
     _timer = Timer(typingSpeed, () {
       if (!mounted) return;
@@ -141,6 +154,9 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
               color: Color(0xFF6B7280),
             ),
             textAlign: TextAlign.left,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            softWrap: true,
           ),
         ),
       ),

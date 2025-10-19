@@ -10,6 +10,7 @@ import 'screens/settings_screen.dart';
 import 'services/hive_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/currency_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +33,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BillProvider()),
+        ChangeNotifierProvider(create: (_) => CurrencyProvider()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
