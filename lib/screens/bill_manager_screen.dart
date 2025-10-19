@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/bill.dart';
+import '../models/bill_hive.dart';
 import '../providers/bill_provider.dart';
+import '../providers/currency_provider.dart';
 import '../widgets/custom_icons.dart';
 import '../widgets/animated_subtitle.dart';
+import '../widgets/expandable_bill_card.dart';
 import '../utils/formatters.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
@@ -108,13 +111,18 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Listen to currency changes to rebuild UI
+    context.watch<CurrencyProvider>();
+
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
         // Debug: Print bill count
         print('DEBUG: Total bills in provider: ${billProvider.bills.length}');
 
         // Convert BillHive to legacy Bill format for UI
+        // Filter out paid and archived bills - they should only show in Past Bills
         final bills = billProvider.bills
+            .where((billHive) => !billHive.isPaid && !billHive.isArchived)
             .map(
               (billHive) => Bill(
                 id: billHive.id,
@@ -124,11 +132,9 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                 due: billHive.dueAt.toIso8601String().split('T')[0],
                 repeat: billHive.repeat,
                 category: billHive.category,
-                status: billHive.isPaid
-                    ? 'paid'
-                    : (billHive.dueAt.isBefore(DateTime.now())
-                          ? 'overdue'
-                          : 'upcoming'),
+                status: billHive.dueAt.isBefore(DateTime.now())
+                    ? 'overdue'
+                    : 'upcoming',
               ),
             )
             .toList();
@@ -328,6 +334,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                     children: [
                       IconButton(
                         onPressed: () {
+                          Navigator.pushNamed(context, '/past-bills');
+                        },
+                        icon: const Icon(
+                          Icons.history,
+                          color: Color(0xFFFF8C00),
+                        ),
+                        tooltip: 'Past Bills',
+                      ),
+                      IconButton(
+                        onPressed: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -339,8 +355,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                           Icons.notifications_outlined,
                           color: Color(0xFFFF8C00),
                         ),
+                        tooltip: 'Notifications',
                       ),
-                      const SizedBox(width: 2),
                       IconButton(
                         onPressed: () {
                           Navigator.pushNamed(context, '/settings');
@@ -349,6 +365,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                           Icons.person_outline,
                           color: Color(0xFFFF8C00),
                         ),
+                        tooltip: 'Settings',
                       ),
                     ],
                   ),
@@ -741,69 +758,92 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF8C00).withValues(alpha: 0.1),
+            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+        ),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left side - Bill count
-          Text(
-            '$count bill${count != 1 ? 's' : ''}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1F2937),
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.filter_list,
+              color: Color(0xFFFF8C00),
+              size: 24,
             ),
           ),
-          // Right side - Amount with icon
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.attach_money,
-                  color: Color(0xFFFF8C00),
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: 'Amount: $fullAmount',
-                child: Text(
-                  formattedAmount,
+          const SizedBox(width: 16),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$count bill${count != 1 ? 's' : ''} in ${selectedCategory == 'All' ? 'all categories' : selectedCategory}',
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFFF8C00),
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
                   ),
                 ),
-              ),
-              if (isFormatted) ...[
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: 'Tap to view full amount',
-                  child: InkWell(
-                    onTap: () => _showAmountBottomSheet(amount),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        size: 14,
-                        color: Color(0xFF1F2937),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Total: ',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
                       ),
                     ),
-                  ),
+                    Text(
+                      formattedAmount,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFFF8C00),
+                      ),
+                    ),
+                    if (isFormatted) ...[
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => _showAmountBottomSheet(amount),
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Color(0xFFFF8C00),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
-            ],
+            ),
           ),
         ],
       ),
@@ -844,286 +884,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
       );
     }
 
+    // Bills now archive immediately when paid - no near archival warnings needed
     return Column(
       children: filteredBills.map((bill) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade100),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top row - Title and amount
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Left side - Icon and title
-                  Expanded(
-                    flex: 6,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        CategoryIcon(category: bill.category),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                bill.title,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1F2937),
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${bill.vendor} • ${bill.repeat}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Right side - Amount and info icon
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Builder(
-                          builder: (context) {
-                            final formattedAmount = _compactAmounts
-                                ? formatCurrencyShort(bill.amount)
-                                : formatCurrencyFull(bill.amount);
-                            final fullAmount = formatCurrencyFull(bill.amount);
-                            final isFormatted = formattedAmount != fullAmount;
-
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Flexible(
-                                  child: Tooltip(
-                                    message: 'Amount: $fullAmount',
-                                    child: Text(
-                                      formattedAmount,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1F2937),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                if (isFormatted) ...[
-                                  const SizedBox(width: 6),
-                                  Tooltip(
-                                    message: 'Tap to view full amount',
-                                    child: InkWell(
-                                      onTap: () =>
-                                          _showAmountBottomSheet(bill.amount),
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Semantics(
-                                        label: 'View full amount: $fullAmount',
-                                        hint:
-                                            'Double tap to view full amount in bottom sheet',
-                                        child: Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey.shade200,
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          child: const Icon(
-                                            Icons.info_outline,
-                                            size: 16,
-                                            color: Color(0xFF1F2937),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '${getRelativeDateText(bill.due)} — ${getFormattedDate(bill.due)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
-                          ),
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Third row - Status badge and mark paid button
-              Row(
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: bill.status == 'paid'
-                        ? _buildPaidStatusWithIcon(bill.due)
-                        : _buildStatusBadge(bill.status, bill.due),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 4,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder:
-                          (Widget child, Animation<double> animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            );
-                          },
-                      child: Container(
-                        key: ValueKey(
-                          'payment_status_${bill.id}_${bill.status}',
-                        ),
-                        height: 32, // Fixed height to prevent size changes
-                        child: bill.status != 'paid'
-                            ? InkWell(
-                                onTap: () => _showMarkPaidConfirmation(bill),
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF8C00),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    'Mark paid',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                width: double.infinity,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    const Icon(
-                                      Icons.check_circle,
-                                      size: 18,
-                                      color: Color(0xFF059669),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'PAID',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF059669),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        return ExpandableBillCard(
+          bill: bill,
+          compactAmounts: _compactAmounts,
+          daysRemaining: null, // No longer showing days remaining
+          onMarkPaid: () => _showMarkPaidConfirmation(bill),
         );
       }).toList(),
-    );
-  }
-
-  Widget _buildStatusBadge(String status, [String? dueDate]) {
-    Color textColor;
-
-    switch (status) {
-      case 'overdue':
-        textColor = const Color(0xFFDC2626);
-        break;
-      case 'paid':
-        textColor = const Color(0xFF059669);
-        break;
-      default: // due, upcoming
-        textColor = const Color(0xFFD97706);
-    }
-
-    String displayText = status.toUpperCase();
-    if (status == 'paid' && dueDate != null) {
-      displayText = 'Paid on ${getFormattedDate(dueDate)}';
-    }
-
-    return Text(
-      displayText,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: textColor,
-      ),
-    );
-  }
-
-  Widget _buildPaidStatusWithIcon(String? dueDate) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.check_circle, size: 14, color: Color(0xFF059669)),
-        const SizedBox(width: 4),
-        Text(
-          dueDate != null ? 'Paid on ${getFormattedDate(dueDate)}' : 'PAID',
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFF059669),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1469,12 +1239,55 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     await billProvider.markBillAsPaid(billId);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bill marked as paid!'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
+      // Show dialog with navigation to history
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Color(0xFF059669), size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Bill Paid!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This bill has been marked as paid and moved to your history.',
+              ),
+              SizedBox(height: 8),
+              Text(
+                'You can view all your paid bills in the Past Bills section.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/past-bills');
+              },
+              icon: const Icon(Icons.history),
+              label: const Text('See Here'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF8C00),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       );
     }

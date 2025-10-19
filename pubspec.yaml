@@ -35,9 +35,20 @@ dependencies:
   uuid: ^4.5.1
   connectivity_plus: ^6.1.1
   
+  # Export
+  pdf: ^3.10.0
+  printing: ^5.11.0
+  excel: ^4.0.0
+  csv: ^6.0.0
+  share_plus: ^7.2.0
+  
   # Notifications
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
+  
+  # Background tasks
+  # workmanager: ^0.5.2  # Temporarily disabled due to Flutter 3.x compatibility issues
+  # Background maintenance runs on app startup instead
 
 dev_dependencies:
   flutter_test:

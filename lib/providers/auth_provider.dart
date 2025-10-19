@@ -84,6 +84,9 @@ class AuthProvider with ChangeNotifier {
       await SyncService.initialSync();
       SyncService.startPeriodicSync();
 
+      // Note: Background task scheduling removed due to workmanager compatibility
+      // Maintenance runs automatically on app startup
+
       _isLoading = false;
       notifyListeners();
 
@@ -129,6 +132,8 @@ class AuthProvider with ChangeNotifier {
     try {
       // Stop sync
       SyncService.stopPeriodicSync();
+
+      // Note: Background task cancellation removed (workmanager not used)
 
       // Clear local data
       await HiveService.clearAllData();

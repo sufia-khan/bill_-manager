@@ -24,19 +24,25 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       dueAt: fields[4] as DateTime,
       notes: fields[5] as String?,
       category: fields[6] as String,
-      isPaid: fields[7] as bool,
-      isDeleted: fields[8] as bool,
+      isPaid: (fields[7] as bool?) ?? false,
+      isDeleted: (fields[8] as bool?) ?? false,
       updatedAt: fields[9] as DateTime,
       clientUpdatedAt: fields[10] as DateTime,
-      repeat: fields[11] as String,
-      needsSync: fields[12] as bool,
+      repeat: (fields[11] as String?) ?? 'monthly',
+      needsSync: (fields[12] as bool?) ?? true,
+      paidAt: fields[13] as DateTime?,
+      isArchived: (fields[14] as bool?) ?? false,
+      archivedAt: fields[15] as DateTime?,
+      parentBillId: fields[16] as String?,
+      recurringSequence: fields[17] as int?,
+      repeatCount: fields[18] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BillHive obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(19)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +68,19 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       ..writeByte(11)
       ..write(obj.repeat)
       ..writeByte(12)
-      ..write(obj.needsSync);
+      ..write(obj.needsSync)
+      ..writeByte(13)
+      ..write(obj.paidAt)
+      ..writeByte(14)
+      ..write(obj.isArchived)
+      ..writeByte(15)
+      ..write(obj.archivedAt)
+      ..writeByte(16)
+      ..write(obj.parentBillId)
+      ..writeByte(17)
+      ..write(obj.recurringSequence)
+      ..writeByte(18)
+      ..write(obj.repeatCount);
   }
 
   @override

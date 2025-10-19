@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/currency.dart';
@@ -47,151 +48,319 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
     });
   }
 
-  void _showConversionDialog(Currency currency) {
-    final conversionController = TextEditingController(text: '1.0');
+  // Helper to get appropriate font size based on symbol length
+  double _getSymbolFontSize(String symbol) {
+    final length = symbol.length;
+    if (length == 1) {
+      return 20.0; // Single character symbols like $, €, £, ¥
+    } else if (length == 2) {
+      return 16.0; // Two character symbols like ₹, ₽
+    } else if (length == 3) {
+      return 14.0; // Three character symbols like CHF, DKK
+    } else {
+      return 12.0; // Longer symbols
+    }
+  }
 
+  void _showConversionBottomSheet(Currency currency) {
+    // Simple confirmation dialog - only symbol change, no conversion
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Currency Change',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
+      barrierColor: Colors.black54,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You are changing from ${widget.currentCurrency.code} to ${currency.code}',
-              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Choose an option:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1F2937),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.currency_exchange,
+                  color: Color(0xFFFF8C00),
+                  size: 24,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF7ED),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFFEDD5)),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Change Currency?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        size: 16,
-                        color: Color(0xFFFF8C00),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Example:',
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Change currency from ${widget.currentCurrency.code} (${widget.currentCurrency.symbol}) to ${currency.code} (${currency.symbol})?',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF6B7280),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFEDD5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Color(0xFFFF8C00),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Only the currency symbol will change. Amounts stay the same.',
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFF8C00),
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Color(0xFF6B7280)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); // Close confirmation
+                Navigator.pop(context); // Close currency selector
+                widget.onCurrencySelected(currency, false, 1.0);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF8C00),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Change Currency'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return; // Skip old code below
+
+    final conversionController = TextEditingController(text: '1.0');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Drag handle
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Title
+                const Text(
+                  'Currency Conversion',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Question
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFEDD5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFFFF8C00,
+                              ).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.currency_exchange,
+                              color: Color(0xFFFF8C00),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Changing from ${widget.currentCurrency.code} to ${currency.code}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Do you want to convert all existing bills to the new currency using today\'s exchange rate?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                          height: 1.5,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '• Symbol only: ${widget.currentCurrency.symbol}100 → ${currency.symbol}100',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
+                ),
+                const SizedBox(height: 20),
+                // Exchange rate input
+                TextField(
+                  controller: conversionController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d+\.?\d{0,4}'),
+                    ),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Exchange Rate',
+                    hintText: '1.0',
+                    helperText:
+                        '1 ${widget.currentCurrency.code} = ? ${currency.code}',
+                    helperStyle: const TextStyle(fontSize: 12),
+                    prefixIcon: const Icon(
+                      Icons.calculate,
+                      color: Color(0xFFFF8C00),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFFF8C00),
+                        width: 2,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '• Convert: ${widget.currentCurrency.symbol}100 → ${currency.symbol}${(100 * 1.2).toStringAsFixed(2)} (if rate is 1.2)',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
+                ),
+                const SizedBox(height: 24),
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pop(context);
+                          widget.onCurrencySelected(currency, false, 1.0);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: Color(0xFFFF8C00)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'No, Only Change Symbol',
+                          style: TextStyle(
+                            color: Color(0xFFFF8C00),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: conversionController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,4}')),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final rate =
+                              double.tryParse(conversionController.text) ?? 1.0;
+                          Navigator.pop(context);
+                          Navigator.pop(context);
+                          widget.onCurrencySelected(currency, true, rate);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF8C00),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Yes, Convert',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
               ],
-              decoration: InputDecoration(
-                labelText: 'Conversion Rate (optional)',
-                hintText: '1.0',
-                helperText:
-                    '1 ${widget.currentCurrency.code} = ? ${currency.code}',
-                helperStyle: const TextStyle(fontSize: 11),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
-                    width: 2,
-                  ),
-                ),
-              ),
             ),
-          ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-              widget.onCurrencySelected(currency, false, 1.0);
-            },
-            child: const Text(
-              'Symbol Only',
-              style: TextStyle(color: Color(0xFFFF8C00)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final rate = double.tryParse(conversionController.text) ?? 1.0;
-              Navigator.pop(context);
-              Navigator.pop(context);
-              widget.onCurrencySelected(currency, true, rate);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Convert'),
-          ),
-        ],
       ),
     );
   }
@@ -293,7 +462,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                     setState(() {
                       _selectedCurrency = currency;
                     });
-                    _showConversionDialog(currency);
+                    _showConversionBottomSheet(currency);
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
@@ -325,11 +494,14 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                           child: Center(
                             child: Text(
                               currency.symbol,
-                              style: const TextStyle(
-                                fontSize: 20,
+                              style: TextStyle(
+                                fontSize: _getSymbolFontSize(currency.symbol),
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFFFF8C00),
+                                color: const Color(0xFFFF8C00),
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),

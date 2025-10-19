@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../utils/formatters.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
+import '../providers/currency_provider.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -286,6 +287,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Listen to currency changes to rebuild UI
+    context.watch<CurrencyProvider>();
+
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
         final bills = billProvider.bills
@@ -658,12 +662,34 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                               leftTitles: AxisTitles(
                                 sideTitles: SideTitles(
                                   showTitles: true,
-                                  reservedSize: 50,
-                                  interval:
-                                      null, // Let fl_chart calculate optimal interval
+                                  reservedSize: 55,
                                   getTitlesWidget: (value, meta) {
-                                    if (value == 0) return const Text('');
-                                    // Only show labels at reasonable intervals to avoid overlap
+                                    if (value == 0)
+                                      return const SizedBox.shrink();
+
+                                    // Calculate max value to determine proper intervals
+                                    final maxValue = visibleData.fold<double>(
+                                      0,
+                                      (max, data) =>
+                                          (data['amount'] as double) > max
+                                          ? data['amount'] as double
+                                          : max,
+                                    );
+
+                                    // Calculate interval (show only 4 labels to prevent overlap)
+                                    final interval = maxValue / 4;
+
+                                    // Only show labels at proper intervals
+                                    if (value < interval * 0.8)
+                                      return const SizedBox.shrink();
+
+                                    // Check if this value is close to an interval point
+                                    final remainder = value % interval;
+                                    if (remainder > interval * 0.2 &&
+                                        remainder < interval * 0.8) {
+                                      return const SizedBox.shrink();
+                                    }
+
                                     return Padding(
                                       padding: const EdgeInsets.only(right: 4),
                                       child: Text(
@@ -673,6 +699,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                                           fontSize: 9,
                                         ),
                                         textAlign: TextAlign.right,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.visible,
                                       ),
                                     );
                                   },

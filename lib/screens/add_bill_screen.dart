@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/bill.dart';
 import '../providers/bill_provider.dart';
 
 class AddBillScreen extends StatefulWidget {
-  const AddBillScreen({super.key});
+  final Bill? billToEdit;
+
+  const AddBillScreen({super.key, this.billToEdit});
 
   @override
   State<AddBillScreen> createState() => _AddBillScreenState();
@@ -18,8 +21,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
   final _notesController = TextEditingController();
 
   String _selectedCategory = 'Subscriptions';
-  String _selectedRepeat = 'Monthly';
+  String _selectedRepeat = 'None';
   DateTime? _selectedDueDate;
+  int? _repeatCount; // null = unlimited
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Subscriptions', 'emoji': '📋'},
@@ -56,6 +60,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
   final List<String> _repeatOptions = [
     'None',
+    '1 Minute (Testing)', // For testing recurring bills
     'Weekly',
     'Monthly',
     'Quarterly',
@@ -65,9 +70,44 @@ class _AddBillScreenState extends State<AddBillScreen> {
   @override
   void initState() {
     super.initState();
-    // Set default due date to 30 days from now
-    _selectedDueDate = DateTime.now().add(const Duration(days: 30));
+
+    // If editing, prefill the fields
+    if (widget.billToEdit != null) {
+      _prefillFieldsForEdit();
+    } else {
+      // Set default due date to 30 days from now for new bills
+      _selectedDueDate = DateTime.now().add(const Duration(days: 30));
+      _dueController.text = _formatDate(_selectedDueDate!);
+    }
+  }
+
+  void _prefillFieldsForEdit() {
+    final bill = widget.billToEdit!;
+    _titleController.text = bill.title;
+    _vendorController.text = bill.vendor;
+    _amountController.text = bill.amount.toString();
+    _selectedCategory = bill.category;
+    _selectedRepeat = _capitalizeFirst(bill.repeat);
+    _selectedDueDate = DateTime.parse('${bill.due}T00:00:00');
     _dueController.text = _formatDate(_selectedDueDate!);
+
+    // Get notes from BillHive
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final billProvider = context.read<BillProvider>();
+        final billHive = billProvider.bills.firstWhere((b) => b.id == bill.id);
+        setState(() {
+          _notesController.text = billHive.notes ?? '';
+        });
+      } catch (e) {
+        // Notes not found, leave empty
+      }
+    });
+  }
+
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
   }
 
   @override
@@ -101,31 +141,66 @@ class _AddBillScreenState extends State<AddBillScreen> {
     try {
       final billProvider = context.read<BillProvider>();
 
-      // Add bill to backend (Hive + Firebase)
-      await billProvider.addBill(
-        title: _titleController.text.trim(),
-        vendor: _vendorController.text.trim(),
-        amount: double.parse(_amountController.text),
-        dueAt: _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-        category: _selectedCategory,
-        repeat: _selectedRepeat.toLowerCase(),
-      );
-
-      if (mounted) {
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bill saved successfully!'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+      if (widget.billToEdit != null) {
+        // Edit mode - update existing bill
+        final billHive = billProvider.bills.firstWhere(
+          (b) => b.id == widget.billToEdit!.id,
         );
 
-        // Close screen
-        Navigator.of(context).pop(true); // Return true to indicate success
+        final updatedBill = billHive.copyWith(
+          title: _titleController.text.trim(),
+          vendor: _vendorController.text.trim(),
+          amount: double.parse(_amountController.text),
+          dueAt:
+              _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+          category: _selectedCategory,
+          repeat: _selectedRepeat.toLowerCase(),
+          updatedAt: DateTime.now(),
+          clientUpdatedAt: DateTime.now(),
+          needsSync: true,
+        );
+
+        await billProvider.updateBill(updatedBill);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bill updated successfully!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
+      } else {
+        // Add mode - create new bill
+        await billProvider.addBill(
+          title: _titleController.text.trim(),
+          vendor: _vendorController.text.trim(),
+          amount: double.parse(_amountController.text),
+          dueAt:
+              _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+          category: _selectedCategory,
+          repeat: _selectedRepeat.toLowerCase(),
+          repeatCount: _repeatCount,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bill saved successfully!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -164,9 +239,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.white,
-        title: const Text(
-          'Add New Bill',
-          style: TextStyle(
+        title: Text(
+          widget.billToEdit != null ? 'Edit Bill' : 'Add New Bill',
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
             color: Color(0xFFFF8C00),
@@ -187,9 +262,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
               foregroundColor: const Color(0xFFFF8C00),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
-            child: const Text(
-              'Save',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            child: Text(
+              widget.billToEdit != null ? 'Update' : 'Save',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -287,6 +362,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
               // Repeat selector
               _buildRepeatSelector(),
 
+              // Repeat count selector (only show if repeat is not "None")
+              if (_selectedRepeat.toLowerCase() != 'none') ...[
+                const SizedBox(height: 20),
+                _buildRepeatCountSelector(),
+              ],
+
               const SizedBox(height: 20),
 
               // Notes field
@@ -313,9 +394,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
-                    'Save Bill',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  child: Text(
+                    widget.billToEdit != null ? 'Update Bill' : 'Save Bill',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -765,6 +849,195 @@ class _AddBillScreenState extends State<AddBillScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRepeatCountSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF8C00).withValues(alpha: 0.1),
+            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.repeat,
+                  color: Color(0xFFFF8C00),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'How many times?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      _repeatCount == null
+                          ? 'Repeats forever ♾️'
+                          : 'Repeats $_repeatCount ${_repeatCount == 1 ? 'time' : 'times'} 🔄',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildRepeatChip('Forever', null, '♾️'),
+              _buildRepeatChip('2 times', 2, '2️⃣'),
+              _buildRepeatChip('3 times', 3, '3️⃣'),
+              _buildRepeatChip('5 times', 5, '5️⃣'),
+              _buildRepeatChip('10 times', 10, '🔟'),
+              _buildRepeatChip('Custom', -1, '✏️'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRepeatChip(String label, int? count, String emoji) {
+    final isSelected = _repeatCount == count;
+    return InkWell(
+      onTap: () {
+        if (count == -1) {
+          _showCustomRepeatDialog();
+        } else {
+          setState(() => _repeatCount = count);
+        }
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFF8C00) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 14)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF1F2937),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCustomRepeatDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Text('✏️'),
+            SizedBox(width: 8),
+            Text(
+              'Custom Repeat Count',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('How many times should this bill repeat?'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Number of times',
+                hintText: 'e.g., 12',
+                prefixIcon: const Icon(Icons.repeat, color: Color(0xFFFF8C00)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFFF8C00),
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final value = int.tryParse(controller.text);
+              if (value != null && value > 0) {
+                setState(() => _repeatCount = value);
+                Navigator.pop(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid number'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF8C00),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Set'),
+          ),
+        ],
+      ),
     );
   }
 }

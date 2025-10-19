@@ -43,6 +43,24 @@ class BillHive extends HiveObject {
   @HiveField(12)
   bool needsSync;
 
+  @HiveField(13)
+  DateTime? paidAt; // Timestamp when bill was marked as paid
+
+  @HiveField(14)
+  bool isArchived; // Flag indicating if bill is in Past Bills
+
+  @HiveField(15)
+  DateTime? archivedAt; // Timestamp when bill was archived
+
+  @HiveField(16)
+  String? parentBillId; // Links to original recurring bill
+
+  @HiveField(17)
+  int? recurringSequence; // Sequence number for recurring instances
+
+  @HiveField(18)
+  int? repeatCount; // How many times to repeat (null = unlimited)
+
   BillHive({
     required this.id,
     required this.title,
@@ -57,6 +75,12 @@ class BillHive extends HiveObject {
     required this.clientUpdatedAt,
     this.repeat = 'monthly',
     this.needsSync = true,
+    this.paidAt,
+    this.isArchived = false,
+    this.archivedAt,
+    this.parentBillId,
+    this.recurringSequence,
+    this.repeatCount,
   });
 
   // Convert to Firestore format
@@ -74,6 +98,12 @@ class BillHive extends HiveObject {
       'updatedAt': updatedAt.toIso8601String(),
       'clientUpdatedAt': clientUpdatedAt.toIso8601String(),
       'repeat': repeat,
+      'paidAt': paidAt?.toIso8601String(),
+      'isArchived': isArchived,
+      'archivedAt': archivedAt?.toIso8601String(),
+      'parentBillId': parentBillId,
+      'recurringSequence': recurringSequence,
+      'repeatCount': repeatCount,
     };
   }
 
@@ -93,6 +123,16 @@ class BillHive extends HiveObject {
       clientUpdatedAt: DateTime.parse(data['clientUpdatedAt'] as String),
       repeat: data['repeat'] as String? ?? 'monthly',
       needsSync: false,
+      paidAt: data['paidAt'] != null
+          ? DateTime.parse(data['paidAt'] as String)
+          : null,
+      isArchived: data['isArchived'] as bool? ?? false,
+      archivedAt: data['archivedAt'] != null
+          ? DateTime.parse(data['archivedAt'] as String)
+          : null,
+      parentBillId: data['parentBillId'] as String?,
+      recurringSequence: data['recurringSequence'] as int?,
+      repeatCount: data['repeatCount'] as int?,
     );
   }
 
@@ -126,6 +166,12 @@ class BillHive extends HiveObject {
     DateTime? clientUpdatedAt,
     String? repeat,
     bool? needsSync,
+    DateTime? paidAt,
+    bool? isArchived,
+    DateTime? archivedAt,
+    String? parentBillId,
+    int? recurringSequence,
+    int? repeatCount,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -141,6 +187,12 @@ class BillHive extends HiveObject {
       clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
       repeat: repeat ?? this.repeat,
       needsSync: needsSync ?? this.needsSync,
+      paidAt: paidAt ?? this.paidAt,
+      isArchived: isArchived ?? this.isArchived,
+      archivedAt: archivedAt ?? this.archivedAt,
+      parentBillId: parentBillId ?? this.parentBillId,
+      recurringSequence: recurringSequence ?? this.recurringSequence,
+      repeatCount: repeatCount ?? this.repeatCount,
     );
   }
 }

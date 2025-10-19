@@ -7,10 +7,12 @@ import 'screens/bill_manager_screen.dart';
 import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/past_bills_screen.dart';
 import 'services/hive_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
+import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +22,12 @@ void main() async {
 
   // Initialize Hive
   await HiveService.init();
+
+  // Run data migration for new fields
+  await HiveService.migrateExistingBills();
+
+  // Note: Background task scheduling removed due to workmanager compatibility issues
+  // Maintenance runs automatically on app startup via BillProvider.initialize()
 
   runApp(const MyApp());
 }
@@ -33,44 +41,28 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BillProvider()),
-        ChangeNotifierProvider(create: (_) => CurrencyProvider()),
-      ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'BillManager',
-        routes: {
-          '/analytics': (context) => const AnalyticsScreen(),
-          '/calendar': (context) => const CalendarScreen(),
-          '/settings': (context) => const SettingsScreen(),
-        },
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFFF8C00),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          fontFamily: 'sans-serif',
-          appBarTheme: const AppBarTheme(
-            elevation: 0,
-            surfaceTintColor: Colors.white,
-            backgroundColor: Colors.white,
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-          cardTheme: const CardThemeData(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(12)),
-            ),
-          ),
+        ChangeNotifierProvider(
+          create: (_) => CurrencyProvider()..loadSavedCurrency(),
         ),
-        home: const AuthWrapper(),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'BillManager',
+            routes: {
+              '/analytics': (context) => const AnalyticsScreen(),
+              '/calendar': (context) => const CalendarScreen(),
+              '/settings': (context) => const SettingsScreen(),
+              '/past-bills': (context) => const PastBillsScreen(),
+            },
+            theme: ThemeProvider.lightTheme,
+            darkTheme: ThemeProvider.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const AuthWrapper(),
+          );
+        },
       ),
     );
   }

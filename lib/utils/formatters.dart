@@ -1,10 +1,22 @@
 import 'package:intl/intl.dart';
 
+// Global currency symbol - will be updated by CurrencyProvider
+String _globalCurrencySymbol = '\$';
+
+/// Set global currency symbol (called by CurrencyProvider)
+void setGlobalCurrencySymbol(String symbol) {
+  _globalCurrencySymbol = symbol;
+}
+
 /// Format currency with full precision and commas
 /// Example: 1234567.89 → $1,234,567.89
-String formatCurrencyFull(double value, {String symbol = '\$'}) {
+String formatCurrencyFull(double value, {String? symbol}) {
+  final currencySymbol = symbol ?? _globalCurrencySymbol;
   if (!value.isFinite) return value.toString();
-  final formatter = NumberFormat.currency(symbol: symbol, decimalDigits: 2);
+  final formatter = NumberFormat.currency(
+    symbol: currencySymbol,
+    decimalDigits: 2,
+  );
   return formatter.format(value);
 }
 
@@ -14,8 +26,9 @@ String formatCurrencyFull(double value, {String symbol = '\$'}) {
 /// 2,500,000 → $2.5M
 /// 8,390,000,000 → $8.39B
 /// 1,500,000,000,000 → $1.5T
-String formatCurrencyShort(double value, {String symbol = '\$'}) {
-  if (!value.isFinite) return formatCurrencyFull(value, symbol: symbol);
+String formatCurrencyShort(double value, {String? symbol}) {
+  final currencySymbol = symbol ?? _globalCurrencySymbol;
+  if (!value.isFinite) return formatCurrencyFull(value, symbol: currencySymbol);
 
   final abs = value.abs();
 
@@ -23,22 +36,22 @@ String formatCurrencyShort(double value, {String symbol = '\$'}) {
 
   if (abs >= 1e15) {
     // Quadrillion
-    result = '${symbol}${(value / 1e15).toStringAsFixed(2)}Q';
+    result = '$currencySymbol${(value / 1e15).toStringAsFixed(2)}Q';
   } else if (abs >= 1e12) {
     // Trillion
-    result = '${symbol}${(value / 1e12).toStringAsFixed(2)}T';
+    result = '$currencySymbol${(value / 1e12).toStringAsFixed(2)}T';
   } else if (abs >= 1e9) {
     // Billion
-    result = '${symbol}${(value / 1e9).toStringAsFixed(2)}B';
+    result = '$currencySymbol${(value / 1e9).toStringAsFixed(2)}B';
   } else if (abs >= 1e6) {
     // Million
-    result = '${symbol}${(value / 1e6).toStringAsFixed(2)}M';
+    result = '$currencySymbol${(value / 1e6).toStringAsFixed(2)}M';
   } else if (abs >= 1e3) {
     // Thousand
-    result = '${symbol}${(value / 1e3).toStringAsFixed(2)}K';
+    result = '$currencySymbol${(value / 1e3).toStringAsFixed(2)}K';
   } else {
     // Less than 1000
-    result = '${symbol}${value.toStringAsFixed(2)}';
+    result = '$currencySymbol${value.toStringAsFixed(2)}';
   }
 
   return result;

@@ -13,7 +13,6 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
     with TickerProviderStateMixin {
   static const List<String> subtitles = [
     "Handle bills in seconds",
-    "Organized bills, organized life",
     "Never miss a due date",
     "Stay ahead effortlessly",
     "Smart tracking, zero stress",
@@ -23,6 +22,7 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
     "Goodbye late fees forever",
     "Know dues before they hit",
     "Track, manage, relax",
+    "Organized bills, organized life",
     "All payments in one place",
     "Clear bills, clear mind",
     "Effortless planning, always",

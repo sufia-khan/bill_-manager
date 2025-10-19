@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/currency_provider.dart';
+import '../providers/theme_provider.dart';
 import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
@@ -153,15 +155,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
 
                 // Theme
-                _buildSettingsOption(
-                  icon: Icons.palette_outlined,
-                  title: 'Theme',
-                  trailing: const Text(
-                    'Light',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-                  ),
-                  onTap: () {
-                    // Handle theme tap
+                Consumer<ThemeProvider>(
+                  builder: (context, themeProvider, _) {
+                    return _buildSettingsOption(
+                      icon: themeProvider.isDarkMode
+                          ? Icons.dark_mode_outlined
+                          : Icons.light_mode_outlined,
+                      title: 'Theme',
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            themeProvider.isDarkMode ? 'Dark' : 'Light',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Switch(
+                            value: themeProvider.isDarkMode,
+                            onChanged: (value) async {
+                              await themeProvider.toggleTheme();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Theme changed to ${themeProvider.isDarkMode ? 'Dark' : 'Light'}',
+                                    ),
+                                    backgroundColor: const Color(0xFFFF8C00),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                            activeColor: const Color(0xFFFF8C00),
+                            activeTrackColor: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.5),
+                          ),
+                        ],
+                      ),
+                      onTap: () async {
+                        await themeProvider.toggleTheme();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Theme changed to ${themeProvider.isDarkMode ? 'Dark' : 'Light'}',
+                              ),
+                              backgroundColor: const Color(0xFFFF8C00),
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    );
                   },
                 ),
 
@@ -173,40 +224,138 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     return _buildSettingsOption(
                       icon: Icons.attach_money,
                       title: 'Currency',
-                      trailing: Text(
-                        '${currencyProvider.selectedCurrency.code} (${currencyProvider.selectedCurrency.symbol})',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                      onTap: () {
-                        showModalBottomSheet(
-                          context: context,
-                          backgroundColor: Colors.transparent,
-                          isScrollControlled: true,
-                          builder: (context) => CurrencySelectorSheet(
-                            currentCurrency: currencyProvider.selectedCurrency,
-                            onCurrencySelected: (currency, convert, rate) {
-                              currencyProvider.setCurrency(
-                                currency,
-                                convert,
-                                rate,
-                              );
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Currency changed to ${currency.code}',
-                                  ),
-                                  backgroundColor: const Color(0xFFFF8C00),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 2),
+                      trailing: currencyProvider.isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFFFF8C00),
+                                ),
+                              ),
+                            )
+                          : Text(
+                              '${currencyProvider.selectedCurrency.code} (${currencyProvider.selectedCurrency.symbol})',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                      onTap: currencyProvider.isLoading
+                          ? () {} // Disable tap while loading
+                          : () {
+                              showModalBottomSheet(
+                                context: context,
+                                backgroundColor: Colors.transparent,
+                                isScrollControlled: true,
+                                builder: (context) => CurrencySelectorSheet(
+                                  currentCurrency:
+                                      currencyProvider.selectedCurrency,
+                                  onCurrencySelected: (currency, convert, rate) async {
+                                    // Show loading overlay with blur
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      barrierColor: Colors.black54,
+                                      builder: (context) => WillPopScope(
+                                        onWillPop: () async => false,
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(
+                                            sigmaX: 5,
+                                            sigmaY: 5,
+                                          ),
+                                          child: Center(
+                                            child: Container(
+                                              padding: const EdgeInsets.all(32),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                              ),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const CircularProgressIndicator(
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(Color(0xFFFF8C00)),
+                                                  ),
+                                                  const SizedBox(height: 20),
+                                                  Text(
+                                                    'Changing currency to ${currency.code}...',
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Color(0xFF1F2937),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  const Text(
+                                                    'Please wait',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: Color(0xFF6B7280),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+
+                                    // Change currency in background
+                                    currencyProvider
+                                        .setCurrency(currency, convert, rate)
+                                        .then((_) {
+                                          if (mounted) {
+                                            Navigator.pop(
+                                              context,
+                                            ); // Close loading
+                                          }
+                                        });
+
+                                    // Navigate to home immediately
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 100),
+                                    );
+                                    if (mounted) {
+                                      Navigator.pop(context); // Close settings
+                                      Navigator.pop(context); // Go to home
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.check_circle,
+                                                color: Colors.white,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'Currency changed to ${currency.code} • All amounts updated!',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          backgroundColor: const Color(
+                                            0xFF059669,
+                                          ),
+                                          behavior: SnackBarBehavior.floating,
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                    }
+                                  },
                                 ),
                               );
                             },
-                          ),
-                        );
-                      },
                     );
                   },
                 ),
