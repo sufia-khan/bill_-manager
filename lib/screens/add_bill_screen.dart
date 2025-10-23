@@ -281,8 +281,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Color(0xFFFF8C00),
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF374151),
             size: 20,
           ),
         ),

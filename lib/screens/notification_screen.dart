@@ -32,8 +32,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     try {
       if (!loadMore) {
+        // Reset for fresh load
         _currentPage = 0;
         _notifications.clear();
+      } else {
+        // Increment page for loading more
+        _currentPage++;
       }
 
       final offset = _currentPage * _pageSize;
@@ -43,9 +47,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
       );
 
       setState(() {
-        _notifications.addAll(newNotifications);
+        if (newNotifications.isNotEmpty) {
+          _notifications.addAll(newNotifications);
+        }
+        // Check if there are more notifications to load
         _hasMore = newNotifications.length == _pageSize;
-        if (loadMore) _currentPage++;
         _isLoading = false;
       });
     } catch (e) {
@@ -169,7 +175,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           },
           icon: const Icon(
             Icons.arrow_back_ios_new,
-            color: Color(0xFFFF8C00),
+            color: Color(0xFF374151),
             size: 20,
           ),
         ),

@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/bill_hive.dart';
+import '../models/notification_history.dart';
+import '../services/notification_history_service.dart';
 
 class HiveService {
   static const String billBoxName = 'bills';
@@ -12,6 +14,9 @@ class HiveService {
     // Register adapters
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(BillHiveAdapter());
+    }
+    if (!Hive.isAdapterRegistered(3)) {
+      Hive.registerAdapter(NotificationHistoryAdapter());
     }
 
     // Open boxes with error recovery

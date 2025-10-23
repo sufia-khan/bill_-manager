@@ -10,6 +10,7 @@ import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
+import 'onboarding_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,11 +21,101 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   int _selectedTabIndex = 3;
+  bool _isEditingProfile = false;
+  bool _isSavingProfile = false;
+  late TextEditingController _nameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _startEditing() {
+    setState(() {
+      _isEditingProfile = true;
+    });
+  }
+
+  Future<void> _saveProfile() async {
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Name cannot be empty'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSavingProfile = true;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // Update profile
+      await authProvider.user?.updateDisplayName(_nameController.text.trim());
+
+      // Refresh user data in provider - this triggers UI update
+      await authProvider.refreshUser();
+
+      if (mounted) {
+        setState(() {
+          _isEditingProfile = false;
+          _isSavingProfile = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Profile updated successfully!'),
+              ],
+            ),
+            backgroundColor: Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSavingProfile = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating profile: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
+
+    // Update controller when user changes
+    if (!_isEditingProfile && user != null) {
+      _nameController.text = user.displayName ?? '';
+    }
 
     // Get user initials for avatar
     String getInitials(String? name, String? email) {
@@ -59,8 +150,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         automaticallyImplyLeading: true,
         leading: IconButton(
           icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Color(0xFFFF8C00),
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF374151),
             size: 20,
           ),
           onPressed: () {
@@ -73,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // Profile Section with Edit Icon
+            // Profile Section with Inline Edit
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -112,14 +203,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          user?.displayName ?? 'User',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF1F2937),
+                        if (_isEditingProfile)
+                          TextField(
+                            controller: _nameController,
+                            autofocus: true,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1F2937),
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Enter your name',
+                              hintStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFFF8C00),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFFF8C00),
+                                  width: 2,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                          )
+                        else
+                          Text(
+                            user?.displayName ?? 'User',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1F2937),
+                            ),
                           ),
-                        ),
                         const SizedBox(height: 4),
                         Text(
                           user?.email ?? 'No email',
@@ -131,16 +258,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      color: Color(0xFFFF8C00),
-                      size: 22,
+                  const SizedBox(width: 12),
+                  if (_isSavingProfile)
+                    const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFFFF8C00),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      onPressed: _isEditingProfile
+                          ? _saveProfile
+                          : _startEditing,
+                      icon: Icon(
+                        _isEditingProfile ? Icons.check : Icons.edit_outlined,
+                        color: const Color(0xFFFF8C00),
+                        size: 22,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.all(8),
+                      ),
                     ),
-                    onPressed: () {
-                      _showEditProfileDialog(context, user);
-                    },
-                  ),
                 ],
               ),
             ),
@@ -418,23 +564,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 12),
 
-                // Payment Methods
-                _buildSettingsOption(
-                  icon: Icons.credit_card_outlined,
-                  title: 'Payment Methods',
-                  onTap: () {
-                    // Handle payment methods tap
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
                 // Privacy & Security
                 _buildSettingsOption(
                   icon: Icons.security_outlined,
                   title: 'Privacy & Security',
                   onTap: () {
-                    _showPrivacySecurityDialog(context, authProvider);
+                    _showPrivacySecurityScreen(context, authProvider);
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Archived Bills
+                _buildSettingsOption(
+                  icon: Icons.archive_outlined,
+                  title: 'Archived Bills',
+                  onTap: () {
+                    Navigator.pushNamed(context, '/archived-bills');
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // View Onboarding
+                _buildSettingsOption(
+                  icon: Icons.auto_stories_outlined,
+                  title: 'View Onboarding',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const OnboardingScreen(),
+                      ),
+                    );
                   },
                 ),
 
@@ -445,7 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.info_outlined,
                   title: 'About App',
                   onTap: () {
-                    // Handle about app tap
+                    _showAboutAppDialog(context);
                   },
                 ),
 
@@ -509,162 +671,406 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showEditProfileDialog(BuildContext context, dynamic user) {
-    final nameController = TextEditingController(text: user?.displayName ?? '');
-    final emailController = TextEditingController(text: user?.email ?? '');
-
+  void _showAboutAppDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        title: const Row(
           children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: 'Name',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: emailController,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
-                    width: 2,
-                  ),
-                ),
-                enabled: false,
+            Text('📱', style: TextStyle(fontSize: 32)),
+            SizedBox(width: 12),
+            Text(
+              'Bill Manager',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
               ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: Implement profile update logic
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Profile updated successfully!'),
-                  backgroundColor: Color(0xFF059669),
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPrivacySecurityDialog(
-    BuildContext context,
-    AuthProvider authProvider,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'Privacy & Security',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Manage your privacy and security settings',
-              style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 24),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.lock_outline, color: Color(0xFFFF8C00)),
-              title: const Text('Change Password'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Implement change password
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Change password feature coming soon!'),
-                    backgroundColor: Color(0xFFFF8C00),
-                    behavior: SnackBarBehavior.floating,
+        content: Scrollbar(
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w500,
                   ),
-                );
-              },
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Your Smart Bill Management Solution',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Bill Manager helps you stay on top of your finances by tracking all your bills in one place. Never miss a payment again!',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 20),
+                _buildFeatureItem(
+                  '🔔',
+                  'Smart Notifications',
+                  'Get timely reminders before bills are due',
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  '📊',
+                  'Spending Analytics',
+                  'Visualize your spending patterns with charts',
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  '📅',
+                  'Calendar View',
+                  'See all your bills in an organized calendar',
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  '💰',
+                  'Multi-Currency',
+                  'Support for multiple currencies with live rates',
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  '☁️',
+                  'Cloud Sync',
+                  'Your data is safely synced across devices',
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF5E6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '💡 Pro Tip',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFF8C00),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Enable notifications to never miss a bill payment and maintain a perfect payment history!',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const Divider(),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.delete_forever_outlined,
-                color: Colors.red,
-              ),
-              title: const Text(
-                'Delete Account',
-                style: TextStyle(color: Colors.red),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteAccountConfirmation(context, authProvider);
-              },
-            ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(color: Color(0xFFFF8C00)),
+              style: TextStyle(
+                color: Color(0xFFFF8C00),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String emoji, String title, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 24)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showPrivacySecurityScreen(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            title: const Text(
+              'Privacy & Security',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1F2937),
+              ),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Color(0xFFFF8C00)),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Data Privacy Section
+                const Text(
+                  'Data Privacy',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoCard(
+                  icon: Icons.cloud_outlined,
+                  title: 'Cloud Storage',
+                  description:
+                      'Your bill data is securely stored in Firebase Cloud and synced across your devices.',
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  icon: Icons.lock_outline,
+                  title: 'Data Encryption',
+                  description:
+                      'All your data is encrypted in transit and at rest using industry-standard encryption.',
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  icon: Icons.visibility_off_outlined,
+                  title: 'Privacy First',
+                  description:
+                      'We never share your personal information or bill data with third parties.',
+                ),
+
+                const SizedBox(height: 32),
+
+                // Security Section
+                const Text(
+                  'Security',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildInfoCard(
+                  icon: Icons.verified_user_outlined,
+                  title: 'Secure Authentication',
+                  description:
+                      'Your account is protected with Firebase Authentication, ensuring secure access to your data.',
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  icon: Icons.shield_outlined,
+                  title: 'Protected Data',
+                  description:
+                      'All sensitive information is protected with multiple layers of security protocols.',
+                ),
+                const SizedBox(height: 12),
+                _buildInfoCard(
+                  icon: Icons.backup_outlined,
+                  title: 'Automatic Backups',
+                  description:
+                      'Your data is automatically backed up to prevent any loss of information.',
+                ),
+
+                const SizedBox(height: 32),
+
+                // Danger Zone
+                const Text(
+                  'Danger Zone',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildActionCard(
+                  icon: Icons.delete_forever_outlined,
+                  title: 'Delete Account',
+                  description: 'Permanently delete your account and all data',
+                  titleColor: Colors.red,
+                  iconColor: Colors.red,
+                  onTap: () {
+                    _showDeleteAccountConfirmation(context, authProvider);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: const Color(0xFFFF8C00)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+    Color? titleColor,
+    Color? iconColor,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: titleColor == Colors.red
+                ? Colors.red.withValues(alpha: 0.3)
+                : const Color(0xFFE5E7EB),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (iconColor ?? const Color(0xFFFF8C00)).withValues(
+                  alpha: 0.1,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: iconColor ?? const Color(0xFFFF8C00),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: titleColor ?? const Color(0xFF1F2937),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: titleColor ?? const Color(0xFF6B7280),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -676,68 +1082,173 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: Colors.red,
+          size: 48,
+        ),
         title: const Text(
-          'Delete Account',
+          'Delete Account?',
           style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
             color: Colors.red,
           ),
+          textAlign: TextAlign.center,
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Are you sure you want to delete your account?',
+            const Text(
+              'This action is permanent and cannot be undone!',
               style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: Color(0xFF1F2937),
               ),
+              textAlign: TextAlign.center,
             ),
-            SizedBox(height: 12),
-            Text(
-              'This action cannot be undone. All your data will be permanently deleted.',
-              style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'You will lose:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.close, size: 16, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: const Text(
+                          'All bills and payment history',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.close, size: 16, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: const Text(
+                          'Analytics and spending data',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.close, size: 16, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: const Text(
+                          'Account settings',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              // TODO: Implement account deletion logic
-              await authProvider.signOut();
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Account deleted successfully'),
-                    backgroundColor: Colors.red,
-                    behavior: SnackBarBehavior.floating,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B7280),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: const BorderSide(color: Color(0xFFE5E7EB)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
               ),
-            ),
-            child: const Text('Delete Account'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    // TODO: Implement account deletion logic
+                    await authProvider.signOut();
+                    if (context.mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Account deleted'),
+                            ],
+                          ),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Delete',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

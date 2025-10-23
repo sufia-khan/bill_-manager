@@ -45,6 +45,7 @@ dependencies:
   # Notifications
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
+  timeago: ^3.7.0
   
   # Background tasks
   # workmanager: ^0.5.2  # Temporarily disabled due to Flutter 3.x compatibility issues

@@ -4,6 +4,7 @@ import '../providers/bill_provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/bill_hive.dart';
 import '../utils/formatters.dart';
+import '../widgets/amount_info_bottom_sheet.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -86,6 +87,69 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  String _getCategoryEmoji(String category) {
+    switch (category.toLowerCase()) {
+      case 'utilities':
+      case 'electricity':
+        return '⚡';
+      case 'rent':
+        return '🏠';
+      case 'internet':
+        return '🌐';
+      case 'insurance':
+      case 'health':
+        return '🛡️';
+      case 'subscription':
+      case 'subscriptions':
+      case 'streaming':
+        return '📺';
+      case 'water':
+        return '💧';
+      case 'gas':
+        return '🔥';
+      case 'phone':
+        return '📱';
+      case 'credit card':
+        return '💳';
+      case 'shopping':
+      case 'groceries':
+        return '🛒';
+      case 'transport':
+      case 'fuel':
+        return '⛽';
+      case 'medical':
+        return '🏥';
+      case 'education':
+        return '📚';
+      case 'entertainment':
+        return '🎬';
+      case 'loan':
+        return '💰';
+      case 'taxes':
+        return '📝';
+      case 'savings':
+        return '🏦';
+      case 'donations':
+        return '❤️';
+      case 'home maintenance':
+        return '🔧';
+      case 'hoa':
+        return '🏘️';
+      case 'gym':
+        return '💪';
+      case 'childcare':
+        return '👶';
+      case 'pets':
+        return '🐾';
+      case 'travel':
+        return '✈️';
+      case 'parking':
+        return '🅿️';
+      default:
+        return '📁';
+    }
+  }
+
   void _showAmountBottomSheet(
     BuildContext context,
     double amount,
@@ -93,75 +157,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     Color textColor,
     Color subtextColor,
     bool isDarkMode,
+    String billTitle,
   ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Bill Amount',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: textColor,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: subtextColor),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isDarkMode
-                      ? const Color(0xFF334155)
-                      : Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Full Amount',
-                      style: TextStyle(fontSize: 13, color: subtextColor),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      formatCurrency(amount),
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        color: textColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
+    AmountInfoBottomSheet.show(
+      context,
+      amount: amount,
+      billCount: 1,
+      title: billTitle,
     );
   }
 
@@ -328,13 +330,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
             backgroundColor: cardColor,
             elevation: 0,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: textColor),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Color(0xFF374151),
+                size: 20,
+              ),
               onPressed: () => Navigator.pop(context),
             ),
-            title: Text(
+            title: const Text(
               'Calendar',
               style: TextStyle(
-                color: textColor,
+                color: Color(0xFFFF8C00),
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
               ),
@@ -465,13 +471,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               Expanded(
                 child: Text(
-                  '${monthNames[_curren
-                  style: const (
+                  '${monthNames[_currentDate.month - 1]} ${_currentDate.year}',
+                  style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWe700,
-                  
-                ,
-                  ,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 12),
@@ -479,30 +485,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    usMonth,
-                    icon: const Icon(Icons.ze: 20),
-                    style: IcleFrom(
-                      backgroundColor: Col
+                    onPressed: _previousMonth,
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
                       padding: const EdgeInsets.all(8),
                       minimumSize: const Size(36, 36),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
-                  
-                tton(
-              tMonth,
-            ,
-                    style: IconButton
-
-                      paddin
-              
-                      tapTargetSize: MaterrinkWrap,
+                  const SizedBox(width: 6),
+                  IconButton(
+                    onPressed: _nextMonth,
+                    icon: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: const Size(36, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
               ),
             ],
-          ),shSize.TargetialTapze(36, 36),const SiumSize:        minim ),ll(8dgeInsets.at Eg: cons.2),: 0s(alphaithValuehite.wlors.wColor: Coound     backgr                 eFrom(.styl: 20)white, sizelor: Colors.ght, coevron_ri.chcons Icon(I icon: const       
+          ),
           const SizedBox(height: 24),
 
           // Weekday Headers
@@ -661,13 +675,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
           if (selectedBills.isNotEmpty) ...[
             const SizedBox(height: 12),
             Wrap(
-              spacing: 12,
-              runSpacing: 8,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 if (overdueCount > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
@@ -677,16 +691,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Text(
                       'Overdue $overdueCount',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Color(0xFFEF4444),
                         fontWeight: FontWeight.w600,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 if (upcomingCount > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
@@ -696,16 +711,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Text(
                       'Upcoming $upcomingCount',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Color(0xFF3B82F6),
                         fontWeight: FontWeight.w600,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 if (paidCount > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
@@ -715,10 +731,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Text(
                       'Paid $paidCount',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Color(0xFF10B981),
                         fontWeight: FontWeight.w600,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
               ],
@@ -769,101 +786,115 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF5E6),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _getCategoryEmoji(bill.category),
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
                               bill.title,
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: textColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(width: 8),
+                            const SizedBox(height: 4),
+                            Text(
+                              bill.category,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: subtextColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
+                              horizontal: 8,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
                               color: statusColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               status.toUpperCase(),
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w700,
                                 color: statusColor,
                                 letterSpacing: 0.5,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
+                          const SizedBox(height: 6),
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                formatCurrencyShort(bill.amount),
+                                bill.amount >= 1000
+                                    ? formatCurrencyShort(bill.amount)
+                                    : formatCurrencyFull(bill.amount),
                                 style: TextStyle(
-                                  fontSize: 24,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   color: textColor,
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              GestureDetector(
-                                onTap: () {
-                                  _showAmountBottomSheet(
-                                    context,
-                                    bill.amount,
-                                    cardColor,
-                                    textColor,
-                                    subtextColor,
-                                    isDarkMode,
-                                  );
-                                },
-                                child: Icon(
-                                  Icons.info_outline,
-                                  size: 18,
-                                  color: subtextColor,
+                              if (bill.amount >= 1000) ...[
+                                const SizedBox(width: 4),
+                                GestureDetector(
+                                  onTap: () {
+                                    _showAmountBottomSheet(
+                                      context,
+                                      bill.amount,
+                                      cardColor,
+                                      textColor,
+                                      subtextColor,
+                                      isDarkMode,
+                                      bill.title,
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFFFF8C00,
+                                      ).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Icon(
+                                      Icons.info_outline,
+                                      size: 12,
+                                      color: subtextColor,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isDarkMode
-                                  ? const Color(0xFF475569)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              bill.category,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: textColor,
-                              ),
-                            ),
                           ),
                         ],
                       ),

@@ -38,13 +38,17 @@ class BillDetailsScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937)),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF374151),
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Bill Details',
           style: TextStyle(
-            color: Color(0xFF1F2937),
+            color: Color(0xFFFF8C00),
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),

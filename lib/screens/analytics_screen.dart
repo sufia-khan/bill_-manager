@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../utils/formatters.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
+import '../widgets/amount_info_bottom_sheet.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -257,6 +258,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
         final bills = billProvider.bills
+            .where(
+              (billHive) => !billHive.isArchived,
+            ) // Filter out archived bills
             .map(
               (billHive) => Bill(
                 id: billHive.id,
@@ -305,31 +309,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               },
               icon: const Icon(
                 Icons.arrow_back_ios_new,
-                color: Color(0xFF374151),
+                color: Color(0xFFFF8C00),
                 size: 20,
               ),
             ),
-            title: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Analytics Overview',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Track your spending and bill trends',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
+            title: const Text(
+              'Analytics Overview',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFFF8C00),
+              ),
             ),
           ),
           bottomNavigationBar: _buildBottomNav(),
@@ -453,124 +443,159 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       'Other': const Color(0xFF6B7280),
     };
 
+    // Calculate total spending
+    final totalSpending = categoryTotals.values.reduce((a, b) => a + b);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade100, width: 1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
-            offset: const Offset(0, 3),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Top Categories',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF374151),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text(
+                  'Top Categories',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Total Spending',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      formatCurrencyShort(totalSpending),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           ...topCategories.map((entry) {
             final category = entry.key;
             final amount = entry.value;
-            final count = categoryCount[category] ?? 0;
             final emoji = categoryEmojis[category] ?? '📁';
             final color = categoryColors[category] ?? const Color(0xFF6B7280);
-            final percentage =
-                (amount / categoryTotals.values.reduce((a, b) => a + b) * 100);
+            final percentage = (amount / totalSpending * 100);
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          emoji,
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              category,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF374151),
+                            Expanded(
+                              child: Text(
+                                category,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF374151),
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(width: 8),
                             Text(
-                              '$count bill${count > 1 ? 's' : ''}',
+                              formatCurrencyShort(amount),
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF9CA3AF),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1F2937),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            formatCurrencyFull(amount),
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: color,
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: Container(
+                                  height: 6,
+                                  color: Colors.grey.shade200,
+                                  child: FractionallySizedBox(
+                                    alignment: Alignment.centerLeft,
+                                    widthFactor: percentage / 100,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: color,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${percentage.toStringAsFixed(1)}%',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF9CA3AF),
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              width: 40,
+                              child: Text(
+                                '${percentage.toStringAsFixed(0)}%',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: percentage / 100,
-                      backgroundColor: Colors.grey.shade100,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                      minHeight: 6,
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             );
-          }),
+          }).toList(),
         ],
       ),
     );
@@ -596,15 +621,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       children: [
         _buildSummaryCard(
           tab: 'total',
-          color: const Color(0xFFFF8C00),
-          icon: Icons.attach_money,
+          color: const Color(0xFF8B5CF6),
+          icon: Icons.receipt_long,
           title: 'Total Bills',
           amount: formatCurrencyFull(totalAmount),
           count: totalCount,
         ),
         _buildSummaryCard(
           tab: 'paid',
-          color: const Color(0xFF059669),
+          color: const Color(0xFF10B981),
           icon: Icons.check_circle,
           title: 'Paid Bills',
           amount: formatCurrencyFull(paidAmount),
@@ -612,15 +637,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
         _buildSummaryCard(
           tab: 'pending',
-          color: const Color(0xFFD97706),
-          icon: Icons.pending,
-          title: 'Pending Bills',
+          color: const Color(0xFF3B82F6),
+          icon: Icons.schedule,
+          title: 'Upcoming Bills',
           amount: formatCurrencyFull(pendingAmount),
           count: pendingCount,
         ),
         _buildSummaryCard(
           tab: 'overdue',
-          color: const Color(0xFFDC2626),
+          color: const Color(0xFFEF4444),
           icon: Icons.warning,
           title: 'Overdue Bills',
           amount: formatCurrencyFull(overdueAmount),
@@ -675,7 +700,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -683,36 +708,35 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, color: color, size: 22),
+                    child: Icon(icon, color: color, size: 20),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       title,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: Colors.grey.shade800,
                         fontWeight: FontWeight.w600,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (isActive)
-                    Icon(Icons.check_circle, color: color, size: 20),
                 ],
               ),
-              const SizedBox(height: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '$count bill${count != 1 ? 's' : ''}',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       color: Colors.grey.shade600,
                       fontWeight: FontWeight.w500,
                     ),
@@ -721,28 +745,37 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            formatCurrencyShort(numericAmount),
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
+                        child: Text(
+                          formatCurrencyShort(numericAmount),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: color,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (numericAmount >= 1000) ...[
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            AmountInfoBottomSheet.show(
+                              context,
+                              amount: numericAmount,
+                              billCount: count,
+                              title: title,
+                              formattedAmount: formatCurrencyShort(
+                                numericAmount,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Colors.grey.shade500,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: amount,
-                        child: Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ],
@@ -763,23 +796,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     switch (_activeTab) {
       case 'total':
-        activeColor = const Color(0xFFFF8C00);
+        activeColor = const Color(0xFF8B5CF6);
         chartTitle = 'Monthly Total Bills';
         break;
       case 'paid':
-        activeColor = const Color(0xFF059669);
+        activeColor = const Color(0xFF10B981);
         chartTitle = 'Monthly Paid Bills';
         break;
       case 'pending':
-        activeColor = const Color(0xFFD97706);
-        chartTitle = 'Monthly Pending Bills';
+        activeColor = const Color(0xFF3B82F6);
+        chartTitle = 'Monthly Upcoming Bills';
         break;
       case 'overdue':
-        activeColor = const Color(0xFFDC2626);
+        activeColor = const Color(0xFFEF4444);
         chartTitle = 'Monthly Overdue Bills';
         break;
       default:
-        activeColor = const Color(0xFFFF8C00);
+        activeColor = const Color(0xFF8B5CF6);
         chartTitle = 'Monthly Bills';
     }
 

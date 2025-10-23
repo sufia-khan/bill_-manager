@@ -40,9 +40,9 @@ class BillArchivalService {
         return false;
       }
 
-      // Must wait 2 days after payment before archiving
+      // Must wait 30 days after payment before archiving
       final daysSincePayment = now.difference(bill.paidAt!).inDays;
-      return daysSincePayment >= 2;
+      return daysSincePayment >= 30;
     } catch (e, stackTrace) {
       Logger.error(
         'Failed to check archival eligibility for bill ${bill.id}',
@@ -127,10 +127,10 @@ class BillArchivalService {
         _tag,
       );
 
-      // Bills are eligible for archival 2 days after payment
+      // Bills are eligible for archival 30 days after payment
       final eligibleBills = paidBills.where((bill) {
         final daysSincePayment = now.difference(bill.paidAt!).inDays;
-        return daysSincePayment >= 2;
+        return daysSincePayment >= 30;
       }).toList();
 
       if (eligibleBills.isEmpty) {
@@ -225,5 +225,84 @@ class BillArchivalService {
     }
   }
 
-  // Note: Near archival warnings removed - bills now archive immediately when paid
+  /// Auto-delete archived bills that are older than 90 days
+  /// Returns the count of bills that were deleted
+  static Future<int> processAutoDeletion() async {
+    try {
+      final now = DateTime.now();
+
+      // Get all archived bills
+      final archivedBills = HiveService.getArchivedBills();
+
+      if (archivedBills.isEmpty) {
+        Logger.info('No archived bills to process for auto-deletion', _tag);
+        return 0;
+      }
+
+      Logger.info(
+        'Processing ${archivedBills.length} archived bills for auto-deletion...',
+        _tag,
+      );
+
+      // Bills are eligible for deletion 90 days after archival
+      final eligibleBills = archivedBills.where((bill) {
+        if (bill.archivedAt == null) return false;
+        final daysSinceArchival = now.difference(bill.archivedAt!).inDays;
+        return daysSinceArchival >= 90;
+      }).toList();
+
+      if (eligibleBills.isEmpty) {
+        Logger.info('No bills eligible for auto-deletion', _tag);
+        return 0;
+      }
+
+      Logger.info(
+        'Found ${eligibleBills.length} bills eligible for auto-deletion',
+        _tag,
+      );
+
+      int deletedCount = 0;
+      int errorCount = 0;
+
+      // Delete eligible bills
+      for (final bill in eligibleBills) {
+        try {
+          await HiveService.deleteBill(bill.id);
+          deletedCount++;
+
+          Logger.info(
+            'Auto-deleted bill ${bill.id} (${bill.title}) - archived ${now.difference(bill.archivedAt!).inDays} days ago',
+            _tag,
+          );
+        } catch (e, stackTrace) {
+          errorCount++;
+          Logger.error(
+            'Failed to auto-delete bill ${bill.id} (${bill.title})',
+            error: e,
+            stackTrace: stackTrace,
+            tag: _tag,
+          );
+          // Continue processing other bills
+        }
+      }
+
+      Logger.info(
+        'Auto-deletion processing complete. Deleted $deletedCount bills.'
+        '${errorCount > 0 ? ' $errorCount errors occurred.' : ''}',
+        _tag,
+      );
+
+      return deletedCount;
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Failed to process auto-deletion',
+        error: e,
+        stackTrace: stackTrace,
+        tag: _tag,
+      );
+      return 0;
+    }
+  }
+
+  // Note: Bills are archived 30 days after payment and auto-deleted 90 days after archival
 }

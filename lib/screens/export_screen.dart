@@ -63,18 +63,23 @@ class _ExportScreenState extends State<ExportScreen> {
           ? const Color(0xFF0F172A)
           : const Color(0xFFF9FAFB),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF374151),
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Export Bills',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: isDark
-                    ? const Color(0xFFF1F5F9)
-                    : const Color(0xFF1F2937),
+                color: Color(0xFFFF8C00),
               ),
             ),
             Text(

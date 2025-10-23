@@ -191,4 +191,14 @@ class AuthProvider with ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+
+  // Refresh user data
+  Future<void> refreshUser() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      await currentUser.reload();
+      _user = FirebaseAuth.instance.currentUser;
+      notifyListeners();
+    }
+  }
 }

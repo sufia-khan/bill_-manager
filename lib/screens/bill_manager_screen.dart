@@ -5,6 +5,7 @@ import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
 import '../widgets/animated_subtitle.dart';
 import '../widgets/expandable_bill_card.dart';
+import '../widgets/amount_info_bottom_sheet.dart';
 import '../utils/formatters.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
@@ -16,12 +17,7 @@ class BillManagerScreen extends StatefulWidget {
   State<BillManagerScreen> createState() => _BillManagerScreenState();
 }
 
-class _BillManagerScreenState extends State<BillManagerScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _fabAnimationController;
-  late Animation<double> _fabScaleAnimation;
-  late Animation<double> _fabRotationAnimation;
-
+class _BillManagerScreenState extends State<BillManagerScreen> {
   // Bills are now loaded from BillProvider - no hardcoded data!
 
   // Category data with icons
@@ -69,30 +65,10 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   void initState() {
     super.initState();
 
-    // Initialize FAB animation
-    _fabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _fabScaleAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
-      CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
-    );
-
-    _fabRotationAnimation = Tween<double>(begin: -0.05, end: 0.05).animate(
-      CurvedAnimation(parent: _fabAnimationController, curve: Curves.easeInOut),
-    );
-
     // Load bills when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BillProvider>().initialize();
     });
-  }
-
-  @override
-  void dispose() {
-    _fabAnimationController.dispose();
-    super.dispose();
   }
 
   // Totals are now calculated in BillProvider
@@ -258,7 +234,6 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         ],
       ),
       bottomNavigationBar: _buildBottomNav(),
-      floatingActionButton: _buildAddButton(),
     );
   }
 
@@ -280,7 +255,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         child: Container(
           color: Colors.white,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -352,6 +327,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                           color: Colors.white,
                           size: 18,
                         ),
+                        thisMonthCount,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -365,6 +341,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                           color: Colors.white,
                           size: 18,
                         ),
+                        next7DaysCount,
                       ),
                     ),
                   ],
@@ -467,61 +444,95 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     double amount,
     String subtitle,
     Widget icon,
+    int billCount,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFF8C00),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              icon,
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
+    return GestureDetector(
+      onTap: () {
+        AmountInfoBottomSheet.show(
+          context,
+          amount: amount,
+          billCount: billCount,
+          title: title,
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF8C00),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                icon,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    amount >= 1000
+                        ? formatCurrencyShort(amount)
+                        : formatCurrencyFull(amount),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (amount >= 1000) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Colors.white.withValues(alpha: 0.9),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            formatCurrencyFull(amount),
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
+              overflow: TextOverflow.ellipsis,
             ),
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -547,6 +558,22 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   Widget _buildStatusTab(String status, String label) {
     final isSelected = selectedStatus == status;
 
+    // Get color based on status
+    Color tabColor;
+    switch (status) {
+      case 'upcoming':
+        tabColor = const Color(0xFFFF8C00); // Orange
+        break;
+      case 'overdue':
+        tabColor = const Color(0xFFEF4444); // Red
+        break;
+      case 'paid':
+        tabColor = const Color(0xFF059669); // Green
+        break;
+      default:
+        tabColor = const Color(0xFFFF8C00);
+    }
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -558,7 +585,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isSelected ? const Color(0xFFFF8C00) : Colors.transparent,
+              color: isSelected ? tabColor : Colors.transparent,
               width: 3,
             ),
           ),
@@ -569,7 +596,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           style: TextStyle(
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+            color: isSelected ? tabColor : Colors.grey.shade600,
           ),
         ),
       ),
@@ -625,22 +652,36 @@ class _BillManagerScreenState extends State<BillManagerScreen>
               ),
             ),
           ),
-          if (isFormatted)
-            GestureDetector(
-              onTap: () => _showAmountBottomSheet(amount),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.info_outline,
-                  size: 14,
-                  color: Color(0xFFFF8C00),
-                ),
-              ),
-            ),
+          // Always reserve space for info icon to maintain consistent height
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: isFormatted
+                ? GestureDetector(
+                    onTap: () {
+                      AmountInfoBottomSheet.show(
+                        context,
+                        amount: amount,
+                        billCount: count,
+                        title: '$count $selectedStatus bills',
+                        formattedAmount: formattedAmount,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: Color(0xFFFF8C00),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -700,16 +741,48 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         border: Border(top: BorderSide(color: Colors.grey.shade100)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _buildNavItem(0, Icons.home_outlined, 'Home'),
             _buildNavItem(1, Icons.analytics_outlined, 'Analytics'),
+            _buildAddNavItem(),
             _buildNavItem(2, Icons.calendar_today_outlined, 'Calendar'),
             _buildNavItem(3, Icons.settings_outlined, 'Settings'),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAddNavItem() {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AddBillScreen()),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF8C00), Color(0xFFFF6B00)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF8C00).withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.add, size: 28, color: Colors.white),
       ),
     );
   }
@@ -763,146 +836,6 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAddButton() {
-    return AnimatedBuilder(
-      animation: _fabAnimationController,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _fabScaleAnimation.value,
-          child: Transform.rotate(
-            angle: _fabRotationAnimation.value,
-            child: FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AddBillScreen(),
-                  ),
-                );
-              },
-              elevation: 0,
-              highlightElevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [const Color(0xFFFF8C00), const Color(0xFFFF6B00)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    stops: const [0.0, 1.0],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF8C00).withValues(alpha: 0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                      spreadRadius: 2,
-                    ),
-                    BoxShadow(
-                      color: const Color(0xFFFF6B00).withValues(alpha: 0.25),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                      spreadRadius: 1,
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Animated background pattern
-                    Positioned.fill(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.white.withValues(alpha: 0.15),
-                                Colors.transparent,
-                                Colors.white.withValues(alpha: 0.08),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              stops: const [0.0, 0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Subtle border
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.25),
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Inner shadow effect
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      right: 6,
-                      child: Container(
-                        height: 2,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.white.withValues(alpha: 0.3),
-                              Colors.transparent,
-                            ],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
-                    ),
-                    // Main icon with enhanced styling
-                    Container(
-                      padding: const EdgeInsets.all(2),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Glow effect behind icon
-                          Icon(
-                            Icons.add,
-                            size: 32,
-                            color: Colors.white.withValues(alpha: 0.2),
-                          ),
-                          // Main icon
-                          const Icon(
-                            Icons.add,
-                            size: 28,
-                            color: Colors.white,
-                            weight: 700,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -1068,64 +1001,5 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         ),
       );
     }
-  }
-
-  void _showAmountBottomSheet(double amount) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Compact amount (First - highlighted)
-              Text(
-                formatCurrencyShort(amount),
-                style: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFFFF8C00),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Full amount (Second - below)
-              Text(
-                formatCurrencyFull(amount),
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
-    );
   }
 }

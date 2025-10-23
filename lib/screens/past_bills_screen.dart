@@ -73,8 +73,8 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         surfaceTintColor: Colors.white,
         leading: IconButton(
           icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Color(0xFFFF8C00),
+            Icons.arrow_back_ios_new,
+            color: Color(0xFF374151),
             size: 20,
           ),
           onPressed: () => Navigator.pop(context),
@@ -434,40 +434,42 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
             ),
           ],
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CategoryIcon(category: bill.category),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        bill.title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1F2937),
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        bill.vendor,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                    ],
+            CategoryIcon(category: bill.category),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    bill.title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1F2937),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(height: 6),
+                  Text(
+                    bill.category,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Due: ${DateFormat('MMM d, y').format(DateTime.parse('${bill.dueAt.toIso8601String().split('T')[0]}T00:00:00'))}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -479,66 +481,49 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                         color: Color(0xFF1F2937),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () => _showAmountBottomSheet(bill.amount),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isFormatted
-                              ? const Color(0xFFFF8C00).withValues(alpha: 0.2)
-                              : Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: isFormatted
-                              ? const Color(0xFFFF8C00)
-                              : Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    bill.category,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                  ),
-                ),
-                const Spacer(),
-                if (bill.paidAt != null)
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle,
-                        size: 14,
-                        color: Color(0xFF059669),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Paid ${DateFormat('MMM d, y').format(bill.paidAt!)}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
+                    if (isFormatted) ...[
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => _showAmountBottomSheet(bill.amount),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Color(0xFFFF8C00),
+                          ),
                         ),
                       ),
                     ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (bill.paidAt != null)
+                  Text(
+                    'Paid: ${DateFormat('MMM d, y').format(bill.paidAt!)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: () => _restoreBill(bill.id),
+                  icon: const Icon(Icons.restore, size: 16),
+                  label: const Text('Restore'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF8C00),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
               ],
             ),
           ],
@@ -1292,6 +1277,38 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
           SnackBar(
             content: Text('Error deleting bill: $e'),
             backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  // Restore archived bill
+  Future<void> _restoreBill(String billId) async {
+    try {
+      await context.read<BillProvider>().restoreBill(billId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Bill restored successfully'),
+              ],
+            ),
+            backgroundColor: Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error restoring bill: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }

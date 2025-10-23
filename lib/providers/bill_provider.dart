@@ -240,14 +240,80 @@ class BillProvider with ChangeNotifier {
     }
   }
 
-  // Delete bill
+  // Restore archived bill
+  Future<void> restoreBill(String billId) async {
+    try {
+      final bill = HiveService.getBillById(billId);
+      if (bill != null && bill.isArchived) {
+        final now = DateTime.now();
+
+        // Unarchive the bill - keep it as paid
+        final updatedBill = bill.copyWith(
+          isArchived: false,
+          archivedAt: null,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          needsSync: true,
+        );
+        await HiveService.saveBill(updatedBill);
+
+        // Force refresh to get latest data
+        _bills = HiveService.getAllBills(forceRefresh: true);
+        notifyListeners();
+
+        // Sync to Firebase in background
+        if (FirebaseService.currentUserId != null) {
+          SyncService.syncBills();
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
+      print('Error restoring bill: $e');
+      rethrow;
+    }
+  }
+
+  // Archive bill manually
+  Future<void> archiveBill(String billId) async {
+    try {
+      final bill = HiveService.getBillById(billId);
+      if (bill != null) {
+        await BillArchivalService.archiveBill(bill);
+
+        // Force refresh to get latest data
+        _bills = HiveService.getAllBills(forceRefresh: true);
+        notifyListeners();
+
+        // Sync to Firebase in background
+        if (FirebaseService.currentUserId != null) {
+          SyncService.syncBills();
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
+      print('Error archiving bill: $e');
+      rethrow;
+    }
+  }
+
+  // Delete bill (only if archived)
   Future<void> deleteBill(String billId) async {
     try {
+      final bill = HiveService.getBillById(billId);
+
+      // Safety check
+      if (bill == null) {
+        throw Exception('Bill not found');
+      }
+
       // Cancel notification for deleted bill
       await NotificationService().cancelBillNotification(billId);
 
+      // Soft delete - mark as deleted
       await HiveService.deleteBill(billId);
-      _bills = HiveService.getAllBills();
+
+      // Force refresh to update UI immediately
+      _bills = HiveService.getAllBills(forceRefresh: true);
       notifyListeners();
 
       // Sync to Firebase in background
@@ -257,6 +323,76 @@ class BillProvider with ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       print('Error deleting bill: $e');
+      rethrow;
+    }
+  }
+
+  // Permanently delete archived bill (for past bills screen)
+  Future<void> deleteArchivedBill(String billId) async {
+    try {
+      final bill = HiveService.getBillById(billId);
+
+      if (bill == null) {
+        throw Exception('Bill not found');
+      }
+
+      if (!bill.isArchived) {
+        throw Exception(
+          'Bill is not archived. Only archived bills can be permanently deleted.',
+        );
+      }
+
+      // Cancel notification
+      await NotificationService().cancelBillNotification(billId);
+
+      // Permanently delete from Hive
+      final box = HiveService.getBillsBox();
+      await box.delete(billId);
+
+      // Force refresh
+      _bills = HiveService.getAllBills(forceRefresh: true);
+      notifyListeners();
+
+      // Sync to Firebase
+      if (FirebaseService.currentUserId != null) {
+        SyncService.syncBills();
+      }
+    } catch (e) {
+      _error = e.toString();
+      print('Error deleting archived bill: $e');
+      rethrow;
+    }
+  }
+
+  // Undo delete bill
+  Future<void> undoDelete(String billId) async {
+    try {
+      final box = HiveService.getBillsBox();
+      final bill = box.get(billId);
+      if (bill != null && bill.isDeleted) {
+        final restoredBill = bill.copyWith(
+          isDeleted: false,
+          needsSync: true,
+          updatedAt: DateTime.now(),
+          clientUpdatedAt: DateTime.now(),
+        );
+        await box.put(billId, restoredBill);
+
+        // Force refresh to get the restored bill immediately
+        _bills = HiveService.getAllBills(forceRefresh: true);
+        notifyListeners();
+
+        // Reschedule notification
+        await NotificationService().scheduleBillNotification(restoredBill);
+
+        // Sync to Firebase in background
+        if (FirebaseService.currentUserId != null) {
+          SyncService.syncBills();
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
+      print('Error undoing delete: $e');
       rethrow;
     }
   }
@@ -465,22 +601,28 @@ class BillProvider with ChangeNotifier {
 
   // Run archival maintenance
   // Processes all paid bills and archives those eligible (30+ days after payment)
+  // Also auto-deletes archived bills older than 90 days
   Future<void> runArchivalMaintenance() async {
     try {
       print('Running archival maintenance...');
       final archivedCount = await BillArchivalService.processArchival();
 
-      if (archivedCount > 0) {
-        // Reload bills if any were archived
+      // Auto-delete old archived bills (90+ days)
+      final deletedCount = await BillArchivalService.processAutoDeletion();
+
+      if (archivedCount > 0 || deletedCount > 0) {
+        // Reload bills if any were archived or deleted
         _bills = HiveService.getAllBills();
         notifyListeners();
 
-        // Sync archived bills to Firebase
+        // Sync to Firebase
         if (FirebaseService.currentUserId != null) {
           SyncService.syncBills();
         }
 
-        print('Archived $archivedCount bills');
+        print(
+          'Archived $archivedCount bills, auto-deleted $deletedCount old bills',
+        );
       }
     } catch (e) {
       print('Error running archival maintenance: $e');

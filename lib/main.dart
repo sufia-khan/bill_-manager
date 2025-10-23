@@ -7,10 +7,13 @@ import 'screens/bill_manager_screen.dart';
 import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/archived_bills_screen.dart';
 // import 'screens/past_bills_screen.dart'; // Removed - paid bills now shown in Paid tab
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
+import 'services/notification_history_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
@@ -31,6 +34,9 @@ void main() async {
 
   // Initialize notification service
   await NotificationService().init();
+
+  // Initialize notification history service
+  await NotificationHistoryService.init();
 
   // Note: Background task scheduling removed due to workmanager compatibility issues
   // Maintenance runs automatically on app startup via BillProvider.initialize()
@@ -66,6 +72,7 @@ class MyApp extends StatelessWidget {
               // '/export': (context) => const ExportScreen(), // Hidden for MVP
               '/calendar': (context) => const CalendarScreen(),
               '/settings': (context) => const SettingsScreen(),
+              '/archived-bills': (context) => const ArchivedBillsScreen(),
               // '/past-bills': (context) => const PastBillsScreen(), // Removed - paid bills now shown in Paid tab
             },
             theme: ThemeProvider.lightTheme,
@@ -88,6 +95,7 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _hasShownPermissionDialog = false;
+  bool _hasShownOnboarding = false;
 
   @override
   Widget build(BuildContext context) {
@@ -102,8 +110,20 @@ class _AuthWrapperState extends State<AuthWrapper> {
           );
         }
 
-        // If user is authenticated, show home screen
+        // If user is authenticated, show onboarding first (for testing)
         if (authProvider.isAuthenticated) {
+          // Show onboarding screen every time for testing
+          if (!_hasShownOnboarding) {
+            _hasShownOnboarding = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const OnboardingScreen(),
+                ),
+              );
+            });
+          }
+
           // Show notification permission dialog once after login
           if (!_hasShownPermissionDialog) {
             _hasShownPermissionDialog = true;
