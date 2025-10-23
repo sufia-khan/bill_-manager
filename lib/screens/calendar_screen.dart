@@ -463,35 +463,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${monthNames[_currentDate.month - 1]} ${_currentDate.year}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  '${monthNames[_curren
+                  style: const (
+                    fontSize: 22,
+                    fontWeight: FontWe700,
+                  
+                ,
+                  ,
                 ),
               ),
+              const SizedBox(width: 12),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    onPressed: _previousMonth,
-                    icon: const Icon(Icons.chevron_left, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    usMonth,
+                    icon: const Icon(Icons.ze: 20),
+                    style: IcleFrom(
+                      backgroundColor: Col
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: const Size(36, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _nextMonth,
-                    icon: const Icon(Icons.chevron_right, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  
+                tton(
+              tMonth,
+            ,
+                    style: IconButton
+
+                      paddin
+              
+                      tapTargetSize: MaterrinkWrap,
                     ),
                   ),
                 ],
               ),
             ],
-          ),
+          ),shSize.TargetialTapze(36, 36),const SiumSize:        minim ),ll(8dgeInsets.at Eg: cons.2),: 0s(alphaithValuehite.wlors.wColor: Coound     backgr                 eFrom(.styl: 20)white, sizelor: Colors.ght, coevron_ri.chcons Icon(I icon: const       
           const SizedBox(height: 24),
 
           // Weekday Headers

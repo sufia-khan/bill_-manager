@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../models/bill_hive.dart';
+import 'notification_history_service.dart';
 
 class NotificationService {
   final FlutterLocalNotificationsPlugin _notifications =
@@ -175,6 +176,8 @@ class NotificationService {
     String title,
     String body, {
     String? payload,
+    String? billId,
+    String? billTitle,
   }) async {
     const androidDetails = AndroidNotificationDetails(
       'bill_reminders',
@@ -202,6 +205,14 @@ class NotificationService {
       body,
       details,
       payload: payload,
+    );
+
+    // Save to notification history
+    await NotificationHistoryService.addNotification(
+      title: title,
+      body: body,
+      billId: billId,
+      billTitle: billTitle,
     );
   }
 }
