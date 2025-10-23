@@ -61,6 +61,12 @@ class BillHive extends HiveObject {
   @HiveField(18)
   int? repeatCount; // How many times to repeat (null = unlimited)
 
+  @HiveField(19)
+  String? reminderTiming; // 'Same Day', '1 Day Before', '2 Days Before', '1 Week Before'
+
+  @HiveField(20)
+  String? notificationTime; // Format: 'HH:mm' (24-hour format)
+
   BillHive({
     required this.id,
     required this.title,
@@ -81,6 +87,8 @@ class BillHive extends HiveObject {
     this.parentBillId,
     this.recurringSequence,
     this.repeatCount,
+    this.reminderTiming,
+    this.notificationTime,
   });
 
   // Convert to Firestore format
@@ -104,6 +112,8 @@ class BillHive extends HiveObject {
       'parentBillId': parentBillId,
       'recurringSequence': recurringSequence,
       'repeatCount': repeatCount,
+      'reminderTiming': reminderTiming,
+      'notificationTime': notificationTime,
     };
   }
 
@@ -133,6 +143,8 @@ class BillHive extends HiveObject {
       parentBillId: data['parentBillId'] as String?,
       recurringSequence: data['recurringSequence'] as int?,
       repeatCount: data['repeatCount'] as int?,
+      reminderTiming: data['reminderTiming'] as String?,
+      notificationTime: data['notificationTime'] as String?,
     );
   }
 
@@ -172,6 +184,8 @@ class BillHive extends HiveObject {
     String? parentBillId,
     int? recurringSequence,
     int? repeatCount,
+    String? reminderTiming,
+    String? notificationTime,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -193,6 +207,8 @@ class BillHive extends HiveObject {
       parentBillId: parentBillId ?? this.parentBillId,
       recurringSequence: recurringSequence ?? this.recurringSequence,
       repeatCount: repeatCount ?? this.repeatCount,
+      reminderTiming: reminderTiming ?? this.reminderTiming,
+      notificationTime: notificationTime ?? this.notificationTime,
     );
   }
 }

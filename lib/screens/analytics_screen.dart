@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../utils/formatters.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
-import '../providers/currency_provider.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -13,62 +12,133 @@ class AnalyticsScreen extends StatefulWidget {
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen>
-    with SingleTickerProviderStateMixin {
+class _AnalyticsScreenState extends State<AnalyticsScreen> {
   int _selectedTabIndex = 1;
-  String _selectedFilter = 'all';
-  int _monthOffset = 0;
-  late AnimationController _chartAnimationController;
-  late Animation<double> _chartAnimation;
+  String _activeTab = 'total';
+  bool _showingSecondHalf =
+      false; // false = first 6 months, true = next 6 months
 
   @override
   void initState() {
     super.initState();
-
-    // Initialize chart animation controller
-    _chartAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _chartAnimation = CurvedAnimation(
-      parent: _chartAnimationController,
-      curve: Curves.easeInOutCubic,
-    );
-
-    // Start animation
-    _chartAnimationController.forward();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BillProvider>().initialize();
     });
   }
 
-  @override
-  void dispose() {
-    _chartAnimationController.dispose();
-    super.dispose();
+  // Find the earliest bill month based on active tab
+  DateTime? _getFirstBillMonth(List<Bill> bills) {
+    if (bills.isEmpty) return null;
+
+    // Filter bills based on active tab
+    List<Bill> filteredBills;
+    switch (_activeTab) {
+      case 'paid':
+        filteredBills = bills.where((b) => b.status == 'paid').toList();
+        break;
+      case 'pending':
+        filteredBills = bills.where((b) => b.status == 'upcoming').toList();
+        break;
+      case 'overdue':
+        filteredBills = bills.where((b) => b.status == 'overdue').toList();
+        break;
+      default:
+        filteredBills = bills;
+    }
+
+    if (filteredBills.isEmpty) return null;
+
+    DateTime? earliest;
+    for (var bill in filteredBills) {
+      final dueDate = DateTime.parse('${bill.due}T00:00:00');
+      if (earliest == null || dueDate.isBefore(earliest)) {
+        earliest = dueDate;
+      }
+    }
+    return earliest != null ? DateTime(earliest.year, earliest.month, 1) : null;
   }
 
-  // Trigger animation when filter changes
-  void _changeFilter(String newFilter) {
-    if (_selectedFilter != newFilter) {
-      setState(() {
-        _selectedFilter = newFilter;
-        _monthOffset = 0;
+  // Calculate monthly data from bills starting from first bill month
+  List<Map<String, dynamic>> _calculateMonthlyData(
+    List<Bill> bills,
+    bool showSecondHalf,
+  ) {
+    final monthlyData = <Map<String, dynamic>>[];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    // Get the first bill month
+    final firstBillMonth = _getFirstBillMonth(bills);
+    if (firstBillMonth == null) {
+      // No bills, show current month as start
+      final now = DateTime.now();
+      final startMonth = DateTime(now.year, now.month, 1);
+      for (int i = 0; i < 6; i++) {
+        final month = DateTime(
+          startMonth.year,
+          startMonth.month + (showSecondHalf ? 6 : 0) + i,
+          1,
+        );
+        monthlyData.add({
+          'month': months[month.month - 1],
+          'year': month.year,
+          'total': 0.0,
+          'paid': 0.0,
+          'pending': 0.0,
+          'overdue': 0.0,
+        });
+      }
+      return monthlyData;
+    }
+
+    // Calculate data for 6 months starting from first bill month
+    final startOffset = showSecondHalf ? 6 : 0;
+    for (int i = 0; i < 6; i++) {
+      final month = DateTime(
+        firstBillMonth.year,
+        firstBillMonth.month + startOffset + i,
+        1,
+      );
+
+      final monthBills = bills.where((bill) {
+        final dueDate = DateTime.parse('${bill.due}T00:00:00');
+        return dueDate.year == month.year && dueDate.month == month.month;
+      }).toList();
+
+      monthlyData.add({
+        'month': months[month.month - 1],
+        'year': month.year,
+        'total': monthBills.fold(0.0, (sum, bill) => sum + bill.amount),
+        'paid': monthBills
+            .where((b) => b.status == 'paid')
+            .fold(0.0, (sum, bill) => sum + bill.amount),
+        'pending': monthBills
+            .where((b) => b.status == 'upcoming')
+            .fold(0.0, (sum, bill) => sum + bill.amount),
+        'overdue': monthBills
+            .where((b) => b.status == 'overdue')
+            .fold(0.0, (sum, bill) => sum + bill.amount),
       });
-
-      // Restart animation for smooth transition
-      _chartAnimationController.reset();
-      _chartAnimationController.forward();
     }
+
+    return monthlyData;
   }
 
-  // Calculate data starting from first bill month
-  Map<String, List<Map<String, dynamic>>> _calculateAllData(List<Bill> bills) {
-    if (bills.isEmpty) {
-      return {'all': [], 'paid': [], 'upcoming': [], 'overdue': []};
-    }
+  String _getChartPeriodLabel(List<Bill> bills) {
+    final firstBillMonth = _getFirstBillMonth(bills);
+    if (firstBillMonth == null) return '';
 
     const months = [
       'Jan',
@@ -85,141 +155,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       'Dec',
     ];
 
-    // Find earliest and latest bill dates
-    DateTime? earliestDate;
-    DateTime? latestDate;
-
-    for (var bill in bills) {
-      final dueDate = DateTime.parse('${bill.due}T00:00:00');
-      if (earliestDate == null || dueDate.isBefore(earliestDate))
-        earliestDate = dueDate;
-      if (latestDate == null || dueDate.isAfter(latestDate))
-        latestDate = dueDate;
-    }
-
-    if (earliestDate == null || latestDate == null) {
-      return {'all': [], 'paid': [], 'upcoming': [], 'overdue': []};
-    }
-
-    // Start from earliest month, go to latest month + 6 months
-    final startMonth = DateTime(earliestDate.year, earliestDate.month, 1);
-    final endMonth = DateTime(latestDate.year, latestDate.month + 6, 1);
-
-    final allData = <Map<String, dynamic>>[];
-    final paidData = <Map<String, dynamic>>[];
-    final upcomingData = <Map<String, dynamic>>[];
-    final overdueData = <Map<String, dynamic>>[];
-
-    var currentMonth = startMonth;
-    while (currentMonth.isBefore(endMonth) ||
-        currentMonth.isAtSameMomentAs(endMonth)) {
-      final monthBills = bills.where((bill) {
-        final dueDate = DateTime.parse('${bill.due}T00:00:00');
-        return dueDate.year == currentMonth.year &&
-            dueDate.month == currentMonth.month;
-      }).toList();
-
-      final monthLabel = months[currentMonth.month - 1];
-
-      allData.add({
-        'month': monthLabel,
-        'amount': monthBills.fold(0.0, (sum, bill) => sum + bill.amount),
-      });
-      paidData.add({
-        'month': monthLabel,
-        'amount': monthBills
-            .where((b) => b.status == 'paid')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      });
-      upcomingData.add({
-        'month': monthLabel,
-        'amount': monthBills
-            .where((b) => b.status == 'upcoming')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      });
-      overdueData.add({
-        'month': monthLabel,
-        'amount': monthBills
-            .where((b) => b.status == 'overdue')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      });
-
-      currentMonth = DateTime(currentMonth.year, currentMonth.month + 1, 1);
-    }
-
-    return {
-      'all': allData,
-      'paid': paidData,
-      'upcoming': upcomingData,
-      'overdue': overdueData,
-    };
-  }
-
-  // Calculate top categories
-  List<Map<String, dynamic>> _calculateTopCategories(List<Bill> bills) {
-    final categoryTotals = <String, double>{};
-    for (var bill in bills) {
-      categoryTotals[bill.category] =
-          (categoryTotals[bill.category] ?? 0) + bill.amount;
-    }
-    final sortedCategories = categoryTotals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sortedCategories
-        .take(5)
-        .map((entry) => {'name': entry.key, 'amount': entry.value})
-        .toList();
-  }
-
-  Map<String, Map<String, dynamic>> _calculateStats(List<Bill> bills) {
-    return {
-      'all': {
-        'count': bills.length,
-        'total': bills.fold(0.0, (sum, bill) => sum + bill.amount),
-      },
-      'paid': {
-        'count': bills.where((b) => b.status == 'paid').length,
-        'total': bills
-            .where((b) => b.status == 'paid')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      },
-      'upcoming': {
-        'count': bills.where((b) => b.status == 'upcoming').length,
-        'total': bills
-            .where((b) => b.status == 'upcoming')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      },
-      'overdue': {
-        'count': bills.where((b) => b.status == 'overdue').length,
-        'total': bills
-            .where((b) => b.status == 'overdue')
-            .fold(0.0, (sum, bill) => sum + bill.amount),
-      },
-    };
-  }
-
-  List<Map<String, dynamic>> _getVisibleData(
-    Map<String, List<Map<String, dynamic>>> allData,
-  ) {
-    final data = allData[_selectedFilter]!;
-    if (data.isEmpty) return [];
-    final endIndex = (_monthOffset + 6).clamp(0, data.length);
-    return data.sublist(_monthOffset, endIndex);
-  }
-
-  bool _canGoForward(Map<String, List<Map<String, dynamic>>> allData) =>
-      _monthOffset + 6 < allData[_selectedFilter]!.length;
-  bool _canGoBack() => _monthOffset > 0;
-
-  Color _getLineColor() {
-    switch (_selectedFilter) {
-      case 'paid':
-        return const Color(0xFF10B981);
-      case 'upcoming':
-        return const Color(0xFF3B82F6);
-      case 'overdue':
-        return const Color(0xFFEF4444);
-      default:
-        return const Color(0xFFFF8C00);
+    if (_showingSecondHalf) {
+      final startMonth = DateTime(
+        firstBillMonth.year,
+        firstBillMonth.month + 6,
+        1,
+      );
+      final endMonth = DateTime(
+        firstBillMonth.year,
+        firstBillMonth.month + 11,
+        1,
+      );
+      return '${months[startMonth.month - 1]} ${startMonth.year} - ${months[endMonth.month - 1]} ${endMonth.year}';
+    } else {
+      final endMonth = DateTime(
+        firstBillMonth.year,
+        firstBillMonth.month + 5,
+        1,
+      );
+      return '${months[firstBillMonth.month - 1]} ${firstBillMonth.year} - ${months[endMonth.month - 1]} ${endMonth.year}';
     }
   }
 
@@ -248,13 +202,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () {
-        setState(() => _selectedTabIndex = index);
-        if (index == 0)
-          Navigator.pop(context);
-        else if (index == 2)
+        // Don't navigate if already on analytics screen
+        if (index == 1) return;
+
+        setState(() {
+          _selectedTabIndex = index;
+        });
+
+        // Handle navigation for different tabs
+        if (index == 0) {
+          // Home tab - pop back to root
+          Navigator.popUntil(context, (route) => route.isFirst);
+        } else if (index == 2) {
+          // Calendar tab
+          Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushNamed(context, '/calendar');
-        else if (index == 3)
+        } else if (index == 3) {
+          // Settings tab
+          Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushNamed(context, '/settings');
+        }
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
@@ -287,9 +254,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Listen to currency changes to rebuild UI
-    context.watch<CurrencyProvider>();
-
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
         final bills = billProvider.bills
@@ -311,21 +275,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             )
             .toList();
 
-        final allData = _calculateAllData(bills);
-        final stats = _calculateStats(bills);
-        final visibleData = _getVisibleData(allData);
-        final topCategories = _calculateTopCategories(bills);
+        final monthlyData = _calculateMonthlyData(bills, _showingSecondHalf);
+
+        // Calculate totals for summary cards
+        final totalAmount = bills.fold(0.0, (sum, bill) => sum + bill.amount);
+        final paidAmount = bills
+            .where((b) => b.status == 'paid')
+            .fold(0.0, (sum, bill) => sum + bill.amount);
+        final pendingAmount = bills
+            .where((b) => b.status == 'upcoming')
+            .fold(0.0, (sum, bill) => sum + bill.amount);
+        final overdueAmount = bills
+            .where((b) => b.status == 'overdue')
+            .fold(0.0, (sum, bill) => sum + bill.amount);
 
         return Scaffold(
-          backgroundColor: const Color(0xFFFFF9F0),
+          backgroundColor: Colors.white,
           appBar: AppBar(
-            backgroundColor: Colors.white,
+            backgroundColor: const Color(0xFFFF8C00),
             elevation: 0,
+            surfaceTintColor: const Color(0xFFFF8C00),
             leading: IconButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
               icon: const Icon(
                 Icons.arrow_back_ios_new,
-                color: Color(0xFFFF8C00),
+                color: Colors.white,
                 size: 20,
               ),
             ),
@@ -333,18 +309,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Analytics',
+                  'Analytics Overview',
                   style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1F2937),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
                 ),
+                SizedBox(height: 2),
                 Text(
-                  'Your spending insights',
+                  'Track your spending and bill trends',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFFFF8C00),
+                    color: Colors.white70,
                     fontWeight: FontWeight.normal,
                   ),
                 ),
@@ -355,50 +332,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.3,
-                  children: [
-                    _buildFilterCard(
-                      'all',
-                      'All Bills',
-                      Icons.check_circle,
-                      stats['all']!,
-                      const Color(0xFFFF8C00),
-                    ),
-                    _buildFilterCard(
-                      'paid',
-                      'Paid',
-                      Icons.check_circle,
-                      stats['paid']!,
-                      const Color(0xFF10B981),
-                    ),
-                    _buildFilterCard(
-                      'upcoming',
-                      'Upcoming',
-                      Icons.access_time,
-                      stats['upcoming']!,
-                      const Color(0xFF3B82F6),
-                    ),
-                    _buildFilterCard(
-                      'overdue',
-                      'Overdue',
-                      Icons.error,
-                      stats['overdue']!,
-                      const Color(0xFFEF4444),
-                    ),
-                  ],
+                SizedBox(
+                  height: 280,
+                  child: _buildSummaryCards(
+                    totalAmount,
+                    paidAmount,
+                    pendingAmount,
+                    overdueAmount,
+                  ),
                 ),
-                const SizedBox(height: 24),
-                _buildLineChart(visibleData, allData),
-                const SizedBox(height: 24),
-                if (topCategories.isNotEmpty)
-                  _buildTopCategoriesChart(topCategories),
+                const SizedBox(height: 16),
+                _buildBarChart(monthlyData, bills),
+                const SizedBox(height: 16),
+                _buildTopCategories(bills),
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -407,451 +356,78 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Widget _buildFilterCard(
-    String filter,
-    String title,
-    IconData icon,
-    Map<String, dynamic> stat,
-    Color color,
-  ) {
-    final isSelected = _selectedFilter == filter;
-    return InkWell(
-      onTap: () => _changeFilter(filter),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: isSelected
-              ? LinearGradient(
-                  colors: [color, color.withValues(alpha: 0.8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: isSelected ? null : Colors.white.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? color
-                : const Color(0xFFFF8C00).withValues(alpha: 0.1),
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : Colors.grey.shade700,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: isSelected ? Colors.white : color,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              '${stat['count']}',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : Colors.grey.shade900,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              formatCurrencyShort(stat['total']),
-              style: TextStyle(
-                fontSize: 12,
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.9)
-                    : Colors.grey.shade500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _buildTopCategories(List<Bill> bills) {
+    // Calculate spending by category
+    final Map<String, double> categoryTotals = {};
+    final Map<String, int> categoryCount = {};
 
-  Widget _buildLineChart(
-    List<Map<String, dynamic>> visibleData,
-    Map<String, List<Map<String, dynamic>>> allData,
-  ) {
-    final lineColor = _getLineColor();
-    final filterName =
-        _selectedFilter[0].toUpperCase() + _selectedFilter.substring(1);
+    for (var bill in bills) {
+      final category = bill.category;
+      categoryTotals[category] = (categoryTotals[category] ?? 0) + bill.amount;
+      categoryCount[category] = (categoryCount[category] ?? 0) + 1;
+    }
 
-    // Check if there's any data
-    final hasData = visibleData.any((data) => (data['amount'] as double) > 0);
+    // Sort categories by total amount
+    final sortedCategories = categoryTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 500),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position:
-                Tween<Offset>(
-                  begin: const Offset(0, 0.1),
-                  end: Offset.zero,
-                ).animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                  ),
-                ),
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        key: ValueKey(_selectedFilter),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$filterName Bills Trend',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: _canGoBack()
-                          ? () => setState(
-                              () => _monthOffset = (_monthOffset - 6).clamp(
-                                0,
-                                allData[_selectedFilter]!.length,
-                              ),
-                            )
-                          : null,
-                      icon: Icon(
-                        Icons.chevron_left,
-                        color: _canGoBack()
-                            ? const Color(0xFFFF8C00)
-                            : Colors.grey.shade300,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: _canGoBack()
-                            ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                            : Colors.grey.shade100,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: _canGoForward(allData)
-                          ? () => setState(() => _monthOffset += 6)
-                          : null,
-                      icon: Icon(
-                        Icons.chevron_right,
-                        color: _canGoForward(allData)
-                            ? const Color(0xFFFF8C00)
-                            : Colors.grey.shade300,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: _canGoForward(allData)
-                            ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                            : Colors.grey.shade100,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            hasData
-                ? SizedBox(
-                    height: 280,
-                    child: AnimatedBuilder(
-                      animation: _chartAnimation,
-                      builder: (context, child) {
-                        return LineChart(
-                          LineChartData(
-                            gridData: FlGridData(show: false),
-                            titlesData: FlTitlesData(
-                              show: true,
-                              rightTitles: const AxisTitles(
-                                sideTitles: SideTitles(showTitles: false),
-                              ),
-                              topTitles: const AxisTitles(
-                                sideTitles: SideTitles(showTitles: false),
-                              ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: 30,
-                                  getTitlesWidget: (value, meta) {
-                                    final index = value.toInt();
-                                    if (index >= 0 &&
-                                        index < visibleData.length) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 8),
-                                        child: Text(
-                                          visibleData[index]['month'],
-                                          style: const TextStyle(
-                                            color: Color(0xFF6B7280),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return const Text('');
-                                  },
-                                ),
-                              ),
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: 55,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value == 0)
-                                      return const SizedBox.shrink();
+    // Take top 5 categories
+    final topCategories = sortedCategories.take(5).toList();
 
-                                    // Calculate max value to determine proper intervals
-                                    final maxValue = visibleData.fold<double>(
-                                      0,
-                                      (max, data) =>
-                                          (data['amount'] as double) > max
-                                          ? data['amount'] as double
-                                          : max,
-                                    );
+    if (topCategories.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-                                    // Calculate interval (show only 4 labels to prevent overlap)
-                                    final interval = maxValue / 4;
+    // Get category icons and colors
+    final categoryIcons = {
+      'Utilities': Icons.lightbulb_outline,
+      'Subscriptions': Icons.subscriptions_outlined,
+      'Insurance': Icons.shield_outlined,
+      'Rent': Icons.home_outlined,
+      'Internet': Icons.wifi,
+      'Phone': Icons.phone_outlined,
+      'Entertainment': Icons.movie_outlined,
+      'Food': Icons.restaurant_outlined,
+      'Transportation': Icons.directions_car_outlined,
+      'Healthcare': Icons.local_hospital_outlined,
+      'Education': Icons.school_outlined,
+      'Other': Icons.more_horiz,
+    };
 
-                                    // Only show labels at proper intervals
-                                    if (value < interval * 0.8)
-                                      return const SizedBox.shrink();
-
-                                    // Check if this value is close to an interval point
-                                    final remainder = value % interval;
-                                    if (remainder > interval * 0.2 &&
-                                        remainder < interval * 0.8) {
-                                      return const SizedBox.shrink();
-                                    }
-
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 4),
-                                      child: Text(
-                                        formatCurrencyShort(value),
-                                        style: const TextStyle(
-                                          color: Color(0xFF6B7280),
-                                          fontSize: 9,
-                                        ),
-                                        textAlign: TextAlign.right,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.visible,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            borderData: FlBorderData(show: false),
-                            minY: 0,
-                            lineBarsData: [
-                              LineChartBarData(
-                                spots: visibleData
-                                    .asMap()
-                                    .entries
-                                    .map(
-                                      (entry) => FlSpot(
-                                        entry.key.toDouble(),
-                                        entry.value['amount'] *
-                                            _chartAnimation.value,
-                                      ),
-                                    )
-                                    .toList(),
-                                isCurved: true,
-                                color: Color.lerp(
-                                  Colors.grey.shade300,
-                                  lineColor,
-                                  _chartAnimation.value,
-                                )!,
-                                barWidth: 4,
-                                isStrokeCapRound: true,
-                                preventCurveOverShooting: true,
-                                dotData: FlDotData(
-                                  show: true,
-                                  getDotPainter:
-                                      (spot, percent, barData, index) =>
-                                          FlDotCirclePainter(
-                                            radius: 6 * _chartAnimation.value,
-                                            color: lineColor,
-                                            strokeWidth: 2,
-                                            strokeColor: Colors.white,
-                                          ),
-                                ),
-                                belowBarData: BarAreaData(
-                                  show: true,
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Color.lerp(
-                                        Colors.grey.shade100,
-                                        lineColor,
-                                        _chartAnimation.value,
-                                      )!.withValues(
-                                        alpha: 0.3 * _chartAnimation.value,
-                                      ),
-                                      Color.lerp(
-                                        Colors.grey.shade100,
-                                        lineColor,
-                                        _chartAnimation.value,
-                                      )!.withValues(alpha: 0.0),
-                                    ],
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            lineTouchData: LineTouchData(
-                              touchTooltipData: LineTouchTooltipData(
-                                getTooltipColor: (spot) =>
-                                    const Color(0xFF1F2937),
-                                tooltipRoundedRadius: 8,
-                                tooltipPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                getTooltipItems: (touchedSpots) => touchedSpots
-                                    .map(
-                                      (spot) => LineTooltipItem(
-                                        formatCurrencyFull(spot.y),
-                                        const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  )
-                : Container(
-                    height: 280,
-                    alignment: Alignment.center,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.show_chart,
-                          size: 64,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No ${_selectedFilter == 'all' ? '' : _selectedFilter} bills',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _selectedFilter == 'overdue'
-                              ? 'Great! You have no overdue bills'
-                              : 'No data available for this period',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopCategoriesChart(List<Map<String, dynamic>> categories) {
-    if (categories.isEmpty) return const SizedBox.shrink();
-    final maxAmount = categories.first['amount'] as double;
+    final categoryColors = {
+      'Utilities': const Color(0xFFFF8C00),
+      'Subscriptions': const Color(0xFF8B5CF6),
+      'Insurance': const Color(0xFF059669),
+      'Rent': const Color(0xFF3B82F6),
+      'Internet': const Color(0xFF06B6D4),
+      'Phone': const Color(0xFFEC4899),
+      'Entertainment': const Color(0xFFF59E0B),
+      'Food': const Color(0xFFEF4444),
+      'Transportation': const Color(0xFF10B981),
+      'Healthcare': const Color(0xFFDC2626),
+      'Education': const Color(0xFF6366F1),
+      'Other': const Color(0xFF6B7280),
+    };
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade100, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -860,58 +436,478 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1F2937),
+              color: Color(0xFF374151),
             ),
           ),
-          const SizedBox(height: 20),
-          ...categories.map((category) {
-            final percentage = (category['amount'] as double) / maxAmount;
+          const SizedBox(height: 16),
+          ...topCategories.map((entry) {
+            final category = entry.key;
+            final amount = entry.value;
+            final count = categoryCount[category] ?? 0;
+            final icon = categoryIcons[category] ?? Icons.category_outlined;
+            final color = categoryColors[category] ?? const Color(0xFF6B7280);
+            final percentage =
+                (amount / categoryTotals.values.reduce((a, b) => a + b) * 100);
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        category['name'],
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF374151),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: color, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              category,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF374151),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$count bill${count > 1 ? 's' : ''}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        formatCurrencyShort(category['amount']),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFF8C00),
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatCurrencyFull(amount),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: color,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${percentage.toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: percentage,
-                      minHeight: 12,
-                      backgroundColor: Colors.grey.shade200,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Color.lerp(
-                          const Color(0xFFFF8C00),
-                          const Color(0xFFFFA94D),
-                          1 - percentage,
-                        )!,
-                      ),
+                      value: percentage / 100,
+                      backgroundColor: Colors.grey.shade100,
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                      minHeight: 6,
                     ),
                   ),
                 ],
               ),
             );
           }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCards(
+    double totalAmount,
+    double paidAmount,
+    double pendingAmount,
+    double overdueAmount,
+  ) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.3,
+      children: [
+        _buildSummaryCard(
+          tab: 'total',
+          color: const Color(0xFFFF8C00),
+          icon: Icons.attach_money,
+          title: 'Total Bills',
+          amount: formatCurrencyFull(totalAmount),
+        ),
+        _buildSummaryCard(
+          tab: 'paid',
+          color: const Color(0xFF059669),
+          icon: Icons.check_circle,
+          title: 'Paid Bills',
+          amount: formatCurrencyFull(paidAmount),
+        ),
+        _buildSummaryCard(
+          tab: 'pending',
+          color: const Color(0xFFD97706),
+          icon: Icons.pending,
+          title: 'Pending Bills',
+          amount: formatCurrencyFull(pendingAmount),
+        ),
+        _buildSummaryCard(
+          tab: 'overdue',
+          color: const Color(0xFFDC2626),
+          icon: Icons.warning,
+          title: 'Overdue Bills',
+          amount: formatCurrencyFull(overdueAmount),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required String tab,
+    required Color color,
+    required IconData icon,
+    required String title,
+    required String amount,
+  }) {
+    final isActive = _activeTab == tab;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _activeTab = tab;
+        });
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isActive ? color : Colors.white,
+            width: isActive ? 3 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const Spacer(),
+                  if (isActive)
+                    Icon(Icons.check_circle, color: color, size: 20),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  amount,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBarChart(
+    List<Map<String, dynamic>> monthlyData,
+    List<Bill> bills,
+  ) {
+    Color activeColor;
+    String chartTitle;
+
+    switch (_activeTab) {
+      case 'total':
+        activeColor = const Color(0xFFFF8C00);
+        chartTitle = 'Monthly Total Bills';
+        break;
+      case 'paid':
+        activeColor = const Color(0xFF059669);
+        chartTitle = 'Monthly Paid Bills';
+        break;
+      case 'pending':
+        activeColor = const Color(0xFFD97706);
+        chartTitle = 'Monthly Pending Bills';
+        break;
+      case 'overdue':
+        activeColor = const Color(0xFFDC2626);
+        chartTitle = 'Monthly Overdue Bills';
+        break;
+      default:
+        activeColor = const Color(0xFFFF8C00);
+        chartTitle = 'Monthly Bills';
+    }
+
+    // Calculate max value for chart
+    double maxValue = 0;
+    for (var data in monthlyData) {
+      final value = (data[_activeTab] ?? 0).toDouble();
+      if (value > maxValue) maxValue = value;
+    }
+    final dynamicMaxY = maxValue > 0 ? (maxValue * 1.2).ceilToDouble() : 1000.0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      chartTitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF374151),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _getChartPeriodLabel(bills),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: _showingSecondHalf
+                        ? () {
+                            setState(() {
+                              _showingSecondHalf = false;
+                            });
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    color: _showingSecondHalf
+                        ? const Color(0xFFFF8C00)
+                        : Colors.grey.shade300,
+                    iconSize: 24,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: !_showingSecondHalf
+                        ? () {
+                            setState(() {
+                              _showingSecondHalf = true;
+                            });
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    color: !_showingSecondHalf
+                        ? const Color(0xFFFF8C00)
+                        : Colors.grey.shade300,
+                    iconSize: 24,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: dynamicMaxY / 5,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: Colors.grey.shade200,
+                      strokeWidth: 0.8,
+                      dashArray: [8, 4],
+                    );
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index >= 0 && index < monthlyData.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              monthlyData[index]['month'],
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontWeight: FontWeight.normal,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 50,
+                      interval: dynamicMaxY / 5,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          formatCurrencyShort(value),
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.normal,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minY: 0,
+                maxY: dynamicMaxY,
+                barGroups: monthlyData.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final data = entry.value;
+                  final value = (data[_activeTab] ?? 0).toDouble();
+
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: value,
+                        color: activeColor,
+                        width: 22,
+                        borderRadius: BorderRadius.circular(8),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: dynamicMaxY,
+                          color: Colors.grey.shade100,
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipRoundedRadius: 8,
+                    tooltipPadding: const EdgeInsets.all(12),
+                    tooltipMargin: 8,
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final month = monthlyData[group.x]['month'];
+                      final year = monthlyData[group.x]['year'];
+
+                      return BarTooltipItem(
+                        '$month $year\n',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.normal,
+                          fontSize: 12,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: formatCurrencyFull(rod.toY),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -6,17 +6,25 @@ import '../services/firebase_service.dart';
 import '../services/sync_service.dart';
 import '../services/recurring_bill_service.dart';
 import '../services/bill_archival_service.dart';
+import '../services/notification_service.dart';
+import '../providers/notification_settings_provider.dart';
 
 class BillProvider with ChangeNotifier {
   List<BillHive> _bills = [];
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  NotificationSettingsProvider? _notificationSettings;
 
   List<BillHive> get bills => _bills;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isInitialized => _isInitialized;
+
+  // Set notification settings provider
+  void setNotificationSettings(NotificationSettingsProvider settings) {
+    _notificationSettings = settings;
+  }
 
   // Initialize and load bills
   Future<void> initialize() async {
@@ -71,6 +79,8 @@ class BillProvider with ChangeNotifier {
     required String category,
     String repeat = 'monthly',
     int? repeatCount, // null = unlimited
+    String? reminderTiming,
+    String? notificationTime,
   }) async {
     try {
       final now = DateTime.now();
@@ -89,10 +99,15 @@ class BillProvider with ChangeNotifier {
         repeat: repeat,
         needsSync: true,
         repeatCount: repeatCount,
+        reminderTiming: reminderTiming,
+        notificationTime: notificationTime,
       );
 
       // Save to local storage
       await HiveService.saveBill(bill);
+
+      // Schedule notification if enabled
+      await _scheduleNotificationForBill(bill);
 
       // Update local list
       _bills = HiveService.getAllBills();
@@ -104,7 +119,7 @@ class BillProvider with ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
-      print('Error adding bill: $e');
+      ('Error adding bill: $e');
       rethrow;
     }
   }
@@ -119,6 +134,15 @@ class BillProvider with ChangeNotifier {
       );
 
       await HiveService.saveBill(updatedBill);
+
+      // Reschedule notification if bill is not paid
+      if (!updatedBill.isPaid) {
+        await _scheduleNotificationForBill(updatedBill);
+      } else {
+        // Cancel notification if bill is paid
+        await NotificationService().cancelBillNotification(updatedBill.id);
+      }
+
       _bills = HiveService.getAllBills();
       notifyListeners();
 
@@ -139,25 +163,32 @@ class BillProvider with ChangeNotifier {
       final bill = HiveService.getBillById(billId);
       if (bill != null) {
         final now = DateTime.now();
-        // Mark as paid AND archive immediately
+        final isRecurring = bill.repeat != 'none';
+
+        // Mark as paid but keep visible in paid tab (not archived)
         final updatedBill = bill.copyWith(
           isPaid: true,
           paidAt: now,
-          isArchived: true, // Archive immediately
-          archivedAt: now,
+          isArchived: false, // Keep visible in paid tab
+          archivedAt: null,
           updatedAt: now,
           clientUpdatedAt: now,
           needsSync: true,
         );
         await HiveService.saveBill(updatedBill);
 
-        // Force refresh to get latest data
+        // Cancel notification for paid bill
+        await NotificationService().cancelBillNotification(billId);
+
+        // Run recurring maintenance immediately to create next instance
+        if (isRecurring) {
+          print('Creating next instance for recurring bill: ${bill.title}');
+          await runRecurringBillMaintenance();
+        }
+
+        // Force refresh to get latest data after all operations
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
-
-        // DON'T run recurring maintenance immediately - let it run on next app startup
-        // This prevents creating a new instance right after marking as paid
-        // The user will see the bill disappear cleanly
 
         // Sync to Firebase in background
         if (FirebaseService.currentUserId != null) {
@@ -171,9 +202,50 @@ class BillProvider with ChangeNotifier {
     }
   }
 
+  // Undo bill payment
+  Future<void> undoBillPayment(String billId) async {
+    try {
+      final bill = HiveService.getBillById(billId);
+      if (bill != null && bill.isPaid) {
+        final now = DateTime.now();
+
+        // Mark as unpaid and restore to appropriate status
+        final updatedBill = bill.copyWith(
+          isPaid: false,
+          paidAt: null,
+          isArchived: false,
+          archivedAt: null,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          needsSync: true,
+        );
+        await HiveService.saveBill(updatedBill);
+
+        // Reschedule notification for unpaid bill
+        await _scheduleNotificationForBill(updatedBill);
+
+        // Force refresh to get latest data
+        _bills = HiveService.getAllBills(forceRefresh: true);
+        notifyListeners();
+
+        // Sync to Firebase in background
+        if (FirebaseService.currentUserId != null) {
+          SyncService.syncBills();
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
+      print('Error undoing bill payment: $e');
+      rethrow;
+    }
+  }
+
   // Delete bill
   Future<void> deleteBill(String billId) async {
     try {
+      // Cancel notification for deleted bill
+      await NotificationService().cancelBillNotification(billId);
+
       await HiveService.deleteBill(billId);
       _bills = HiveService.getAllBills();
       notifyListeners();
@@ -186,6 +258,90 @@ class BillProvider with ChangeNotifier {
       _error = e.toString();
       print('Error deleting bill: $e');
       rethrow;
+    }
+  }
+
+  // Schedule notification for a bill based on user settings
+  Future<void> _scheduleNotificationForBill(BillHive bill) async {
+    try {
+      // Skip if notifications are disabled globally
+      if (_notificationSettings == null ||
+          !_notificationSettings!.notificationsEnabled) {
+        return;
+      }
+
+      // Skip if bill is already paid or deleted
+      if (bill.isPaid || bill.isDeleted) {
+        return;
+      }
+
+      final notificationService = NotificationService();
+
+      // Use per-bill settings if available, otherwise use global settings
+      int daysOffset;
+      int notificationHour;
+      int notificationMinute;
+
+      if (bill.reminderTiming != null && bill.notificationTime != null) {
+        // Use per-bill settings
+        daysOffset = _getReminderDaysOffsetFromString(bill.reminderTiming!);
+        final timeParts = bill.notificationTime!.split(':');
+        notificationHour = int.parse(timeParts[0]);
+        notificationMinute = int.parse(timeParts[1]);
+      } else {
+        // Use global settings
+        daysOffset = _notificationSettings!.getReminderDaysOffset();
+        final notificationTime = _notificationSettings!.notificationTime;
+        notificationHour = notificationTime.hour;
+        notificationMinute = notificationTime.minute;
+      }
+
+      await notificationService.scheduleBillNotification(
+        bill,
+        daysBeforeDue: daysOffset,
+        notificationHour: notificationHour,
+        notificationMinute: notificationMinute,
+      );
+    } catch (e) {
+      print('Error scheduling notification for bill: $e');
+      // Don't rethrow - notification failures shouldn't block bill operations
+    }
+  }
+
+  // Helper method to convert reminder timing string to days offset
+  int _getReminderDaysOffsetFromString(String timing) {
+    switch (timing) {
+      case '1 Day Before':
+        return 1;
+      case '2 Days Before':
+        return 2;
+      case '1 Week Before':
+        return 7;
+      case 'Same Day':
+      default:
+        return 0;
+    }
+  }
+
+  // Reschedule all notifications (useful when settings change)
+  Future<void> rescheduleAllNotifications() async {
+    try {
+      if (_notificationSettings == null) return;
+
+      if (!_notificationSettings!.notificationsEnabled) {
+        // Cancel all notifications if disabled
+        await NotificationService().cancelAllNotifications();
+        return;
+      }
+
+      // Reschedule for all unpaid bills
+      for (final bill in _bills) {
+        if (!bill.isPaid && !bill.isDeleted) {
+          await _scheduleNotificationForBill(bill);
+        }
+      }
+    } catch (e) {
+      print('Error rescheduling notifications: $e');
     }
   }
 
@@ -286,10 +442,14 @@ class BillProvider with ChangeNotifier {
     try {
       print('Running recurring bill maintenance...');
       final createdCount = await RecurringBillService.processRecurringBills();
+      print(
+        'Recurring maintenance complete. Created $createdCount new instances.',
+      );
 
       if (createdCount > 0) {
         // Reload bills if new instances were created
-        _bills = HiveService.getAllBills();
+        _bills = HiveService.getAllBills(forceRefresh: true);
+        print('Bills reloaded. Total bills: ${_bills.length}');
         notifyListeners();
 
         // Sync new bills to Firebase
@@ -417,7 +577,11 @@ class BillProvider with ChangeNotifier {
           );
         }
 
-        // Create bill with archived status
+        // For imported past bills, check if 2 days have passed since payment
+        final daysSincePayment = now.difference(paymentDate).inDays;
+        final shouldArchive = daysSincePayment >= 2;
+
+        // Create bill with appropriate archived status
         final bill = BillHive(
           id: const Uuid().v4(),
           title: billData['title'] as String,
@@ -433,8 +597,10 @@ class BillProvider with ChangeNotifier {
           repeat: 'none', // Past bills don't repeat
           needsSync: true,
           paidAt: paymentDate, // Set payment date
-          isArchived: true, // Mark as archived
-          archivedAt: now, // Set archival timestamp
+          isArchived: shouldArchive, // Archive only if 2+ days have passed
+          archivedAt: shouldArchive
+              ? now
+              : null, // Set archival timestamp only if archived
           parentBillId: null,
           recurringSequence: null,
         );

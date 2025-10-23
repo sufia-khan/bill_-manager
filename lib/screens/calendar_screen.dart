@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/bill_provider.dart';
+import '../providers/theme_provider.dart';
 import '../models/bill_hive.dart';
 import '../utils/formatters.dart';
 
@@ -13,126 +13,239 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  late DateTime _selectedDate;
+  late DateTime _currentDate;
+  late int _selectedDay;
   int _selectedTabIndex = 2;
-  bool _compactAmounts = true;
 
   @override
   void initState() {
     super.initState();
-    _selectedDate = DateTime.now();
-    // Ensure bills are loaded
+    final now = DateTime.now();
+    _currentDate = DateTime(now.year, now.month, 1);
+    _selectedDay = now.day;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BillProvider>().initialize();
     });
   }
 
-  void _showAmountBottomSheet(double amount) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Compact amount (First - highlighted)
-            Text(
-              formatCurrencyShort(amount),
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFFF8C00),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Full amount (Second - below)
-            Text(
-              formatCurrencyFull(amount),
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
+  int _getDaysInMonth(DateTime date) {
+    return DateTime(date.year, date.month + 1, 0).day;
   }
 
-  List<BillHive> getEventsForDay(DateTime day, List<BillHive> bills) {
+  int _getFirstDayOfMonth(DateTime date) {
+    return DateTime(date.year, date.month, 1).weekday % 7;
+  }
+
+  List<BillHive> _getBillsForDate(int day, List<BillHive> bills) {
+    final targetDate = DateTime(_currentDate.year, _currentDate.month, day);
     return bills.where((bill) {
-      return bill.dueAt.year == day.year &&
-          bill.dueAt.month == day.month &&
-          bill.dueAt.day == day.day;
+      return bill.dueAt.year == targetDate.year &&
+          bill.dueAt.month == targetDate.month &&
+          bill.dueAt.day == targetDate.day;
     }).toList();
   }
 
-  bool _isToday(DateTime date) {
+  bool _isToday(int day) {
     final now = DateTime.now();
-    return date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
+    return _currentDate.year == now.year &&
+        _currentDate.month == now.month &&
+        day == now.day;
   }
 
-  Widget _buildBottomNav() {
+  void _previousMonth() {
+    setState(() {
+      _currentDate = DateTime(_currentDate.year, _currentDate.month - 1, 1);
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      _currentDate = DateTime(_currentDate.year, _currentDate.month + 1, 1);
+    });
+  }
+
+  String _getBillStatus(BillHive bill) {
+    if (bill.isPaid) return 'paid';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDate = DateTime(bill.dueAt.year, bill.dueAt.month, bill.dueAt.day);
+    if (dueDate.isBefore(today)) return 'overdue';
+    return 'upcoming';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'paid':
+        return const Color(0xFF10B981); // Green
+      case 'overdue':
+        return const Color(0xFFEF4444); // Red
+      case 'upcoming':
+        return const Color(0xFF3B82F6); // Blue
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void _showAmountBottomSheet(
+    BuildContext context,
+    double amount,
+    Color cardColor,
+    Color textColor,
+    Color subtextColor,
+    bool isDarkMode,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Bill Amount',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: subtextColor),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: isDarkMode
+                      ? const Color(0xFF334155)
+                      : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Full Amount',
+                      style: TextStyle(fontSize: 13, color: subtextColor),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      formatCurrency(amount),
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: textColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBottomNav(
+    bool isDarkMode,
+    Color primaryColor,
+    Color cardColor,
+    Color subtextColor,
+  ) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade100)),
+        color: cardColor,
+        border: Border(
+          top: BorderSide(
+            color: isDarkMode ? const Color(0xFF334155) : Colors.grey.shade100,
+          ),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildNavItem(0, Icons.home_outlined, 'Home'),
-            _buildNavItem(1, Icons.analytics_outlined, 'Analytics'),
-            _buildNavItem(2, Icons.calendar_today_outlined, 'Calendar'),
-            _buildNavItem(3, Icons.settings_outlined, 'Settings'),
+            _buildNavItem(
+              0,
+              Icons.home_outlined,
+              'Home',
+              primaryColor,
+              subtextColor,
+            ),
+            _buildNavItem(
+              1,
+              Icons.analytics_outlined,
+              'Analytics',
+              primaryColor,
+              subtextColor,
+            ),
+            _buildNavItem(
+              2,
+              Icons.calendar_today_outlined,
+              'Calendar',
+              primaryColor,
+              subtextColor,
+            ),
+            _buildNavItem(
+              3,
+              Icons.settings_outlined,
+              'Settings',
+              primaryColor,
+              subtextColor,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label,
+    Color primaryColor,
+    Color subtextColor,
+  ) {
     final isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () {
+        // Don't navigate if already on calendar screen
+        if (index == 2) return;
+
         setState(() {
           _selectedTabIndex = index;
         });
 
         if (index == 0) {
-          Navigator.pop(context);
+          // Home tab - pop back to root
+          Navigator.popUntil(context, (route) => route.isFirst);
         } else if (index == 1) {
+          // Analytics tab
+          Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushNamed(context, '/analytics');
         } else if (index == 3) {
+          // Settings tab
+          Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushNamed(context, '/settings');
         }
       },
@@ -145,18 +258,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Icon(
               icon,
               size: 24,
-              color: isSelected
-                  ? const Color(0xFFFF8C00)
-                  : Colors.grey.shade600,
+              color: isSelected ? primaryColor : subtextColor,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected
-                    ? const Color(0xFFFF8C00)
-                    : Colors.grey.shade600,
+                color: isSelected ? primaryColor : subtextColor,
               ),
             ),
           ],
@@ -167,412 +276,593 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final primaryColor = isDarkMode
+        ? const Color(0xFF6366F1)
+        : const Color(0xFFFF8C00);
+    final backgroundColor = isDarkMode
+        ? const Color(0xFF0F172A)
+        : const Color(0xFFF3F4F6);
+    final cardColor = isDarkMode ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDarkMode
+        ? const Color(0xFFE2E8F0)
+        : const Color(0xFF1F2937);
+    final subtextColor = isDarkMode
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF6B7280);
+
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
         final bills = billProvider.bills;
+        final daysInMonth = _getDaysInMonth(_currentDate);
+        final firstDay = _getFirstDayOfMonth(_currentDate);
+        final monthNames = [
+          'January',
+          'February',
+          'March',
+          'April',
+          'May',
+          'June',
+          'July',
+          'August',
+          'September',
+          'October',
+          'November',
+          'December',
+        ];
+        final dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-        final daysInMonth = DateTime(
-          _selectedDate.year,
-          _selectedDate.month + 1,
-          0,
-        ).day;
-        final firstDayOfMonth = DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          1,
-        );
-        final startingWeekday = firstDayOfMonth.weekday;
-        final adjustedWeekday = startingWeekday == 7 ? 0 : startingWeekday;
+        final calendarDays = <int?>[];
+        for (int i = 0; i < firstDay; i++) {
+          calendarDays.add(null);
+        }
+        for (int day = 1; day <= daysInMonth; day++) {
+          calendarDays.add(day);
+        }
+
+        final selectedBills = _getBillsForDate(_selectedDay, bills);
 
         return Scaffold(
-          backgroundColor: const Color(0xFFFFF9F0),
+          backgroundColor: backgroundColor,
           appBar: AppBar(
-            backgroundColor: Colors.white,
+            backgroundColor: cardColor,
             elevation: 0,
-            surfaceTintColor: Colors.white,
-            title: const Text(
-              'Bill Calendar',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFFF8C00),
-              ),
-            ),
-            centerTitle: true,
             leading: IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios,
-                color: Color(0xFFFF8C00),
-                size: 20,
-              ),
+              icon: Icon(Icons.arrow_back, color: textColor),
               onPressed: () => Navigator.pop(context),
             ),
+            title: Text(
+              'Calendar',
+              style: TextStyle(
+                color: textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-          bottomNavigationBar: _buildBottomNav(),
-          body: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+          bottomNavigationBar: _buildBottomNav(
+            isDarkMode,
+            primaryColor,
+            cardColor,
+            subtextColor,
+          ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isWideScreen = constraints.maxWidth > 900;
+
+              if (isWideScreen) {
+                // Two column layout for wide screens
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Calendar (2/3 width)
+                      Expanded(
+                        flex: 2,
+                        child: _buildCalendarCard(
+                          cardColor,
+                          textColor,
+                          subtextColor,
+                          primaryColor,
+                          isDarkMode,
+                          monthNames,
+                          dayNames,
+                          calendarDays,
+                          bills,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // Bills List (1/3 width)
+                      Expanded(
+                        flex: 1,
+                        child: _buildBillsList(
+                          selectedBills,
+                          cardColor,
+                          textColor,
+                          subtextColor,
+                          isDarkMode,
+                          monthNames,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                // Single column layout for mobile - Everything scrollable
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      // Calendar Card
+                      _buildCalendarCard(
+                        cardColor,
+                        textColor,
+                        subtextColor,
+                        primaryColor,
+                        isDarkMode,
+                        monthNames,
+                        dayNames,
+                        calendarDays,
+                        bills,
+                      ),
+                      const SizedBox(height: 16),
+                      // Bills Section
+                      _buildBillsList(
+                        selectedBills,
+                        cardColor,
+                        textColor,
+                        subtextColor,
+                        isDarkMode,
+                        monthNames,
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCalendarCard(
+    Color cardColor,
+    Color textColor,
+    Color subtextColor,
+    Color primaryColor,
+    bool isDarkMode,
+    List<String> monthNames,
+    List<String> dayNames,
+    List<int?> calendarDays,
+    List<BillHive> bills,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF8C00), // Orange background
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.4 : 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.2 : 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Calendar Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${monthNames[_currentDate.month - 1]} ${_currentDate.year}',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              Row(
                 children: [
-                  // Calendar Card
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        // Month Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedDate = DateTime(
-                                    _selectedDate.year,
-                                    _selectedDate.month - 1,
-                                    1,
-                                  );
-                                });
-                              },
-                              icon: const Icon(Icons.chevron_left),
-                              color: const Color(0xFFFF8C00),
-                            ),
-                            Text(
-                              DateFormat('MMMM yyyy').format(_selectedDate),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFFF8C00),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedDate = DateTime(
-                                    _selectedDate.year,
-                                    _selectedDate.month + 1,
-                                    1,
-                                  );
-                                });
-                              },
-                              icon: const Icon(Icons.chevron_right),
-                              color: const Color(0xFFFF8C00),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Weekday Headers
-                        Row(
-                          children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((
-                            day,
-                          ) {
-                            return Expanded(
-                              child: Center(
-                                child: Text(
-                                  day,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFFFF8C00),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 8),
-                        // Calendar Grid
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 7,
-                                childAspectRatio: 1,
-                                crossAxisSpacing: 4,
-                                mainAxisSpacing: 4,
-                              ),
-                          itemCount: adjustedWeekday + daysInMonth,
-                          itemBuilder: (context, index) {
-                            if (index < adjustedWeekday) {
-                              return const SizedBox.shrink();
-                            }
-
-                            final day = index - adjustedWeekday + 1;
-                            final currentDay = DateTime(
-                              _selectedDate.year,
-                              _selectedDate.month,
-                              day,
-                            );
-                            final isToday = _isToday(currentDay);
-                            final events = getEventsForDay(currentDay, bills);
-
-                            return GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _selectedDate = currentDay;
-                                });
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: isToday
-                                      ? const Color(0xFFFF8C00)
-                                      : events.isNotEmpty
-                                      ? const Color(0xFFFFE5CC)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      day.toString(),
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: isToday
-                                            ? FontWeight.w600
-                                            : FontWeight.w400,
-                                        color: isToday
-                                            ? Colors.white
-                                            : const Color(0xFF374151),
-                                      ),
-                                    ),
-                                    if (events.isNotEmpty)
-                                      Container(
-                                        width: 4,
-                                        height: 4,
-                                        decoration: BoxDecoration(
-                                          color: isToday
-                                              ? Colors.white
-                                              : const Color(0xFFFF8C00),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                  IconButton(
+                    onPressed: _previousMonth,
+                    icon: const Icon(Icons.chevron_left, color: Colors.white),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // Events Section
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _isToday(_selectedDate)
-                                  ? 'Today\'s Bills'
-                                  : 'Bills for ${DateFormat('MMM dd').format(_selectedDate)}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                            Text(
-                              '${getEventsForDay(_selectedDate, bills).length} bill${getEventsForDay(_selectedDate, bills).length != 1 ? 's' : ''}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        if (getEventsForDay(
-                          _selectedDate,
-                          bills,
-                        ).isNotEmpty) ...[
-                          ...getEventsForDay(_selectedDate, bills).map((bill) {
-                            final statusColor = bill.isPaid
-                                ? const Color(0xFFD4EDDA)
-                                : (bill.dueAt.isBefore(DateTime.now())
-                                      ? const Color(0xFFF8D7DA)
-                                      : const Color(0xFFFFF3CD));
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: statusColor,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          bill.title,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF1F2937),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          bill.vendor,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Color(0xFF6B7280),
-                                          ),
-                                        ),
-                                        Builder(
-                                          builder: (context) {
-                                            final formattedAmount =
-                                                _compactAmounts
-                                                ? formatCurrencyShort(
-                                                    bill.amount,
-                                                  )
-                                                : formatCurrencyFull(
-                                                    bill.amount,
-                                                  );
-                                            final fullAmount =
-                                                formatCurrencyFull(bill.amount);
-                                            final isFormatted =
-                                                formattedAmount != fullAmount;
-
-                                            return Row(
-                                              children: [
-                                                Text(
-                                                  '$formattedAmount • ${bill.category}',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color(0xFF6B7280),
-                                                  ),
-                                                ),
-                                                if (isFormatted) ...[
-                                                  const SizedBox(width: 4),
-                                                  InkWell(
-                                                    onTap: () =>
-                                                        _showAmountBottomSheet(
-                                                          bill.amount,
-                                                        ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                    child: Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            2,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors
-                                                            .grey
-                                                            .shade200,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              4,
-                                                            ),
-                                                      ),
-                                                      child: const Icon(
-                                                        Icons.info_outline,
-                                                        size: 12,
-                                                        color: Color(
-                                                          0xFF6B7280,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (bill.isPaid)
-                                    const Icon(
-                                      Icons.check_circle,
-                                      color: Color(0xFF059669),
-                                      size: 24,
-                                    ),
-                                ],
-                              ),
-                            );
-                          }),
-                        ] else ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF9FAFB),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Column(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 32,
-                                  color: Color(0xFF6B7280),
-                                ),
-                                SizedBox(height: 8),
-                                Text(
-                                  'No bills scheduled',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Add bills to see them here',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF9CA3AF),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _nextMonth,
+                    icon: const Icon(Icons.chevron_right, color: Colors.white),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
                     ),
                   ),
                 ],
               ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Weekday Headers
+          Row(
+            children: dayNames.map((day) {
+              return Expanded(
+                child: Center(
+                  child: Text(
+                    day,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+
+          // Calendar Grid
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              childAspectRatio: 1.0,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+            ),
+            itemCount: calendarDays.length,
+            itemBuilder: (context, index) {
+              final day = calendarDays[index];
+              if (day == null) {
+                return const SizedBox.shrink();
+              }
+
+              final dayBills = _getBillsForDate(day, bills);
+              final isToday = _isToday(day);
+              final isSelected = _selectedDay == day;
+
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedDay = day;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: isToday && !isSelected
+                        ? Border.all(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            width: 2,
+                          )
+                        : isSelected
+                        ? Border.all(color: Colors.white, width: 2)
+                        : null,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          day.toString(),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? const Color(0xFFFF8C00)
+                                : Colors.white,
+                          ),
+                          overflow: TextOverflow.visible,
+                        ),
+                      ),
+                      if (dayBills.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFFF8C00)
+                                : Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBillsList(
+    List<BillHive> selectedBills,
+    Color cardColor,
+    Color textColor,
+    Color subtextColor,
+    bool isDarkMode,
+    List<String> monthNames,
+  ) {
+    // Calculate status counts
+    final overdueCount = selectedBills
+        .where((bill) => _getBillStatus(bill) == 'overdue')
+        .length;
+    final upcomingCount = selectedBills
+        .where((bill) => _getBillStatus(bill) == 'upcoming')
+        .length;
+    final paidCount = selectedBills
+        .where((bill) => _getBillStatus(bill) == 'paid')
+        .length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.4 : 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.2 : 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header section
+          Text(
+            '$_selectedDay ${monthNames[_currentDate.month - 1]} ${_currentDate.year}',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: textColor,
             ),
           ),
-        );
-      },
+          if (selectedBills.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                if (overdueCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Overdue $overdueCount',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (upcomingCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Upcoming $upcomingCount',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF3B82F6),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (paidCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Paid $paidCount',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+
+          // Bills List
+          if (selectedBills.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.event_busy_outlined,
+                      size: 48,
+                      color: subtextColor.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No bills for this date',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: subtextColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...selectedBills.asMap().entries.map((entry) {
+              final index = entry.key;
+              final bill = entry.value;
+              final status = _getBillStatus(bill);
+              final statusColor = _getStatusColor(status);
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: index < selectedBills.length - 1 ? 12 : 0,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDarkMode
+                        ? const Color(0xFF334155)
+                        : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              bill.title,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: textColor,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              status.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: statusColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                formatCurrencyShort(bill.amount),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                  color: textColor,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () {
+                                  _showAmountBottomSheet(
+                                    context,
+                                    bill.amount,
+                                    cardColor,
+                                    textColor,
+                                    subtextColor,
+                                    isDarkMode,
+                                  );
+                                },
+                                child: Icon(
+                                  Icons.info_outline,
+                                  size: 18,
+                                  color: subtextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDarkMode
+                                  ? const Color(0xFF475569)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              bill.category,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: textColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 }

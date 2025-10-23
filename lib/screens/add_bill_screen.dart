@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
+import '../providers/notification_settings_provider.dart';
 
 class AddBillScreen extends StatefulWidget {
   final Bill? billToEdit;
@@ -15,7 +16,6 @@ class AddBillScreen extends StatefulWidget {
 class _AddBillScreenState extends State<AddBillScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  final _vendorController = TextEditingController();
   final _amountController = TextEditingController();
   final _dueController = TextEditingController();
   final _notesController = TextEditingController();
@@ -24,6 +24,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
   String _selectedRepeat = 'None';
   DateTime? _selectedDueDate;
   int? _repeatCount; // null = unlimited
+  String? _reminderTiming; // Will be set from provider default
+  TimeOfDay? _notificationTime; // Will be set from provider default
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Subscriptions', 'emoji': '📋'},
@@ -71,6 +73,15 @@ class _AddBillScreenState extends State<AddBillScreen> {
   void initState() {
     super.initState();
 
+    // Load default notification settings
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notificationProvider = context.read<NotificationSettingsProvider>();
+      setState(() {
+        _reminderTiming = notificationProvider.reminderTiming;
+        _notificationTime = notificationProvider.notificationTime;
+      });
+    });
+
     // If editing, prefill the fields
     if (widget.billToEdit != null) {
       _prefillFieldsForEdit();
@@ -84,20 +95,33 @@ class _AddBillScreenState extends State<AddBillScreen> {
   void _prefillFieldsForEdit() {
     final bill = widget.billToEdit!;
     _titleController.text = bill.title;
-    _vendorController.text = bill.vendor;
     _amountController.text = bill.amount.toString();
     _selectedCategory = bill.category;
     _selectedRepeat = _capitalizeFirst(bill.repeat);
     _selectedDueDate = DateTime.parse('${bill.due}T00:00:00');
     _dueController.text = _formatDate(_selectedDueDate!);
 
-    // Get notes from BillHive
+    // Get notes and notification settings from BillHive
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         final billProvider = context.read<BillProvider>();
+        final notificationProvider = context
+            .read<NotificationSettingsProvider>();
         final billHive = billProvider.bills.firstWhere((b) => b.id == bill.id);
         setState(() {
           _notesController.text = billHive.notes ?? '';
+          // Load notification settings from bill or use defaults
+          _reminderTiming =
+              billHive.reminderTiming ?? notificationProvider.reminderTiming;
+          if (billHive.notificationTime != null) {
+            final parts = billHive.notificationTime!.split(':');
+            _notificationTime = TimeOfDay(
+              hour: int.parse(parts[0]),
+              minute: int.parse(parts[1]),
+            );
+          } else {
+            _notificationTime = notificationProvider.notificationTime;
+          }
         });
       } catch (e) {
         // Notes not found, leave empty
@@ -113,7 +137,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    _vendorController.dispose();
     _amountController.dispose();
     _dueController.dispose();
     _notesController.dispose();
@@ -149,7 +172,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
         final updatedBill = billHive.copyWith(
           title: _titleController.text.trim(),
-          vendor: _vendorController.text.trim(),
+          vendor: _titleController.text.trim(), // Use title as vendor
           amount: double.parse(_amountController.text),
           dueAt:
               _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
@@ -161,6 +184,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
           updatedAt: DateTime.now(),
           clientUpdatedAt: DateTime.now(),
           needsSync: true,
+          reminderTiming: _reminderTiming,
+          notificationTime: _notificationTime != null
+              ? '${_notificationTime!.hour}:${_notificationTime!.minute}'
+              : null,
         );
 
         await billProvider.updateBill(updatedBill);
@@ -179,7 +206,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
         // Add mode - create new bill
         await billProvider.addBill(
           title: _titleController.text.trim(),
-          vendor: _vendorController.text.trim(),
+          vendor: _titleController.text.trim(), // Use title as vendor
           amount: double.parse(_amountController.text),
           dueAt:
               _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
@@ -189,6 +216,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
           category: _selectedCategory,
           repeat: _selectedRepeat.toLowerCase(),
           repeatCount: _repeatCount,
+          reminderTiming: _reminderTiming,
+          notificationTime: _notificationTime != null
+              ? '${_notificationTime!.hour}:${_notificationTime!.minute}'
+              : null,
         );
 
         if (mounted) {
@@ -370,6 +401,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
               const SizedBox(height: 20),
 
+              // Notification Settings Section
+              _buildNotificationSettings(),
+
+              const SizedBox(height: 20),
+
               // Notes field
               _buildTextField(
                 controller: _notesController,
@@ -478,55 +514,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
             ),
             filled: true,
             fillColor: readOnly ? const Color(0xFFF9FAFB) : Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required List<String> items,
-    required void Function(String?) onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF374151),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: value,
-          items: items.map((item) {
-            return DropdownMenuItem<String>(value: item, child: Text(item));
-          }).toList(),
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF8C00), width: 2),
-            ),
-            filled: true,
-            fillColor: Colors.white,
           ),
         ),
       ],
@@ -1039,5 +1026,266 @@ class _AddBillScreenState extends State<AddBillScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildNotificationSettings() {
+    final notificationProvider = context.watch<NotificationSettingsProvider>();
+
+    // Use defaults if not set
+    final reminderTiming =
+        _reminderTiming ?? notificationProvider.reminderTiming;
+    final notificationTime =
+        _notificationTime ?? notificationProvider.notificationTime;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF8C00).withValues(alpha: 0.1),
+            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.notifications_active,
+                  color: Color(0xFFFF8C00),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Notification Settings',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Reminder Timing
+          const Text(
+            'Remind me',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => _showReminderTimingPicker(),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFFE5CC)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 16,
+                    color: Color(0xFFFF8C00),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      reminderTiming,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, color: Color(0xFF6B7280)),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Notification Time
+          const Text(
+            'At time',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => _showNotificationTimePicker(),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFFE5CC)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Color(0xFFFF8C00),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _formatTimeOfDay(notificationTime),
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, color: Color(0xFF6B7280)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReminderTimingPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final options = [
+          'Same Day',
+          '1 Day Before',
+          '2 Days Before',
+          '1 Week Before',
+        ];
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Remind me',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...options.map((option) {
+                final isSelected = option == _reminderTiming;
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _reminderTiming = option;
+                    });
+                    Navigator.of(context).pop();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFFFF8C00)
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: isSelected
+                                  ? const Color(0xFFFF8C00)
+                                  : const Color(0xFF1F2937),
+                            ),
+                          ),
+                        ),
+                        if (isSelected)
+                          const Icon(
+                            Icons.check,
+                            color: Color(0xFFFF8C00),
+                            size: 20,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showNotificationTimePicker() async {
+    final notificationProvider = context.read<NotificationSettingsProvider>();
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _notificationTime ?? notificationProvider.notificationTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: Color(0xFFFF8C00)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (time != null) {
+      setState(() {
+        _notificationTime = time;
+      });
+    }
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
@@ -39,43 +40,74 @@ class NotificationService {
     await _requestPermissions();
   }
 
-  Future<void> _requestPermissions() async {
+  Future<bool?> _requestPermissions() async {
     final androidPlugin = _notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await androidPlugin?.requestNotificationsPermission();
+    final androidResult = await androidPlugin?.requestNotificationsPermission();
 
     final iosPlugin = _notifications
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
         >();
-    await iosPlugin?.requestPermissions(alert: true, badge: true, sound: true);
+    final iosResult = await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    return androidResult ?? iosResult;
+  }
+
+  // Public method to request permissions with result
+  Future<bool?> requestPermissions() async {
+    return await _requestPermissions();
+  }
+
+  // Check if notifications are enabled at system level
+  Future<bool> areNotificationsEnabled() async {
+    final androidPlugin = _notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
+    if (androidPlugin != null) {
+      final result = await androidPlugin.areNotificationsEnabled();
+      return result ?? false;
+    }
+
+    // For iOS, we can't directly check, so assume true
+    return true;
   }
 
   void _onNotificationTapped(NotificationResponse response) {
     // Handle notification tap
-    // You can navigate to bill details here
-    print('Notification tapped: ${response.payload}');
+    debugPrint('Notification tapped: ${response.payload}');
   }
 
-  // Schedule notification for a bill
-  Future<void> scheduleBillNotification(BillHive bill) async {
+  // Schedule notification for a bill with custom settings
+  Future<void> scheduleBillNotification(
+    BillHive bill, {
+    int daysBeforeDue = 1,
+    int notificationHour = 9,
+    int notificationMinute = 0,
+  }) async {
     // Cancel existing notification
     await cancelBillNotification(bill.id);
 
     // Don't schedule if already paid or deleted
     if (bill.isPaid || bill.isDeleted) return;
 
-    // Schedule notification 1 day before due date at 9 AM
-    final notificationTime = bill.dueAt.subtract(const Duration(days: 1));
+    // Calculate notification date based on days before due
+    final notificationDate = bill.dueAt.subtract(Duration(days: daysBeforeDue));
     final scheduledTime = tz.TZDateTime(
       tz.local,
-      notificationTime.year,
-      notificationTime.month,
-      notificationTime.day,
-      9, // 9 AM
-      0,
+      notificationDate.year,
+      notificationDate.month,
+      notificationDate.day,
+      notificationHour,
+      notificationMinute,
     );
 
     // Only schedule if in the future
@@ -103,9 +135,21 @@ class NotificationService {
       iOS: iosDetails,
     );
 
+    // Determine notification title based on days before
+    String title;
+    if (daysBeforeDue == 0) {
+      title = 'Bill Due Today';
+    } else if (daysBeforeDue == 1) {
+      title = 'Bill Due Tomorrow';
+    } else if (daysBeforeDue == 7) {
+      title = 'Bill Due in 1 Week';
+    } else {
+      title = 'Bill Due in $daysBeforeDue Days';
+    }
+
     await _notifications.zonedSchedule(
-      bill.id.hashCode, // Use bill ID hash as notification ID
-      'Bill Due Tomorrow',
+      bill.id.hashCode,
+      title,
       '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}',
       scheduledTime,
       details,
@@ -114,36 +158,11 @@ class NotificationService {
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: bill.id,
     );
-
-    // Also schedule on due date at 9 AM
-    final dueDateNotificationTime = tz.TZDateTime(
-      tz.local,
-      bill.dueAt.year,
-      bill.dueAt.month,
-      bill.dueAt.day,
-      9,
-      0,
-    );
-
-    if (dueDateNotificationTime.isAfter(tz.TZDateTime.now(tz.local))) {
-      await _notifications.zonedSchedule(
-        (bill.id.hashCode + 1), // Different ID for due date notification
-        'Bill Due Today',
-        '${bill.title} - \$${bill.amount.toStringAsFixed(2)} is due today!',
-        dueDateNotificationTime,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        payload: bill.id,
-      );
-    }
   }
 
   // Cancel notification for a bill
   Future<void> cancelBillNotification(String billId) async {
     await _notifications.cancel(billId.hashCode);
-    await _notifications.cancel(billId.hashCode + 1); // Due date notification
   }
 
   // Cancel all notifications

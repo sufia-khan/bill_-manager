@@ -115,7 +115,7 @@ String getRelativeDateText(String dateString) {
   } else if (difference <= 7) {
     return 'in $difference day${difference > 1 ? 's' : ''}';
   } else {
-    return DateFormat('MMM d').format(dueDate);
+    return 'in $difference day${difference > 1 ? 's' : ''}';
   }
 }
 

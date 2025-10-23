@@ -114,10 +114,10 @@ class RecurringBillService {
 
       final allBills = HiveService.getAllBills();
 
-      // Check if any bill has this parentBillId and a due date within 1 day of nextDueDate
-      // Using 1-day tolerance to account for any time differences
-      final startRange = nextDueDate.subtract(const Duration(days: 1));
-      final endRange = nextDueDate.add(const Duration(days: 1));
+      // Check if any bill has this parentBillId and a due date close to nextDueDate
+      // Using 5-minute tolerance to account for time differences (works for testing and production)
+      final startRange = nextDueDate.subtract(const Duration(minutes: 5));
+      final endRange = nextDueDate.add(const Duration(minutes: 5));
 
       return allBills.any(
         (bill) =>
@@ -222,6 +222,8 @@ class RecurringBillService {
         parentBillId: parentId,
         recurringSequence: sequence,
         repeatCount: parentBill.repeatCount, // Copy repeat count limit
+        reminderTiming: parentBill.reminderTiming, // Copy notification settings
+        notificationTime: parentBill.notificationTime,
       );
 
       // Save to Hive
@@ -305,6 +307,15 @@ class RecurringBillService {
             final sequence = (bill.recurringSequence ?? 0) + 1;
             final nowTimestamp = DateTime.now();
 
+            // Check repeat count limit before creating
+            if (bill.repeatCount != null && sequence > bill.repeatCount!) {
+              Logger.info(
+                'Repeat count limit reached for ${bill.title}: $sequence/${bill.repeatCount}',
+                _tag,
+              );
+              continue; // Skip this bill
+            }
+
             final newBill = BillHive(
               id: const Uuid().v4(),
               title: bill.title,
@@ -324,6 +335,9 @@ class RecurringBillService {
               archivedAt: null,
               parentBillId: parentIdToUse,
               recurringSequence: sequence,
+              repeatCount: bill.repeatCount, // Copy repeat count limit
+              reminderTiming: bill.reminderTiming, // Copy notification settings
+              notificationTime: bill.notificationTime,
             );
 
             newBills.add(newBill);

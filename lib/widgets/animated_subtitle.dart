@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 class AnimatedSubtitle extends StatefulWidget {
-  const AnimatedSubtitle({super.key});
+  final Color? textColor;
+
+  const AnimatedSubtitle({super.key, this.textColor});
 
   @override
   State<AnimatedSubtitle> createState() => _AnimatedSubtitleState();
@@ -148,10 +150,10 @@ class _AnimatedSubtitleState extends State<AnimatedSubtitle>
           constraints: const BoxConstraints(minHeight: 24),
           child: Text(
             _displayText,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF6B7280),
+              color: widget.textColor ?? const Color(0xFF6B7280),
             ),
             textAlign: TextAlign.left,
             maxLines: 2,

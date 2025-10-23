@@ -7,7 +7,7 @@ class BillArchivalService {
   static const String _tag = 'BillArchivalService';
 
   /// Check if a bill is eligible for archival
-  /// Returns true if the bill is paid and has a payment date
+  /// Returns true if the bill is paid and 2 days have passed since payment
   /// Returns false on error or invalid data
   static bool isEligibleForArchival(BillHive bill) {
     try {
@@ -40,8 +40,9 @@ class BillArchivalService {
         return false;
       }
 
-      // Immediately eligible once paid
-      return true;
+      // Must wait 2 days after payment before archiving
+      final daysSincePayment = now.difference(bill.paidAt!).inDays;
+      return daysSincePayment >= 2;
     } catch (e, stackTrace) {
       Logger.error(
         'Failed to check archival eligibility for bill ${bill.id}',
@@ -126,14 +127,11 @@ class BillArchivalService {
         _tag,
       );
 
-      // All paid bills are immediately eligible for archival
-      final eligibleBills = paidBills
-          .where(
-            (bill) =>
-                bill.paidAt!.isBefore(now) ||
-                bill.paidAt!.isAtSameMomentAs(now),
-          )
-          .toList();
+      // Bills are eligible for archival 2 days after payment
+      final eligibleBills = paidBills.where((bill) {
+        final daysSincePayment = now.difference(bill.paidAt!).inDays;
+        return daysSincePayment >= 2;
+      }).toList();
 
       if (eligibleBills.isEmpty) {
         Logger.info('No bills eligible for archival', _tag);

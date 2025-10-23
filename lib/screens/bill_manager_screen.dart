@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/bill.dart';
-import '../models/bill_hive.dart';
 import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
-import '../widgets/custom_icons.dart';
 import '../widgets/animated_subtitle.dart';
 import '../widgets/expandable_bill_card.dart';
 import '../utils/formatters.dart';
@@ -62,19 +60,10 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   ];
 
   String selectedCategory = 'All';
+  String selectedStatus = 'upcoming'; // upcoming, overdue, paid
   int _selectedTabIndex = 0;
   bool _compactAmounts = true;
   final bool _showSettings = false;
-
-  // List to store keys for each category item for enhanced visibility detection
-  // Generate enough keys for all categories plus buffer
-  final List<GlobalKey> _categoryKeys = List.generate(
-    50,
-    (index) => GlobalKey(),
-  );
-
-  // Scroll controller for category tabs - initialized once at widget creation
-  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -103,7 +92,6 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   @override
   void dispose() {
     _fabAnimationController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -120,9 +108,10 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         print('DEBUG: Total bills in provider: ${billProvider.bills.length}');
 
         // Convert BillHive to legacy Bill format for UI
-        // Filter out paid and archived bills - they should only show in Past Bills
+        // Show unpaid bills AND paid bills that haven't been archived yet (within 2 days)
+        final now = DateTime.now();
         final bills = billProvider.bills
-            .where((billHive) => !billHive.isPaid && !billHive.isArchived)
+            .where((billHive) => !billHive.isArchived && !billHive.isDeleted)
             .map(
               (billHive) => Bill(
                 id: billHive.id,
@@ -132,16 +121,23 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                 due: billHive.dueAt.toIso8601String().split('T')[0],
                 repeat: billHive.repeat,
                 category: billHive.category,
-                status: billHive.dueAt.isBefore(DateTime.now())
-                    ? 'overdue'
-                    : 'upcoming',
+                status: billHive.isPaid
+                    ? 'paid'
+                    : (billHive.dueAt.isBefore(now) ? 'overdue' : 'upcoming'),
               ),
             )
             .toList();
 
+        // Filter by status first, then by category
+        final statusFilteredBills = bills
+            .where((b) => b.status == selectedStatus)
+            .toList();
+
         final filteredBills = selectedCategory == 'All'
-            ? bills
-            : bills.where((b) => b.category == selectedCategory).toList();
+            ? statusFilteredBills
+            : statusFilteredBills
+                  .where((b) => b.category == selectedCategory)
+                  .toList();
 
         final thisMonthTotal = billProvider.getThisMonthTotal();
         final next7DaysTotal = billProvider.getNext7DaysTotal();
@@ -154,8 +150,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           'DEBUG: Next 7 days total: $next7DaysTotal, count will be calculated',
         );
 
-        // Calculate counts
-        final now = DateTime.now();
+        // Calculate counts (reuse 'now' from above)
         final startOfMonth = DateTime(now.year, now.month, 1);
         final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
         final startOfToday = DateTime(now.year, now.month, now.day);
@@ -275,74 +270,56 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   ) {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
-            const Color(0xFFFF8C00).withValues(alpha: 0.02),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF8C00).withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // App bar content
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'BillManager',
-                          style: TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFFF8C00),
+        bottom: false,
+        child: Container(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // App Bar Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'BillManager',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFF8C00),
+                              letterSpacing: 0.3,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        const AnimatedSubtitle(),
-                      ],
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/past-bills');
-                        },
-                        icon: const Icon(
-                          Icons.history,
-                          color: Color(0xFFFF8C00),
-                        ),
-                        tooltip: 'Past Bills',
+                          const AnimatedSubtitle(),
+                        ],
                       ),
-                      IconButton(
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -354,51 +331,46 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                         icon: const Icon(
                           Icons.notifications_outlined,
                           color: Color(0xFFFF8C00),
+                          size: 24,
                         ),
                         tooltip: 'Notifications',
                       ),
-                      IconButton(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/settings');
-                        },
-                        icon: const Icon(
-                          Icons.person_outline,
-                          color: Color(0xFFFF8C00),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Summary Cards
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildSummaryCard(
+                        'This month',
+                        thisMonthTotal,
+                        '$thisMonthCount upcoming bill${thisMonthCount != 1 ? 's' : ''}',
+                        const Icon(
+                          Icons.attach_money,
+                          color: Colors.white,
+                          size: 18,
                         ),
-                        tooltip: 'Settings',
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Summary cards content
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildSummaryCard(
-                      'This month',
-                      thisMonthTotal,
-                      '$thisMonthCount upcoming bill${thisMonthCount != 1 ? 's' : ''}',
-                      const MoneyIcon(size: 18),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildSummaryCard(
-                      'Next 7 days',
-                      next7DaysTotal,
-                      '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        color: const Color(0xFFFF8C00),
-                        size: 18,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildSummaryCard(
+                        'Next 7 days',
+                        next7DaysTotal,
+                        '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -420,10 +392,10 @@ class _BillManagerScreenState extends State<BillManagerScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_showSettings) _buildSettingsSection(),
-              _buildCategoriesSection(),
+              _buildFilterSection(),
               const SizedBox(height: 16),
               _buildFilteredSection(filteredCount, filteredAmount),
-              const SizedBox(height: 6),
+              const SizedBox(height: 12),
               _buildBillsList(filteredBills),
             ],
           ),
@@ -496,23 +468,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     String subtitle,
     Widget icon,
   ) {
-    final formattedAmount = _compactAmounts
-        ? formatCurrencyShort(amount)
-        : formatCurrencyFull(amount);
-    final fullAmount = formatCurrencyFull(amount);
-    final isFormatted = formattedAmount != fullAmount;
-
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        color: const Color(0xFFFF8C00),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -521,69 +486,39 @@ class _BillManagerScreenState extends State<BillManagerScreen>
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: icon,
-              ),
-              const SizedBox(width: 6),
+              icon,
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Tooltip(
-                  message: 'Amount: $fullAmount',
-                  child: Text(
-                    formattedAmount,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              if (isFormatted) ...[
-                const SizedBox(width: 4),
-                Tooltip(
-                  message: 'Tap to view full amount',
-                  child: InkWell(
-                    onTap: () => _showAmountBottomSheet(amount),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        size: 14,
-                        color: Color(0xFF1F2937),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
+          const SizedBox(height: 8),
+          Text(
+            formatCurrencyFull(amount),
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -591,161 +526,53 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     );
   }
 
-  Widget _buildCategoriesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 4,
-              height: 16,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF8C00),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Categories',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1F2937),
-              ),
-            ),
-          ],
+  Widget _buildFilterSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
-        const SizedBox(height: 16),
-        _buildCategoryTabs(),
-      ],
-    );
-  }
-
-  Widget _buildCategoryTabs() {
-    return SingleChildScrollView(
-      controller: _scrollController,
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      ),
       child: Row(
-        children: categories.asMap().entries.map((entry) {
-          final index = entry.key;
-          final category = entry.value;
-          final isSelected = selectedCategory == category['name'];
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: InkWell(
-              onTap: () => _handleCategoryTap(index),
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                key: _categoryKeys[index],
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFFFF8C00)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: const Color(
-                              0xFFFF8C00,
-                            ).withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isSelected)
-                      Icon(category['icon'], size: 16, color: Colors.white),
-                    if (isSelected) const SizedBox(width: 6),
-                    Text(
-                      category['name'],
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: isSelected ? Colors.white : Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+        children: [
+          Expanded(child: _buildStatusTab('upcoming', 'Upcoming')),
+          Expanded(child: _buildStatusTab('overdue', 'Overdue')),
+          Expanded(child: _buildStatusTab('paid', 'Paid')),
+        ],
       ),
     );
   }
 
-  void _handleCategoryTap(int index) {
-    setState(() {
-      selectedCategory = categories[index]['name'];
-    });
+  Widget _buildStatusTab(String status, String label) {
+    final isSelected = selectedStatus == status;
 
-    // Auto-scroll functionality
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToCategory(index);
-    });
-  }
-
-  void _scrollToCategory(int index) {
-    if (!_scrollController.hasClients) return;
-
-    // Wait for the next frame to ensure accurate measurements
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-
-      final tabKey = _categoryKeys[index];
-      final tabContext = tabKey.currentContext;
-
-      if (tabContext != null) {
-        final RenderBox? tabRenderBox =
-            tabContext.findRenderObject() as RenderBox?;
-        if (tabRenderBox != null) {
-          final tabPosition = tabRenderBox.localToGlobal(Offset.zero);
-          final tabWidth = tabRenderBox.size.width;
-          final screenWidth = MediaQuery.of(context).size.width;
-
-          // Calculate the ideal center position for the tab
-          final targetCenterPosition = (screenWidth / 2) - (tabWidth / 2);
-
-          // Calculate the actual screen position of the tab
-          final actualTabPosition = tabPosition.dx;
-
-          // Calculate the offset needed to center the tab
-          final currentScrollOffset = _scrollController.offset;
-          final scrollOffsetNeeded = actualTabPosition - targetCenterPosition;
-          final targetScrollOffset = currentScrollOffset + scrollOffsetNeeded;
-
-          // Only scroll if the tab is significantly off-center (more than 30 pixels)
-          if (scrollOffsetNeeded.abs() > 30) {
-            final finalTargetOffset = targetScrollOffset.clamp(
-              0.0,
-              _scrollController.position.maxScrollExtent,
-            );
-            _animateScroll(finalTargetOffset);
-          }
-        }
-      }
-    });
-  }
-
-  void _animateScroll(double offset) {
-    // Use ultra-smooth animation with premium curve for natural feel
-    _scrollController.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeOutBack,
+    return InkWell(
+      onTap: () {
+        setState(() {
+          selectedStatus = status;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isSelected ? const Color(0xFFFF8C00) : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade600,
+          ),
+        ),
+      ),
     );
   }
 
@@ -757,94 +584,63 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     final isFormatted = formattedAmount != fullAmount;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.1),
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFFF8C00).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+          color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+          width: 1,
         ),
       ),
       child: Row(
         children: [
-          // Icon
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.filter_list,
-              color: Color(0xFFFF8C00),
-              size: 24,
-            ),
+          Icon(
+            Icons.filter_list_rounded,
+            color: const Color(0xFFFF8C00),
+            size: 18,
           ),
-          const SizedBox(width: 16),
-          // Content
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$count bill${count != 1 ? 's' : ''} in ${selectedCategory == 'All' ? 'all categories' : selectedCategory}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 13, color: Color(0xFF1F2937)),
+                children: [
+                  TextSpan(
+                    text: '$count ${selectedStatus}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      'Total: ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                      ),
+                  TextSpan(
+                    text: ' • ',
+                    style: TextStyle(color: Colors.grey.shade400),
+                  ),
+                  TextSpan(
+                    text: formattedAmount,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFFF8C00),
                     ),
-                    Text(
-                      formattedAmount,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFFF8C00),
-                      ),
-                    ),
-                    if (isFormatted) ...[
-                      const SizedBox(width: 6),
-                      GestureDetector(
-                        onTap: () => _showAmountBottomSheet(amount),
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFFF8C00,
-                            ).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Icon(
-                            Icons.info_outline,
-                            size: 14,
-                            color: Color(0xFFFF8C00),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
+          if (isFormatted)
+            GestureDetector(
+              onTap: () => _showAmountBottomSheet(amount),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.info_outline,
+                  size: 14,
+                  color: Color(0xFFFF8C00),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -922,6 +718,9 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     final isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () {
+        // Don't navigate if already on home screen
+        if (index == 0) return;
+
         setState(() {
           _selectedTabIndex = index;
         });
@@ -1179,7 +978,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${bill.vendor} • ${formatCurrencyFull(bill.amount)}',
+                      formatCurrencyFull(bill.amount),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade500,
@@ -1239,55 +1038,33 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     await billProvider.markBillAsPaid(billId);
 
     if (mounted) {
-      // Show dialog with navigation to history
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Row(
+      // Show success snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
             children: [
-              Icon(Icons.check_circle, color: Color(0xFF059669), size: 28),
+              Icon(Icons.check_circle, color: Colors.white),
               SizedBox(width: 12),
-              Text(
-                'Bill Paid!',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              Expanded(
+                child: Text(
+                  'Bill marked as paid! Check the Paid tab.',
+                  style: TextStyle(fontSize: 14),
+                ),
               ),
             ],
           ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'This bill has been marked as paid and moved to your history.',
-              ),
-              SizedBox(height: 8),
-              Text(
-                'You can view all your paid bills in the Past Bills section.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
+          backgroundColor: const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () {
+              setState(() {
+                selectedStatus = 'paid';
+              });
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/past-bills');
-              },
-              icon: const Icon(Icons.history),
-              label: const Text('See Here'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF8C00),
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
         ),
       );
     }

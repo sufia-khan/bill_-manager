@@ -202,7 +202,7 @@ class HiveService {
   }) {
     final box = getBillsBox();
     var bills = box.values
-        .where((bill) => bill.isArchived && !bill.isDeleted)
+        .where((bill) => bill.isPaid && !bill.isDeleted)
         .toList();
 
     // Filter by date range if provided
@@ -243,11 +243,11 @@ class HiveService {
     return bills;
   }
 
-  // Get active bills (excluding archived) - optimized
+  // Get active bills (excluding paid) - optimized
   static List<BillHive> getActiveBills() {
     // Use cached bills if available
     final allBills = getAllBills();
-    return allBills.where((bill) => !bill.isArchived).toList();
+    return allBills.where((bill) => !bill.isPaid).toList();
   }
 
   // Get paginated archived bills for lazy loading

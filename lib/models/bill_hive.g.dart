@@ -24,25 +24,27 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       dueAt: fields[4] as DateTime,
       notes: fields[5] as String?,
       category: fields[6] as String,
-      isPaid: (fields[7] as bool?) ?? false,
-      isDeleted: (fields[8] as bool?) ?? false,
+      isPaid: fields[7] as bool,
+      isDeleted: fields[8] as bool,
       updatedAt: fields[9] as DateTime,
       clientUpdatedAt: fields[10] as DateTime,
-      repeat: (fields[11] as String?) ?? 'monthly',
-      needsSync: (fields[12] as bool?) ?? true,
+      repeat: fields[11] as String,
+      needsSync: fields[12] as bool,
       paidAt: fields[13] as DateTime?,
-      isArchived: (fields[14] as bool?) ?? false,
+      isArchived: fields[14] as bool,
       archivedAt: fields[15] as DateTime?,
       parentBillId: fields[16] as String?,
       recurringSequence: fields[17] as int?,
       repeatCount: fields[18] as int?,
+      reminderTiming: fields[19] as String?,
+      notificationTime: fields[20] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BillHive obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(21)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +82,11 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       ..writeByte(17)
       ..write(obj.recurringSequence)
       ..writeByte(18)
-      ..write(obj.repeatCount);
+      ..write(obj.repeatCount)
+      ..writeByte(19)
+      ..write(obj.reminderTiming)
+      ..writeByte(20)
+      ..write(obj.notificationTime);
   }
 
   @override

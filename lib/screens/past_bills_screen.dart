@@ -89,21 +89,9 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.upload_file, color: Color(0xFFFF8C00)),
-            onPressed: _showImportDialog,
-            tooltip: 'Import Past Bills',
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download, color: Color(0xFFFF8C00)),
-            onPressed: _showExportDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.filter_list, color: Color(0xFFFF8C00)),
-            onPressed: _showCategoryFilter,
-          ),
-          IconButton(
-            icon: const Icon(Icons.date_range, color: Color(0xFFFF8C00)),
-            onPressed: _showDateRangeFilter,
+            icon: const Icon(Icons.more_vert, color: Color(0xFFFF8C00)),
+            onPressed: _showActionsMenu,
+            tooltip: 'More Actions',
           ),
         ],
       ),
@@ -399,101 +387,162 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
   }
 
   Widget _buildBillCard(BillHive bill) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    final formattedAmount = formatCurrencyShort(bill.amount);
+    final fullAmount = formatCurrencyFull(bill.amount);
+    final isFormatted = formattedAmount != fullAmount;
+
+    return Dismissible(
+      key: Key(bill.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDC2626),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.delete_outline, color: Colors.white, size: 28),
+            SizedBox(height: 4),
+            Text(
+              'Delete',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CategoryIcon(category: bill.category),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      confirmDismiss: (direction) => _confirmDelete(bill),
+      onDismissed: (direction) => _deleteBill(bill.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CategoryIcon(category: bill.category),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        bill.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1F2937),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        bill.vendor,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      bill.title,
+                      formattedAmount,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF1F2937),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      bill.vendor,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => _showAmountBottomSheet(bill.amount),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: isFormatted
+                              ? const Color(0xFFFF8C00).withValues(alpha: 0.2)
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: isFormatted
+                              ? const Color(0xFFFF8C00)
+                              : Colors.grey.shade600,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                formatCurrencyFull(bill.amount),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F2937),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    bill.category,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  bill.category,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                ),
-              ),
-              const Spacer(),
-              if (bill.paidAt != null)
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      size: 14,
-                      color: Color(0xFF059669),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Paid ${DateFormat('MMM d, y').format(bill.paidAt!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
+                const Spacer(),
+                if (bill.paidAt != null)
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        size: 14,
+                        color: Color(0xFF059669),
                       ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'Paid ${DateFormat('MMM d, y').format(bill.paidAt!)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1010,6 +1059,320 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
       context: context,
       builder: (context) => _ImportPastBillsDialog(),
     );
+  }
+
+  // Show actions menu with all options
+  void _showActionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Title
+              const Text(
+                'Actions',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Action Grid
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.5,
+                children: [
+                  _buildActionTile(
+                    icon: Icons.filter_list,
+                    label: 'Filter',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showCategoryFilter();
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.date_range,
+                    label: 'Date Range',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showDateRangeFilter();
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.upload_file,
+                    label: 'Import',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showImportDialog();
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.file_download,
+                    label: 'Export',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showExportDialog();
+                    },
+                  ),
+                  _buildActionTile(
+                    icon: Icons.delete_sweep,
+                    label: 'Clear All',
+                    color: const Color(0xFFDC2626),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showClearAllConfirmation();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final tileColor = color ?? const Color(0xFFFF8C00);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tileColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: tileColor.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: tileColor, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: tileColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Show amount bottom sheet
+  void _showAmountBottomSheet(double amount) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Compact amount
+              Text(
+                formatCurrencyShort(amount),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFFF8C00),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Full amount
+              Text(
+                formatCurrencyFull(amount),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Confirm delete single bill
+  Future<bool?> _confirmDelete(BillHive bill) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Bill?'),
+        content: Text('Are you sure you want to delete "${bill.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Delete single bill
+  Future<void> _deleteBill(String billId) async {
+    try {
+      await context.read<BillProvider>().deleteBill(billId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bill deleted successfully'),
+            backgroundColor: Color(0xFF059669),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting bill: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  // Show clear all confirmation
+  void _showClearAllConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.warning_outlined,
+                color: Color(0xFFDC2626),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Clear All History?'),
+          ],
+        ),
+        content: const Text(
+          'This will permanently delete ALL paid bills from your history. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _clearAllHistory();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Clear all history
+  Future<void> _clearAllHistory() async {
+    try {
+      final billProvider = context.read<BillProvider>();
+      final paidBills = billProvider.bills.where((b) => b.isPaid).toList();
+
+      for (final bill in paidBills) {
+        await billProvider.deleteBill(bill.id);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deleted ${paidBills.length} bills from history'),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing history: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
   }
 }
 

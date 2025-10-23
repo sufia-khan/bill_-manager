@@ -107,7 +107,6 @@ class BillDetailsScreen extends StatelessWidget {
 
             // Bill information
             _buildInfoSection('Bill Information', [
-              _buildInfoRow('Vendor', bill.vendor),
               _buildInfoRow('Category', bill.category),
               _buildInfoRow('Due Date', getFormattedDate(bill.due)),
               _buildInfoRow('Status', bill.status.toUpperCase()),
