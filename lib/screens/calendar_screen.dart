@@ -332,7 +332,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             leading: IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new,
-                color: Color(0xFF374151),
+                color: Color(0xFFFF8C00),
                 size: 20,
               ),
               onPressed: () => Navigator.pop(context),
@@ -341,7 +341,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               'Calendar',
               style: TextStyle(
                 color: Color(0xFFFF8C00),
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: FontWeight.w600,
               ),
             ),

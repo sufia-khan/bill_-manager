@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/currency_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../services/notification_service.dart';
+import '../services/alarm_notification_service.dart';
 import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
@@ -138,20 +139,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text(
           'Settings & Profile',
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
             color: Color(0xFFFF8C00),
           ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.white,
-        centerTitle: true,
+        centerTitle: false,
         automaticallyImplyLeading: true,
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new,
-            color: Color(0xFF374151),
+            color: Color(0xFFFF8C00),
             size: 20,
           ),
           onPressed: () {
@@ -342,10 +343,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 12),
 
+                // Show Pending Notifications (Debug)
+                _buildSettingsOption(
+                  icon: Icons.schedule_outlined,
+                  title: 'View Scheduled Notifications',
+                  subtitle: 'Debug: See all pending notifications',
+                  onTap: () async {
+                    final notificationService = NotificationService();
+                    final pending = await notificationService
+                        .getPendingNotifications();
+
+                    if (mounted) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Scheduled Notifications'),
+                          content: pending.isEmpty
+                              ? const Text('No notifications scheduled')
+                              : SizedBox(
+                                  width: double.maxFinite,
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: pending.length,
+                                    itemBuilder: (context, index) {
+                                      final notification = pending[index];
+                                      return ListTile(
+                                        leading: const Icon(
+                                          Icons.notifications,
+                                          color: Color(0xFFFF8C00),
+                                        ),
+                                        title: Text(
+                                          notification.title ?? 'No title',
+                                        ),
+                                        subtitle: Text(
+                                          notification.body ?? 'No body',
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Test Scheduled Notification (10 seconds) - Using Alarm Manager
+                _buildSettingsOption(
+                  icon: Icons.alarm_add_outlined,
+                  title: 'Test Alarm Notification',
+                  subtitle:
+                      'Schedule alarm notification for 10 seconds (works when app is closed)',
+                  onTap: () async {
+                    final alarmService = AlarmNotificationService();
+
+                    try {
+                      await alarmService.scheduleTestNotification();
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Row(
+                              children: [
+                                Icon(Icons.alarm, color: Colors.white),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Alarm notification scheduled for 10 seconds! Close the app to test.',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: Color(0xFF059669),
+                            behavior: SnackBarBehavior.floating,
+                            duration: Duration(seconds: 4),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: const Color(0xFFEF4444),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
                 // Test Notification
                 _buildSettingsOption(
                   icon: Icons.notifications_active_outlined,
-                  title: 'Test Notification',
+                  title: 'Test Notification (Immediate)',
                   onTap: () async {
                     final notificationService = NotificationService();
 
@@ -840,15 +943,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text(
               'Privacy & Security',
               style: TextStyle(
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF1F2937),
+                color: Color(0xFFFF8C00),
               ),
             ),
             backgroundColor: Colors.white,
             elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Color(0xFFFF8C00)),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Color(0xFFFF8C00),
+                size: 20,
+              ),
               onPressed: () => Navigator.pop(context),
             ),
           ),
@@ -1334,6 +1441,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildSettingsOption({
     required IconData icon,
     required String title,
+    String? subtitle,
     Widget? trailing,
     Color? titleColor,
     required VoidCallback onTap,
@@ -1366,13 +1474,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: titleColor ?? const Color(0xFF1F2937),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: titleColor ?? const Color(0xFF1F2937),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             if (trailing != null) ...[

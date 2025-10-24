@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase_service.dart';
 import '../services/hive_service.dart';
 import '../services/sync_service.dart';
+import '../services/user_preferences_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
@@ -137,6 +138,9 @@ class AuthProvider with ChangeNotifier {
 
       // Clear local data
       await HiveService.clearAllData();
+
+      // Clear user preferences (including onboarding status)
+      await UserPreferencesService.clearAll();
 
       // Sign out from Firebase
       await FirebaseService.signOut();

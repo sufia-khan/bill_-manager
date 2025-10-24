@@ -178,37 +178,70 @@ class ExpandableBillCard extends StatelessWidget {
   }
 
   String _getCategoryEmoji() {
-    switch (bill.category.toLowerCase()) {
-      case 'utilities':
-      case 'electricity':
-        return '⚡';
-      case 'rent':
+    // Match emojis from add bill screen categories
+    switch (bill.category) {
+      case 'Subscriptions':
+        return '📋';
+      case 'Rent':
         return '🏠';
-      case 'internet':
-        return '📡';
-      case 'insurance':
-      case 'health':
-        return '🛡️';
-      case 'subscription':
-      case 'subscriptions':
-      case 'streaming':
-        return '📺';
-      case 'water':
+      case 'Utilities':
+        return '💡';
+      case 'Electricity':
+        return '⚡';
+      case 'Water':
         return '💧';
-      case 'gas':
+      case 'Gas':
         return '🔥';
-      case 'phone':
+      case 'Internet':
+        return '🌐';
+      case 'Phone':
         return '📱';
-      case 'credit card':
-        return '💳';
-      case 'shopping':
-      case 'groceries':
+      case 'Streaming':
+        return '📺';
+      case 'Groceries':
         return '🛒';
-      case 'transport':
-      case 'fuel':
-        return '🚗';
+      case 'Transport':
+        return '🚌';
+      case 'Fuel':
+        return '⛽';
+      case 'Insurance':
+        return '🛡️';
+      case 'Health':
+        return '💊';
+      case 'Medical':
+        return '🏥';
+      case 'Education':
+        return '📚';
+      case 'Entertainment':
+        return '🎬';
+      case 'Credit Card':
+        return '💳';
+      case 'Loan':
+        return '💰';
+      case 'Taxes':
+        return '📝';
+      case 'Savings':
+        return '🏦';
+      case 'Donations':
+        return '❤️';
+      case 'Home Maintenance':
+        return '🔧';
+      case 'HOA':
+        return '🏘️';
+      case 'Gym':
+        return '💪';
+      case 'Childcare':
+        return '👶';
+      case 'Pets':
+        return '🐾';
+      case 'Travel':
+        return '✈️';
+      case 'Parking':
+        return '🅿️';
+      case 'Other':
+        return '📁';
       default:
-        return '📄';
+        return '📁';
     }
   }
 
@@ -227,12 +260,12 @@ class ExpandableBillCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -250,6 +283,7 @@ class ExpandableBillCard extends StatelessWidget {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Text(
                     bill.title,
@@ -261,7 +295,7 @@ class ExpandableBillCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
                   Text(
                     bill.category,
                     style: const TextStyle(
@@ -270,7 +304,7 @@ class ExpandableBillCard extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
                   Row(children: [Flexible(child: _buildDueDateText())]),
                 ],
               ),
@@ -308,7 +342,9 @@ class ExpandableBillCard extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF8C00).withOpacity(0.15),
+                            color: const Color(
+                              0xFFFF8C00,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Icon(

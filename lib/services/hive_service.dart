@@ -207,7 +207,7 @@ class HiveService {
   }) {
     final box = getBillsBox();
     var bills = box.values
-        .where((bill) => bill.isPaid && !bill.isDeleted)
+        .where((bill) => bill.isArchived && !bill.isDeleted)
         .toList();
 
     // Filter by date range if provided

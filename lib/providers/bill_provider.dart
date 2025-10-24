@@ -106,8 +106,27 @@ class BillProvider with ChangeNotifier {
       // Save to local storage
       await HiveService.saveBill(bill);
 
+      print('\n═══════════════════════════════════════════════════════');
+      print('📝 BILL ADDED SUCCESSFULLY');
+      print('═══════════════════════════════════════════════════════');
+      print('Title: ${bill.title}');
+      print('Amount: \$${bill.amount.toStringAsFixed(2)}');
+      print('Due Date: ${bill.dueAt}');
+      print('Category: ${bill.category}');
+      print('Repeat: ${bill.repeat}');
+      print(
+        'Reminder Timing: ${bill.reminderTiming ?? "Using global settings"}',
+      );
+      print(
+        'Notification Time: ${bill.notificationTime ?? "Using global settings"}',
+      );
+      print('═══════════════════════════════════════════════════════\n');
+
       // Schedule notification if enabled
       await _scheduleNotificationForBill(bill);
+
+      // Show all pending notifications
+      await _showPendingNotifications();
 
       // Update local list
       _bills = HiveService.getAllBills();
@@ -135,12 +154,24 @@ class BillProvider with ChangeNotifier {
 
       await HiveService.saveBill(updatedBill);
 
+      print('\n═══════════════════════════════════════════════════════');
+      print('✏️  BILL UPDATED');
+      print('═══════════════════════════════════════════════════════');
+      print('Title: ${updatedBill.title}');
+      print('Amount: \$${updatedBill.amount.toStringAsFixed(2)}');
+      print('Due Date: ${updatedBill.dueAt}');
+      print('Is Paid: ${updatedBill.isPaid}');
+      print('═══════════════════════════════════════════════════════\n');
+
       // Reschedule notification if bill is not paid
       if (!updatedBill.isPaid) {
         await _scheduleNotificationForBill(updatedBill);
+        await _showPendingNotifications();
       } else {
         // Cancel notification if bill is paid
+        print('🔕 Cancelling notification for paid bill\n');
         await NotificationService().cancelBillNotification(updatedBill.id);
+        await _showPendingNotifications();
       }
 
       _bills = HiveService.getAllBills();
@@ -400,14 +431,21 @@ class BillProvider with ChangeNotifier {
   // Schedule notification for a bill based on user settings
   Future<void> _scheduleNotificationForBill(BillHive bill) async {
     try {
+      print('\n🔔 ATTEMPTING TO SCHEDULE NOTIFICATION');
+      print('─────────────────────────────────────────────────────');
+
       // Skip if notifications are disabled globally
       if (_notificationSettings == null ||
           !_notificationSettings!.notificationsEnabled) {
+        print('❌ Notifications are disabled globally');
+        print('─────────────────────────────────────────────────────\n');
         return;
       }
 
       // Skip if bill is already paid or deleted
       if (bill.isPaid || bill.isDeleted) {
+        print('❌ Bill is paid or deleted - skipping notification');
+        print('─────────────────────────────────────────────────────\n');
         return;
       }
 
@@ -424,13 +462,29 @@ class BillProvider with ChangeNotifier {
         final timeParts = bill.notificationTime!.split(':');
         notificationHour = int.parse(timeParts[0]);
         notificationMinute = int.parse(timeParts[1]);
+        print('📋 Using per-bill notification settings');
       } else {
         // Use global settings
         daysOffset = _notificationSettings!.getReminderDaysOffset();
         final notificationTime = _notificationSettings!.notificationTime;
         notificationHour = notificationTime.hour;
+        print('🌐 Using global notification settings');
         notificationMinute = notificationTime.minute;
       }
+
+      print('Bill: ${bill.title}');
+      print('Due Date: ${bill.dueAt}');
+      print('Days Before Due: $daysOffset');
+      print(
+        'Notification Time: $notificationHour:${notificationMinute.toString().padLeft(2, '0')}',
+      );
+
+      final notificationDate = bill.dueAt.subtract(Duration(days: daysOffset));
+      print(
+        'Calculated Notification Date: $notificationDate at $notificationHour:${notificationMinute.toString().padLeft(2, '0')}',
+      );
+      print('Current Time: ${DateTime.now()}');
+      print('─────────────────────────────────────────────────────\n');
 
       await notificationService.scheduleBillNotification(
         bill,
@@ -439,8 +493,36 @@ class BillProvider with ChangeNotifier {
         notificationMinute: notificationMinute,
       );
     } catch (e) {
-      print('Error scheduling notification for bill: $e');
+      print('❌ Error scheduling notification for bill: $e');
+      print('─────────────────────────────────────────────────────\n');
       // Don't rethrow - notification failures shouldn't block bill operations
+    }
+  }
+
+  // Show all pending notifications (for debugging)
+  Future<void> _showPendingNotifications() async {
+    try {
+      final notificationService = NotificationService();
+      final pending = await notificationService.getPendingNotifications();
+
+      print('\n📋 PENDING NOTIFICATIONS LIST');
+      print('═══════════════════════════════════════════════════════');
+      if (pending.isEmpty) {
+        print('⚠️  No notifications scheduled');
+      } else {
+        print('Total: ${pending.length} notification(s) scheduled\n');
+        for (var i = 0; i < pending.length; i++) {
+          final notification = pending[i];
+          print('${i + 1}. ID: ${notification.id}');
+          print('   Title: ${notification.title}');
+          print('   Body: ${notification.body}');
+          print('   Payload: ${notification.payload}');
+          print('');
+        }
+      }
+      print('═══════════════════════════════════════════════════════\n');
+    } catch (e) {
+      print('❌ Error fetching pending notifications: $e\n');
     }
   }
 
@@ -507,9 +589,9 @@ class BillProvider with ChangeNotifier {
       ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
   }
 
-  // Get paid bills
+  // Get paid bills (excluding archived)
   List<BillHive> getPaidBills() {
-    return _bills.where((bill) => bill.isPaid).toList()
+    return _bills.where((bill) => bill.isPaid && !bill.isArchived).toList()
       ..sort((a, b) => b.dueAt.compareTo(a.dueAt));
   }
 

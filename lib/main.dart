@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'screens/auth_screen.dart';
 import 'screens/bill_manager_screen.dart';
 import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
@@ -13,7 +14,9 @@ import 'screens/archived_bills_screen.dart';
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
+import 'services/alarm_notification_service.dart';
 import 'services/notification_history_service.dart';
+import 'services/user_preferences_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
@@ -32,8 +35,14 @@ void main() async {
   // Run data migration for new fields
   await HiveService.migrateExistingBills();
 
+  // Initialize user preferences
+  await UserPreferencesService.init();
+
   // Initialize notification service
   await NotificationService().init();
+
+  // Initialize alarm notification service (for background notifications)
+  await AlarmNotificationService().init();
 
   // Initialize notification history service
   await NotificationHistoryService.init();
@@ -52,13 +61,20 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => BillProvider()),
         ChangeNotifierProvider(
           create: (_) => CurrencyProvider()..loadSavedCurrency(),
         ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(
           create: (_) => NotificationSettingsProvider()..initialize(),
+        ),
+        ChangeNotifierProxyProvider<NotificationSettingsProvider, BillProvider>(
+          create: (_) => BillProvider(),
+          update: (context, notificationSettings, previous) {
+            final billProvider = previous ?? BillProvider();
+            billProvider.setNotificationSettings(notificationSettings);
+            return billProvider;
+          },
         ),
       ],
       child: Consumer<ThemeProvider>(
@@ -68,6 +84,8 @@ class MyApp extends StatelessWidget {
             title: 'BillManager',
             routes: {
               '/': (context) => const AuthWrapper(),
+              '/login': (context) => const LoginScreen(),
+              '/auth': (context) => const AuthScreen(),
               '/analytics': (context) => const AnalyticsScreen(),
               // '/export': (context) => const ExportScreen(), // Hidden for MVP
               '/calendar': (context) => const CalendarScreen(),
@@ -110,10 +128,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
           );
         }
 
-        // If user is authenticated, show onboarding first (for testing)
+        // If user is authenticated, show onboarding first (only once per user)
         if (authProvider.isAuthenticated) {
-          // Show onboarding screen every time for testing
-          if (!_hasShownOnboarding) {
+          // Check if user has seen onboarding
+          final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding();
+
+          // Show onboarding screen only once per user account
+          if (!hasSeenOnboarding && !_hasShownOnboarding) {
             _hasShownOnboarding = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Navigator.of(context).push(
@@ -240,12 +261,19 @@ class _AuthWrapperState extends State<AuthWrapper> {
       final systemEnabled = await NotificationService()
           .areNotificationsEnabled();
 
+      // Check if exact alarms are permitted (Android 12+)
+      final canScheduleExact = await NotificationService()
+          .canScheduleExactAlarms();
+
       if (context.mounted) {
         if (permissionGranted == false || !systemEnabled) {
           // Permission denied - show warning
           await _showPermissionDeniedWarning(context);
           // Disable notifications in app since system denied
           await notificationProvider.setNotificationsEnabled(false);
+        } else if (!canScheduleExact) {
+          // Exact alarms not permitted - show specific warning
+          await _showExactAlarmWarning(context);
         } else {
           // Permission granted - reschedule notifications
           final billProvider = Provider.of<BillProvider>(
@@ -273,6 +301,93 @@ class _AuthWrapperState extends State<AuthWrapper> {
         }
       }
     }
+  }
+
+  Future<void> _showExactAlarmWarning(BuildContext context) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.alarm, color: Color(0xFFFF8C00), size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Exact Alarms Required',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'To receive notifications at exact times, you need to enable "Alarms & reminders" permission.',
+              style: TextStyle(fontSize: 15, color: Color(0xFF1F2937)),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF5E6),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFFE5CC)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Color(0xFFFF8C00),
+                        size: 20,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'How to enable:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '1. Go to Settings > Apps > BillManager\n'
+                    '2. Tap "Alarms & reminders"\n'
+                    '3. Enable "Allow setting alarms and reminders"',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF1F2937)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF8C00),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showPermissionDeniedWarning(BuildContext context) async {

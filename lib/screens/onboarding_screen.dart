@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/user_preferences_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -113,8 +114,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  void _finishOnboarding() {
-    Navigator.of(context).pop();
+  Future<void> _finishOnboarding() async {
+    // Mark onboarding as seen
+    await UserPreferencesService.setOnboardingSeen();
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -361,26 +367,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   elevation: 4,
                 ),
                 child: const Text(
-                  'Create Your Account',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _finishOnboarding,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF374151),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Color(0xFFD1D5DB), width: 2),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Sign In',
+                  'Get Started',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),

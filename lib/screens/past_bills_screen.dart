@@ -1262,11 +1262,12 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
   // Delete single bill
   Future<void> _deleteBill(String billId) async {
     try {
-      await context.read<BillProvider>().deleteBill(billId);
+      // Use deleteArchivedBill for permanent deletion from archived screen
+      await context.read<BillProvider>().deleteArchivedBill(billId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Bill deleted successfully'),
+            content: Text('Bill permanently deleted'),
             backgroundColor: Color(0xFF059669),
           ),
         );

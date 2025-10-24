@@ -80,16 +80,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Auto-archived after 30 days',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.normal,
+                    color: Color(0xFFFF8C00),
                   ),
                 ),
               ],
@@ -284,7 +275,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
         return await _showDeleteDialog(bill);
       },
       onDismissed: (direction) async {
-        await billProvider.deleteBill(bill.id);
+        await billProvider.deleteArchivedBill(bill.id);
         if (mounted) {
           CustomSnackBar.showError(
             context,
@@ -546,6 +537,8 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
 
   Future<void> _showDeleteAllDialog(BillProvider billProvider) async {
     final archivedBills = billProvider.getArchivedBills();
+    final billCount = archivedBills.length;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -567,7 +560,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Are you sure you want to delete all ${archivedBills.length} archived bills?',
+              'Are you sure you want to permanently delete all $billCount archived bills?',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 12),
@@ -621,14 +614,14 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
     );
 
     if (confirmed == true && mounted) {
-      // Delete all archived bills
+      // Delete all archived bills permanently
       for (final bill in archivedBills) {
-        await billProvider.deleteBill(bill.id);
+        await billProvider.deleteArchivedBill(bill.id);
       }
       if (mounted) {
-        CustomSnackBar.showError(
+        CustomSnackBar.showSuccess(
           context,
-          'Deleted ${archivedBills.length} archived bills',
+          'Permanently deleted $billCount archived bills',
           duration: const Duration(seconds: 2),
         );
       }

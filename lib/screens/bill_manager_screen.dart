@@ -20,39 +20,39 @@ class BillManagerScreen extends StatefulWidget {
 class _BillManagerScreenState extends State<BillManagerScreen> {
   // Bills are now loaded from BillProvider - no hardcoded data!
 
-  // Category data with icons
+  // Category data with emojis (matching add bill screen)
   final List<Map<String, dynamic>> categories = [
-    {'name': 'All', 'icon': Icons.apps},
-    {'name': 'Rent', 'icon': Icons.home},
-    {'name': 'Utilities', 'icon': Icons.electrical_services},
-    {'name': 'Electricity', 'icon': Icons.bolt},
-    {'name': 'Water', 'icon': Icons.water_drop},
-    {'name': 'Gas', 'icon': Icons.local_fire_department},
-    {'name': 'Internet', 'icon': Icons.wifi},
-    {'name': 'Phone', 'icon': Icons.phone},
-    {'name': 'Subscriptions', 'icon': Icons.card_membership},
-    {'name': 'Streaming', 'icon': Icons.tv},
-    {'name': 'Groceries', 'icon': Icons.shopping_cart},
-    {'name': 'Transport', 'icon': Icons.directions_bus},
-    {'name': 'Fuel', 'icon': Icons.local_gas_station},
-    {'name': 'Insurance', 'icon': Icons.security},
-    {'name': 'Health', 'icon': Icons.local_hospital},
-    {'name': 'Medical', 'icon': Icons.medical_services},
-    {'name': 'Education', 'icon': Icons.school},
-    {'name': 'Entertainment', 'icon': Icons.movie},
-    {'name': 'Credit Card', 'icon': Icons.credit_card},
-    {'name': 'Loan', 'icon': Icons.account_balance},
-    {'name': 'Taxes', 'icon': Icons.receipt},
-    {'name': 'Savings', 'icon': Icons.savings},
-    {'name': 'Donations', 'icon': Icons.volunteer_activism},
-    {'name': 'Home Maintenance', 'icon': Icons.home_repair_service},
-    {'name': 'HOA', 'icon': Icons.apartment},
-    {'name': 'Gym', 'icon': Icons.fitness_center},
-    {'name': 'Childcare', 'icon': Icons.child_care},
-    {'name': 'Pets', 'icon': Icons.pets},
-    {'name': 'Travel', 'icon': Icons.flight},
-    {'name': 'Parking', 'icon': Icons.local_parking},
-    {'name': 'Other', 'icon': Icons.more_horiz},
+    {'name': 'All', 'emoji': '📱'},
+    {'name': 'Subscriptions', 'emoji': '📋'},
+    {'name': 'Rent', 'emoji': '🏠'},
+    {'name': 'Utilities', 'emoji': '💡'},
+    {'name': 'Electricity', 'emoji': '⚡'},
+    {'name': 'Water', 'emoji': '💧'},
+    {'name': 'Gas', 'emoji': '🔥'},
+    {'name': 'Internet', 'emoji': '🌐'},
+    {'name': 'Phone', 'emoji': '📱'},
+    {'name': 'Streaming', 'emoji': '📺'},
+    {'name': 'Groceries', 'emoji': '🛒'},
+    {'name': 'Transport', 'emoji': '🚌'},
+    {'name': 'Fuel', 'emoji': '⛽'},
+    {'name': 'Insurance', 'emoji': '🛡️'},
+    {'name': 'Health', 'emoji': '💊'},
+    {'name': 'Medical', 'emoji': '🏥'},
+    {'name': 'Education', 'emoji': '📚'},
+    {'name': 'Entertainment', 'emoji': '🎬'},
+    {'name': 'Credit Card', 'emoji': '💳'},
+    {'name': 'Loan', 'emoji': '💰'},
+    {'name': 'Taxes', 'emoji': '📝'},
+    {'name': 'Savings', 'emoji': '🏦'},
+    {'name': 'Donations', 'emoji': '❤️'},
+    {'name': 'Home Maintenance', 'emoji': '🔧'},
+    {'name': 'HOA', 'emoji': '🏘️'},
+    {'name': 'Gym', 'emoji': '💪'},
+    {'name': 'Childcare', 'emoji': '👶'},
+    {'name': 'Pets', 'emoji': '🐾'},
+    {'name': 'Travel', 'emoji': '✈️'},
+    {'name': 'Parking', 'emoji': '🅿️'},
+    {'name': 'Other', 'emoji': '📁'},
   ];
 
   String selectedCategory = 'All';
@@ -282,7 +282,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
                             color: const Color(
@@ -321,11 +321,17 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                       child: _buildSummaryCard(
                         'This month',
                         thisMonthTotal,
-                        '$thisMonthCount upcoming bill${thisMonthCount != 1 ? 's' : ''}',
-                        const Icon(
-                          Icons.attach_money,
-                          color: Colors.white,
-                          size: 18,
+                        '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''}',
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '📅',
+                            style: TextStyle(fontSize: 20),
+                          ),
                         ),
                         thisMonthCount,
                       ),
@@ -335,11 +341,17 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                       child: _buildSummaryCard(
                         'Next 7 days',
                         next7DaysTotal,
-                        '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
-                        const Icon(
-                          Icons.calendar_today_outlined,
-                          color: Colors.white,
-                          size: 18,
+                        '$next7DaysCount bill${next7DaysCount != 1 ? 's' : ''}',
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '⏰',
+                            style: TextStyle(fontSize: 20),
+                          ),
                         ),
                         next7DaysCount,
                       ),
@@ -628,60 +640,49 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
             size: 18,
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: const TextStyle(fontSize: 13, color: Color(0xFF1F2937)),
-                children: [
-                  TextSpan(
-                    text: '$count ${selectedStatus}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  TextSpan(
-                    text: ' • ',
-                    style: TextStyle(color: Colors.grey.shade400),
-                  ),
-                  TextSpan(
-                    text: formattedAmount,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFFFF8C00),
-                    ),
-                  ),
-                ],
-              ),
+          Text(
+            '$count ${selectedStatus}',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1F2937),
             ),
           ),
-          // Always reserve space for info icon to maintain consistent height
-          SizedBox(
-            width: 22,
-            height: 22,
-            child: isFormatted
-                ? GestureDetector(
-                    onTap: () {
-                      AmountInfoBottomSheet.show(
-                        context,
-                        amount: amount,
-                        billCount: count,
-                        title: '$count $selectedStatus bills',
-                        formattedAmount: formattedAmount,
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        size: 14,
-                        color: Color(0xFFFF8C00),
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
+          const Spacer(),
+          Text(
+            formattedAmount,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFFF8C00),
+            ),
           ),
+          if (isFormatted) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () {
+                AmountInfoBottomSheet.show(
+                  context,
+                  amount: amount,
+                  billCount: count,
+                  title: '$count $selectedStatus bills',
+                  formattedAmount: formattedAmount,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.info_outline,
+                  size: 14,
+                  color: Color(0xFFFF8C00),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
