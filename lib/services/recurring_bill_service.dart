@@ -162,7 +162,7 @@ class RecurringBillService {
 
       // Check if repeat count limit reached
       if (parentBill.repeatCount != null) {
-        final currentSequence = parentBill.recurringSequence ?? 0;
+        final currentSequence = parentBill.recurringSequence ?? 1;
         if (currentSequence >= parentBill.repeatCount!) {
           Logger.info(
             'Repeat count limit reached for ${parentBill.title}: $currentSequence/${parentBill.repeatCount}',
@@ -198,7 +198,7 @@ class RecurringBillService {
 
       // Determine parent ID and sequence
       final parentId = parentBill.parentBillId ?? parentBill.id;
-      final sequence = (parentBill.recurringSequence ?? 0) + 1;
+      final sequence = (parentBill.recurringSequence ?? 1) + 1;
 
       // Create new bill instance
       final now = DateTime.now();
@@ -304,7 +304,7 @@ class RecurringBillService {
           if (!exists) {
             // Prepare next instance (don't save yet)
             final parentIdToUse = bill.parentBillId ?? bill.id;
-            final sequence = (bill.recurringSequence ?? 0) + 1;
+            final sequence = (bill.recurringSequence ?? 1) + 1;
             final nowTimestamp = DateTime.now();
 
             // Check repeat count limit before creating

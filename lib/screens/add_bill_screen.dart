@@ -161,6 +161,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
       return;
     }
 
+    // Validate notification time is in the future
+    if (!_validateNotificationTime()) {
+      return;
+    }
+
     try {
       final billProvider = context.read<BillProvider>();
 
@@ -244,6 +249,69 @@ class _AddBillScreenState extends State<AddBillScreen> {
         );
       }
     }
+  }
+
+  bool _validateNotificationTime() {
+    if (_selectedDueDate == null ||
+        _reminderTiming == null ||
+        _notificationTime == null) {
+      return true; // Skip validation if not all fields are set
+    }
+
+    final now = DateTime.now();
+    final dueDate = _selectedDueDate!;
+
+    // Calculate notification date based on reminder timing
+    int daysOffset = 0;
+    switch (_reminderTiming) {
+      case '1 Day Before':
+        daysOffset = 1;
+        break;
+      case '2 Days Before':
+        daysOffset = 2;
+        break;
+      case '1 Week Before':
+        daysOffset = 7;
+        break;
+      case 'Same Day':
+      default:
+        daysOffset = 0;
+    }
+
+    final notificationDate = dueDate.subtract(Duration(days: daysOffset));
+    final notificationDateTime = DateTime(
+      notificationDate.year,
+      notificationDate.month,
+      notificationDate.day,
+      _notificationTime!.hour,
+      _notificationTime!.minute,
+    );
+
+    // Check if notification time is in the past
+    if (notificationDateTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.access_time, color: Colors.white, size: 22),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Please select a time that will be in the future from the due date of the bill.',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFFFF8C00), // Orange color
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return false;
+    }
+
+    return true;
   }
 
   void _selectDueDate() async {
@@ -768,66 +836,125 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 ),
                 child: SingleChildScrollView(
                   child: Column(
-                    children: _categories.map((category) {
-                      final isSelected = category['name'] == _selectedCategory;
-
-                      return InkWell(
+                    children: [
+                      // Add Custom Category Button at the top
+                      InkWell(
                         onTap: () {
-                          setState(() {
-                            _selectedCategory = category['name'];
-                          });
                           Navigator.of(context).pop();
+                          _showAddCustomCategoryDialog();
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                                : Colors.white,
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFFFF8C00).withValues(alpha: 0.15),
+                                const Color(0xFFFF8C00).withValues(alpha: 0.08),
+                              ],
+                            ),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFFFF8C00)
-                                  : Colors.grey.shade200,
+                              color: const Color(0xFFFF8C00),
+                              width: 1.5,
                             ),
                           ),
-                          child: Row(
+                          child: const Row(
                             children: [
-                              Text(
-                                category['emoji'] ?? '📁',
-                                style: const TextStyle(fontSize: 20),
+                              Icon(
+                                Icons.add_circle_outline,
+                                color: Color(0xFFFF8C00),
+                                size: 24,
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  category['name'] ?? '',
+                                  'Add Custom Category',
                                   style: TextStyle(
                                     fontSize: 14,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: isSelected
-                                        ? const Color(0xFFFF8C00)
-                                        : const Color(0xFF1F2937),
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFFF8C00),
                                   ),
                                 ),
                               ),
-                              if (isSelected)
-                                const Icon(
-                                  Icons.check,
-                                  color: Color(0xFFFF8C00),
-                                  size: 20,
-                                ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                color: Color(0xFFFF8C00),
+                                size: 16,
+                              ),
                             ],
                           ),
                         ),
-                      );
-                    }).toList(),
+                      ),
+                      // Existing categories
+                      ..._categories.map((category) {
+                        final isSelected =
+                            category['name'] == _selectedCategory;
+
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              _selectedCategory = category['name'];
+                            });
+                            Navigator.of(context).pop();
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(
+                                      0xFFFF8C00,
+                                    ).withValues(alpha: 0.1)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFFFF8C00)
+                                    : Colors.grey.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  category['emoji'] ?? '📁',
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    category['name'] ?? '',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: isSelected
+                                          ? const Color(0xFFFF8C00)
+                                          : const Color(0xFF1F2937),
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  const Icon(
+                                    Icons.check,
+                                    color: Color(0xFFFF8C00),
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
                   ),
                 ),
               ),
@@ -1166,6 +1293,13 @@ class _AddBillScreenState extends State<AddBillScreen> {
   }
 
   void _showReminderTimingPicker() {
+    // Calculate days until due date
+    final now = DateTime.now();
+    final dueDate = _selectedDueDate ?? now;
+    final daysUntilDue = dueDate
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -1179,82 +1313,139 @@ class _AddBillScreenState extends State<AddBillScreen> {
           '2 Days Before',
           '1 Week Before',
         ];
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Remind me',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1F2937),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ...options.map((option) {
-                final isSelected = option == _reminderTiming;
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      _reminderTiming = option;
-                    });
-                    Navigator.of(context).pop();
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFFFF8C00)
-                            : Colors.grey.shade200,
+
+        // Determine which options should be disabled
+        bool isOptionDisabled(String option) {
+          if (option == 'Same Day') return false; // Always available
+          if (option == '1 Day Before') return daysUntilDue < 1;
+          if (option == '2 Days Before') return daysUntilDue < 2;
+          if (option == '1 Week Before') return daysUntilDue < 7;
+          return false;
+        }
+
+        return SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Remind me',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
                       ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ...options.map((option) {
+                  final isSelected = option == _reminderTiming;
+                  final isDisabled = isOptionDisabled(option);
+
+                  return Opacity(
+                    opacity: isDisabled ? 0.4 : 1.0,
+                    child: InkWell(
+                      onTap: isDisabled
+                          ? null
+                          : () {
+                              setState(() {
+                                _reminderTiming = option;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFFFF8C00)
+                                : Colors.grey.shade200,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                option,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: isSelected
+                                      ? const Color(0xFFFF8C00)
+                                      : const Color(0xFF1F2937),
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check,
+                                color: Color(0xFFFF8C00),
+                                size: 20,
+                              ),
+                            if (isDisabled)
+                              const Icon(
+                                Icons.lock_outline,
+                                color: Color(0xFF9CA3AF),
+                                size: 18,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                if (daysUntilDue < 7) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF5E6),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFFE5CC)),
                     ),
                     child: Row(
                       children: [
+                        const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Color(0xFFFF8C00),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            option,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: isSelected
-                                  ? const Color(0xFFFF8C00)
-                                  : const Color(0xFF1F2937),
+                            daysUntilDue == 0
+                                ? 'Bill is due today. Only "Same Day" reminder is available.'
+                                : 'Some options are disabled because the due date is only $daysUntilDue day${daysUntilDue == 1 ? '' : 's'} away.',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF1F2937),
                             ),
                           ),
                         ),
-                        if (isSelected)
-                          const Icon(
-                            Icons.check,
-                            color: Color(0xFFFF8C00),
-                            size: 20,
-                          ),
                       ],
                     ),
                   ),
-                );
-              }),
-              const SizedBox(height: 16),
-            ],
+                ],
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         );
       },
@@ -1279,6 +1470,69 @@ class _AddBillScreenState extends State<AddBillScreen> {
       setState(() {
         _notificationTime = time;
       });
+
+      // Validate the selected time immediately
+      _validateNotificationTimeAfterSelection();
+    }
+  }
+
+  void _validateNotificationTimeAfterSelection() {
+    if (_selectedDueDate == null ||
+        _reminderTiming == null ||
+        _notificationTime == null) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final dueDate = _selectedDueDate!;
+
+    // Calculate notification date based on reminder timing
+    int daysOffset = 0;
+    switch (_reminderTiming) {
+      case '1 Day Before':
+        daysOffset = 1;
+        break;
+      case '2 Days Before':
+        daysOffset = 2;
+        break;
+      case '1 Week Before':
+        daysOffset = 7;
+        break;
+      case 'Same Day':
+      default:
+        daysOffset = 0;
+    }
+
+    final notificationDate = dueDate.subtract(Duration(days: daysOffset));
+    final notificationDateTime = DateTime(
+      notificationDate.year,
+      notificationDate.month,
+      notificationDate.day,
+      _notificationTime!.hour,
+      _notificationTime!.minute,
+    );
+
+    // Check if notification time is in the past
+    if (notificationDateTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.access_time, color: Colors.white, size: 22),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Please select a time that will be in the future from the due date of the bill.',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFFFF8C00), // Orange color
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -1287,5 +1541,96 @@ class _AddBillScreenState extends State<AddBillScreen> {
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.period == DayPeriod.am ? 'AM' : 'PM';
     return '$hour:$minute $period';
+  }
+
+  void _showAddCustomCategoryDialog() {
+    final categoryNameController = TextEditingController();
+    const String defaultEmoji = '📋'; // Single default icon for all categories
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.add_circle, color: Color(0xFFFF8C00)),
+            SizedBox(width: 8),
+            Text(
+              'Add Custom Category',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Category Name Input
+            TextField(
+              controller: categoryNameController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Category Name',
+                hintText: 'e.g., Car Payment',
+                prefixIcon: const Icon(Icons.label, color: Color(0xFFFF8C00)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFFF8C00),
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final categoryName = categoryNameController.text.trim();
+              if (categoryName.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a category name'),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                return;
+              }
+
+              // Add the new category to the list with default icon
+              setState(() {
+                _categories.insert(0, {
+                  'name': categoryName,
+                  'emoji': defaultEmoji,
+                });
+                _selectedCategory = categoryName;
+              });
+
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Category "$categoryName" added successfully!'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF8C00),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add Category'),
+          ),
+        ],
+      ),
+    );
   }
 }

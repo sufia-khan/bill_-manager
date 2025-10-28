@@ -4,9 +4,11 @@ import '../models/bill_hive.dart';
 import '../services/hive_service.dart';
 import '../services/firebase_service.dart';
 import '../services/sync_service.dart';
+import '../services/firebase_sync_service.dart';
 import '../services/recurring_bill_service.dart';
 import '../services/bill_archival_service.dart';
 import '../services/notification_service.dart';
+import '../services/notification_history_service.dart';
 import '../providers/notification_settings_provider.dart';
 
 class BillProvider with ChangeNotifier {
@@ -24,6 +26,11 @@ class BillProvider with ChangeNotifier {
   // Set notification settings provider
   void setNotificationSettings(NotificationSettingsProvider settings) {
     _notificationSettings = settings;
+  }
+
+  // Trigger debounced sync after changes
+  void _triggerSync() {
+    FirebaseSyncService().triggerSync();
   }
 
   // Initialize and load bills
@@ -55,6 +62,8 @@ class BillProvider with ChangeNotifier {
       Future.delayed(const Duration(seconds: 2), () async {
         try {
           await runMaintenance();
+          // Check for triggered notifications and add to history
+          await NotificationHistoryService.checkAndAddTriggeredNotifications();
         } catch (e) {
           print('Error running maintenance on initialization: $e');
           // Don't rethrow - maintenance failures shouldn't affect app initialization
@@ -101,6 +110,8 @@ class BillProvider with ChangeNotifier {
         repeatCount: repeatCount,
         reminderTiming: reminderTiming,
         notificationTime: notificationTime,
+        // Set recurringSequence to 1 for the first bill if it's recurring with a count
+        recurringSequence: (repeat != 'none' && repeatCount != null) ? 1 : null,
       );
 
       // Save to local storage
@@ -132,10 +143,8 @@ class BillProvider with ChangeNotifier {
       _bills = HiveService.getAllBills();
       notifyListeners();
 
-      // Sync to Firebase in background
-      if (FirebaseService.currentUserId != null) {
-        SyncService.syncBills();
-      }
+      // Trigger debounced sync
+      _triggerSync();
     } catch (e) {
       _error = e.toString();
       ('Error adding bill: $e');
@@ -177,10 +186,8 @@ class BillProvider with ChangeNotifier {
       _bills = HiveService.getAllBills();
       notifyListeners();
 
-      // Sync to Firebase in background
-      if (FirebaseService.currentUserId != null) {
-        SyncService.syncBills();
-      }
+      // Trigger debounced sync
+      _triggerSync();
     } catch (e) {
       _error = e.toString();
       print('Error updating bill: $e');
@@ -221,10 +228,8 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
 
-        // Sync to Firebase in background
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       _error = e.toString();
@@ -259,10 +264,8 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
 
-        // Sync to Firebase in background
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       _error = e.toString();
@@ -292,10 +295,8 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
 
-        // Sync to Firebase in background
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       _error = e.toString();
@@ -315,10 +316,8 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
 
-        // Sync to Firebase in background
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       _error = e.toString();
@@ -347,10 +346,8 @@ class BillProvider with ChangeNotifier {
       _bills = HiveService.getAllBills(forceRefresh: true);
       notifyListeners();
 
-      // Sync to Firebase in background
-      if (FirebaseService.currentUserId != null) {
-        SyncService.syncBills();
-      }
+      // Trigger debounced sync
+      _triggerSync();
     } catch (e) {
       _error = e.toString();
       print('Error deleting bill: $e');
@@ -384,10 +381,8 @@ class BillProvider with ChangeNotifier {
       _bills = HiveService.getAllBills(forceRefresh: true);
       notifyListeners();
 
-      // Sync to Firebase
-      if (FirebaseService.currentUserId != null) {
-        SyncService.syncBills();
-      }
+      // Trigger debounced sync
+      _triggerSync();
     } catch (e) {
       _error = e.toString();
       print('Error deleting archived bill: $e');
@@ -416,10 +411,8 @@ class BillProvider with ChangeNotifier {
         // Reschedule notification
         await NotificationService().scheduleBillNotification(restoredBill);
 
-        // Sync to Firebase in background
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       _error = e.toString();
@@ -480,10 +473,35 @@ class BillProvider with ChangeNotifier {
       );
 
       final notificationDate = bill.dueAt.subtract(Duration(days: daysOffset));
+      final calculatedNotificationDateTime = DateTime(
+        notificationDate.year,
+        notificationDate.month,
+        notificationDate.day,
+        notificationHour,
+        notificationMinute,
+      );
+
       print(
         'Calculated Notification Date: $notificationDate at $notificationHour:${notificationMinute.toString().padLeft(2, '0')}',
       );
+      print('Full Notification DateTime: $calculatedNotificationDateTime');
       print('Current Time: ${DateTime.now()}');
+
+      final now = DateTime.now();
+      if (calculatedNotificationDateTime.isBefore(now)) {
+        print(
+          '⚠️⚠️⚠️ WARNING: Notification time is ${now.difference(calculatedNotificationDateTime).inMinutes} minutes in the PAST!',
+        );
+        print('⚠️ This notification will NOT be scheduled!');
+        print(
+          '⚠️ Solution: Set the time to at least 1-2 minutes in the future',
+        );
+      } else {
+        print(
+          '✅ Notification time is ${calculatedNotificationDateTime.difference(now).inMinutes} minutes in the FUTURE',
+        );
+        print('✅ This notification WILL be scheduled');
+      }
       print('─────────────────────────────────────────────────────\n');
 
       await notificationService.scheduleBillNotification(
@@ -670,10 +688,8 @@ class BillProvider with ChangeNotifier {
         print('Bills reloaded. Total bills: ${_bills.length}');
         notifyListeners();
 
-        // Sync new bills to Firebase
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
     } catch (e) {
       print('Error running recurring bill maintenance: $e');
@@ -697,10 +713,8 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills();
         notifyListeners();
 
-        // Sync to Firebase
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
 
         print(
           'Archived $archivedCount bills, auto-deleted $deletedCount old bills',
@@ -841,10 +855,8 @@ class BillProvider with ChangeNotifier {
       _bills = HiveService.getAllBills();
       notifyListeners();
 
-      // Sync to Firebase in background
-      if (FirebaseService.currentUserId != null) {
-        SyncService.syncBills();
-      }
+      // Trigger debounced sync
+      _triggerSync();
 
       print('Successfully imported ${importedBills.length} past bills');
     } catch (e) {
@@ -878,9 +890,8 @@ class BillProvider with ChangeNotifier {
         notifyListeners();
 
         // Sync changes to Firebase
-        if (FirebaseService.currentUserId != null) {
-          SyncService.syncBills();
-        }
+        // Trigger debounced sync
+        _triggerSync();
       }
 
       return results;

@@ -9,10 +9,8 @@
     <!-- Permission to receive boot completed (for rescheduling notifications after reboot) -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     
-    <!-- Permission for wake lock (required for alarm manager) -->
+    <!-- Permissions for android_alarm_manager_plus -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    
-    <!-- Permission for foreground service (Android 9+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     
     <application
@@ -47,18 +45,15 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
-        <!-- Service for android_alarm_manager_plus -->
-        <service
-            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
-            android:permission="android.permission.BIND_JOB_SERVICE"
+        <!-- Custom AlarmReceiver for notifications -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:enabled="true"
             android:exported="false"/>
         
-        <!-- Receiver for boot completed (reschedule alarms after reboot) -->
+        <!-- BootReceiver to handle device reboot -->
         <receiver
-            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
-            android:exported="false"/>
-        <receiver
-            android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
+            android:name=".BootReceiver"
             android:enabled="true"
             android:exported="false">
             <intent-filter>

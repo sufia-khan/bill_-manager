@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../services/notification_service.dart';
-import '../services/alarm_notification_service.dart';
 import '../widgets/currency_selector_sheet.dart';
+import '../widgets/sync_stats_widget.dart';
 import 'analytics_screen.dart';
+import 'notification_test_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
 import 'onboarding_screen.dart';
@@ -294,6 +296,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 32),
 
+            // Sync Status Section
+            const SyncStatsWidget(),
+
+            const SizedBox(height: 24),
+
             // Settings Options
             Column(
               children: [
@@ -338,6 +345,128 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                       },
                     );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Notification Test Screen
+                _buildSettingsOption(
+                  icon: Icons.science_outlined,
+                  title: 'Test Notifications',
+                  subtitle: 'Comprehensive notification testing tool',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const NotificationTestScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Check Notification Status (Debug)
+                _buildSettingsOption(
+                  icon: Icons.bug_report_outlined,
+                  title: 'Check Notification Status',
+                  subtitle: 'Debug: Check permissions and settings',
+                  onTap: () async {
+                    final notificationService = NotificationService();
+
+                    final enabled = await notificationService
+                        .areNotificationsEnabled();
+                    final exactAlarms = await notificationService
+                        .canScheduleExactAlarms();
+                    final pending = await notificationService
+                        .getPendingNotifications();
+
+                    if (mounted) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Notification Status'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildStatusRow('Notifications Enabled', enabled),
+                              const SizedBox(height: 8),
+                              _buildStatusRow(
+                                'Exact Alarms Enabled',
+                                exactAlarms,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Pending Notifications: ${pending.length}',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              if (!enabled || !exactAlarms) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange[50],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.orange),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.warning,
+                                            color: Colors.orange,
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Action Required',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.orange,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      if (!enabled)
+                                        const Text(
+                                          '• Enable notifications in Settings > Apps > BillManager > Notifications',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      if (!exactAlarms)
+                                        const Text(
+                                          '• Enable exact alarms in Settings > Apps > BillManager > Alarms & reminders',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          actions: [
+                            if (!enabled || !exactAlarms)
+                              TextButton(
+                                onPressed: () async {
+                                  await notificationService
+                                      .requestPermissions();
+                                  Navigator.pop(context);
+                                },
+                                child: const Text('Request Permissions'),
+                              ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                   },
                 ),
 
@@ -396,28 +525,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 12),
 
-                // Test Scheduled Notification (10 seconds) - Using Alarm Manager
+                // Test Scheduled Notification (10 seconds)
                 _buildSettingsOption(
                   icon: Icons.alarm_add_outlined,
-                  title: 'Test Alarm Notification',
+                  title: 'Test Scheduled Notification',
                   subtitle:
-                      'Schedule alarm notification for 10 seconds (works when app is closed)',
+                      'Schedule notification for 10 seconds (works when app is closed)',
                   onTap: () async {
-                    final alarmService = AlarmNotificationService();
+                    final notificationService = NotificationService();
+
+                    // First check if exact alarms are enabled
+                    final canScheduleExact = await notificationService
+                        .canScheduleExactAlarms();
+
+                    if (!canScheduleExact) {
+                      if (mounted) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.alarm_off, color: Colors.red),
+                                SizedBox(width: 12),
+                                Expanded(child: Text('Permission Required')),
+                              ],
+                            ),
+                            content: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Scheduled notifications require "Alarms & reminders" permission.',
+                                  style: TextStyle(fontSize: 15),
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'How to enable:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  '1. Go to Settings > Apps > BillManager\n'
+                                  '2. Tap "Alarms & reminders"\n'
+                                  '3. Enable "Allow setting alarms and reminders"',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                  // Request permission
+                                  await notificationService
+                                      .requestPermissions();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFF8C00),
+                                ),
+                                child: const Text('Request Permission'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return;
+                    }
 
                     try {
-                      await alarmService.scheduleTestNotification();
+                      await notificationService.scheduleTestNotification();
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Row(
                               children: [
-                                Icon(Icons.alarm, color: Colors.white),
+                                Icon(Icons.schedule, color: Colors.white),
                                 SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Alarm notification scheduled for 10 seconds! Close the app to test.',
+                                    'Notification scheduled for 10 seconds! Close the app to test.',
                                   ),
                                 ),
                               ],
@@ -435,7 +629,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             content: Text('Error: $e'),
                             backgroundColor: const Color(0xFFEF4444),
                             behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 3),
+                            duration: const Duration(seconds: 5),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Test Bill Notification (2 minutes)
+                _buildSettingsOption(
+                  icon: Icons.receipt_long,
+                  title: 'Test Bill Notification (2 min)',
+                  subtitle:
+                      'Creates a test bill with notification in 2 minutes',
+                  onTap: () async {
+                    try {
+                      final billProvider = Provider.of<BillProvider>(
+                        context,
+                        listen: false,
+                      );
+
+                      // Calculate time 2 minutes from now
+                      final now = DateTime.now();
+                      final notificationTime = now.add(
+                        const Duration(minutes: 2),
+                      );
+
+                      // Create a test bill due today with notification in 2 minutes
+                      await billProvider.addBill(
+                        title: 'Test Bill (Auto-created)',
+                        vendor: 'Test Vendor',
+                        amount: 10.00,
+                        dueAt: now, // Due today
+                        category: 'Other',
+                        repeat: 'none',
+                        notes:
+                            'This is a test bill created automatically. You can delete it after testing.',
+                        reminderTiming: 'Same Day',
+                        notificationTime:
+                            '${notificationTime.hour}:${notificationTime.minute}',
+                      );
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Test bill created! Notification at ${notificationTime.hour}:${notificationTime.minute.toString().padLeft(2, '0')}. Close the app to test.',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: const Color(0xFF059669),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 5),
+                            action: SnackBarAction(
+                              label: 'VIEW',
+                              textColor: Colors.white,
+                              onPressed: () {
+                                Navigator.of(context).pop(); // Go back to home
+                              },
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error creating test bill: $e'),
+                            backgroundColor: const Color(0xFFEF4444),
+                            behavior: SnackBarBehavior.floating,
                           ),
                         );
                       }
@@ -494,8 +768,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // Send test notification
                     await notificationService.showImmediateNotification(
-                      'Test Notification',
-                      'Your notifications are working perfectly! 🎉',
+                      'Immediate Test Notification',
+                      'This appeared instantly! Your notifications are working perfectly! 🎉',
                     );
 
                     if (mounted) {
@@ -1435,6 +1709,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, bool status) {
+    return Row(
+      children: [
+        Icon(
+          status ? Icons.check_circle : Icons.cancel,
+          color: status ? Colors.green : Colors.red,
+          size: 20,
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+        Text(
+          status ? 'Yes' : 'No',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: status ? Colors.green : Colors.red,
+          ),
+        ),
+      ],
     );
   }
 

@@ -27,6 +27,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
+  shared_preferences: ^2.2.2
   
   # State management
   provider: ^6.1.2
@@ -46,7 +47,6 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
   timeago: ^3.7.0
-  android_alarm_manager_plus: ^4.0.3
   
   # Background tasks
   # workmanager: ^0.5.2  # Temporarily disabled due to Flutter 3.x compatibility issues

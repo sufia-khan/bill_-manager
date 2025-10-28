@@ -7,6 +7,7 @@ import '../widgets/animated_subtitle.dart';
 import '../widgets/expandable_bill_card.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 import '../utils/formatters.dart';
+import '../utils/text_styles.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
 
@@ -266,15 +267,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'BillManager',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFFF8C00),
-                              letterSpacing: 0.3,
-                            ),
-                          ),
+                          Text('BillManager', style: AppTextStyles.appTitle()),
                           const AnimatedSubtitle(),
                         ],
                       ),
@@ -322,17 +315,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                         'This month',
                         thisMonthTotal,
                         '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''}',
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            '📅',
-                            style: TextStyle(fontSize: 20),
-                          ),
-                        ),
+                        const Text('📅', style: TextStyle(fontSize: 20)),
                         thisMonthCount,
                       ),
                     ),
@@ -342,17 +325,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                         'Next 7 days',
                         next7DaysTotal,
                         '$next7DaysCount bill${next7DaysCount != 1 ? 's' : ''}',
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            '⏰',
-                            style: TextStyle(fontSize: 20),
-                          ),
-                        ),
+                        const Text('⏰', style: TextStyle(fontSize: 20)),
                         next7DaysCount,
                       ),
                     ),
@@ -490,11 +463,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
+                    style: AppTextStyles.summaryTitle(),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -508,11 +477,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                     amount >= 1000
                         ? formatCurrencyShort(amount)
                         : formatCurrencyFull(amount),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
+                    style: AppTextStyles.amountMedium(),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -536,11 +501,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
+              style: AppTextStyles.summarySubtitle(),
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -605,10 +566,9 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          style: AppTextStyles.tab(
             color: isSelected ? tabColor : Colors.grey.shade600,
+            isSelected: isSelected,
           ),
         ),
       ),
@@ -640,23 +600,9 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
             size: 18,
           ),
           const SizedBox(width: 10),
-          Text(
-            '$count ${selectedStatus}',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1F2937),
-            ),
-          ),
+          Text('$count $selectedStatus', style: AppTextStyles.filterCount()),
           const Spacer(),
-          Text(
-            formattedAmount,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFFFF8C00),
-            ),
-          ),
+          Text(formattedAmount, style: AppTextStyles.filterAmount()),
           if (isFormatted) ...[
             const SizedBox(width: 6),
             GestureDetector(
@@ -792,23 +738,44 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
     final isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () {
-        // Don't navigate if already on home screen
-        if (index == 0) return;
-
         setState(() {
           _selectedTabIndex = index;
         });
 
         // Handle navigation for different tabs
-        if (index == 1) {
+        if (index == 0) {
+          // Home tab - pop back to home if on another screen
+          Navigator.popUntil(context, (route) => route.isFirst);
+        } else if (index == 1) {
           // Analytics tab
-          Navigator.pushNamed(context, '/analytics');
+          Navigator.pushNamed(context, '/analytics').then((_) {
+            // Reset to home tab when returning
+            if (mounted) {
+              setState(() {
+                _selectedTabIndex = 0;
+              });
+            }
+          });
         } else if (index == 2) {
           // Calendar tab
-          Navigator.pushNamed(context, '/calendar');
+          Navigator.pushNamed(context, '/calendar').then((_) {
+            // Reset to home tab when returning
+            if (mounted) {
+              setState(() {
+                _selectedTabIndex = 0;
+              });
+            }
+          });
         } else if (index == 3) {
           // Settings tab
-          Navigator.pushNamed(context, '/settings');
+          Navigator.pushNamed(context, '/settings').then((_) {
+            // Reset to home tab when returning
+            if (mounted) {
+              setState(() {
+                _selectedTabIndex = 0;
+              });
+            }
+          });
         }
       },
       borderRadius: BorderRadius.circular(8),
@@ -827,8 +794,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10,
+              style: AppTextStyles.navLabel(
                 color: isSelected
                     ? const Color(0xFFFF8C00)
                     : Colors.grey.shade600,

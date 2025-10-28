@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/bill.dart';
 import '../utils/formatters.dart';
+import '../utils/text_styles.dart';
+import '../providers/sync_provider.dart';
 import 'bill_details_bottom_sheet.dart';
 import 'amount_info_bottom_sheet.dart';
+import 'sync_status_indicator.dart';
 
 class ExpandableBillCard extends StatelessWidget {
   final Bill bill;
@@ -17,19 +21,6 @@ class ExpandableBillCard extends StatelessWidget {
     this.daysRemaining,
     this.onMarkPaid,
   });
-
-  Color _getStatusColor() {
-    switch (bill.status) {
-      case 'paid':
-        return const Color(0xFF059669); // Green
-      case 'overdue':
-        return const Color(0xFFEF4444); // Red
-      case 'upcoming':
-        return const Color(0xFFFF8C00); // Orange
-      default:
-        return const Color(0xFF6B7280); // Gray
-    }
-  }
 
   Widget _buildDueDateText() {
     try {
@@ -70,13 +61,9 @@ class ExpandableBillCard extends StatelessWidget {
         final daysPast = -difference;
         if (daysPast <= 7) {
           if (daysPast == 0) {
-            return const Text(
+            return Text(
               'Due today',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFFEF4444),
-                fontWeight: FontWeight.w700,
-              ),
+              style: AppTextStyles.dueDate(color: const Color(0xFFEF4444)),
             );
           } else if (daysPast == 1) {
             prefix = 'Overdue by: ';
@@ -94,13 +81,9 @@ class ExpandableBillCard extends StatelessWidget {
       else {
         if (difference >= 0 && difference <= 7) {
           if (difference == 0) {
-            return const Text(
+            return Text(
               'Due today',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFFFF8C00),
-                fontWeight: FontWeight.w700,
-              ),
+              style: AppTextStyles.dueDate(color: const Color(0xFFFF8C00)),
             );
           } else if (difference == 1) {
             prefix = 'Due in: ';
@@ -129,18 +112,11 @@ class ExpandableBillCard extends StatelessWidget {
       if (bill.status == 'paid') {
         return RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 13),
             children: [
-              TextSpan(
-                text: prefix,
-                style: const TextStyle(
-                  color: Color(0xFF1F2937),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              TextSpan(text: prefix, style: AppTextStyles.dueDatePrefix()),
               TextSpan(
                 text: dateText,
-                style: TextStyle(color: dateColor, fontWeight: FontWeight.w800),
+                style: AppTextStyles.dueDate(color: dateColor),
               ),
             ],
           ),
@@ -149,31 +125,17 @@ class ExpandableBillCard extends StatelessWidget {
 
       return RichText(
         text: TextSpan(
-          style: const TextStyle(fontSize: 13),
           children: [
-            TextSpan(
-              text: prefix,
-              style: const TextStyle(
-                color: Color(0xFF1F2937),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            TextSpan(text: prefix, style: AppTextStyles.dueDatePrefix()),
             TextSpan(
               text: dateText,
-              style: TextStyle(color: dateColor, fontWeight: FontWeight.w800),
+              style: AppTextStyles.dueDate(color: dateColor),
             ),
           ],
         ),
       );
     } catch (e) {
-      return Text(
-        bill.due,
-        style: const TextStyle(
-          fontSize: 13,
-          color: Color(0xFF1F2937),
-          fontWeight: FontWeight.w700,
-        ),
-      );
+      return Text(bill.due, style: AppTextStyles.dueDate());
     }
   }
 
@@ -251,10 +213,8 @@ class ExpandableBillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor();
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -272,44 +232,61 @@ class ExpandableBillCard extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(18),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Emoji Icon (no container)
-            Text(_getCategoryEmoji(), style: const TextStyle(fontSize: 36)),
-            const SizedBox(width: 12),
+            // Emoji Icon in container
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _getCategoryEmoji(),
+                style: const TextStyle(fontSize: 24),
+              ),
+            ),
+            const SizedBox(width: 14),
             // Left Side - Bill Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  Text(
-                    bill.title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          bill.title,
+                          style: AppTextStyles.billTitle(),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Consumer<SyncProvider>(
+                        builder: (context, syncProvider, _) {
+                          final syncStatus = syncProvider.getBillSyncStatus(
+                            bill.id,
+                          );
+                          return SyncStatusIndicator(
+                            status: syncStatus,
+                            size: 14,
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 7),
-                  Text(
-                    bill.category,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF6B7280),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 8),
+                  Text(bill.category, style: AppTextStyles.label()),
+                  const SizedBox(height: 8),
                   Row(children: [Flexible(child: _buildDueDateText())]),
                 ],
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 16),
             // Right Side - Amount, Status, Manage
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -322,11 +299,7 @@ class ExpandableBillCard extends StatelessWidget {
                       bill.amount >= 1000
                           ? formatCurrencyShort(bill.amount)
                           : formatCurrencyFull(bill.amount),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1F2937),
-                      ),
+                      style: AppTextStyles.amount(),
                     ),
                     if (bill.amount >= 1000) ...[
                       const SizedBox(width: 6),
@@ -357,49 +330,24 @@ class ExpandableBillCard extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 7),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (bill.status == 'paid')
-                      const Icon(
-                        Icons.check_circle,
-                        size: 12,
-                        color: Color(0xFF059669),
-                      ),
-                    if (bill.status == 'paid') const SizedBox(width: 4),
-                    Text(
-                      bill.status.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: statusColor,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => _showManageBottomSheet(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3B82F6),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Manage',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                  ),
+                  child: Text('Manage', style: AppTextStyles.button()),
                 ),
               ],
             ),

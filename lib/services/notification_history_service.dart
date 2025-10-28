@@ -175,4 +175,89 @@ class NotificationHistoryService {
       print('Error deleting old notifications: $e');
     }
   }
+
+  // Add a scheduled notification that will be tracked
+  // This is called when a notification is scheduled, not when it's sent
+  static Future<void> trackScheduledNotification({
+    required String billId,
+    required String billTitle,
+    required String title,
+    required String body,
+    required DateTime scheduledFor,
+  }) async {
+    try {
+      // Store in a separate box for tracking
+      final trackingBox = await Hive.openBox('scheduledNotifications');
+      await trackingBox.put(billId, {
+        'billId': billId,
+        'billTitle': billTitle,
+        'title': title,
+        'body': body,
+        'scheduledFor': scheduledFor.toIso8601String(),
+        'tracked': false,
+      });
+    } catch (e) {
+      print('Error tracking scheduled notification: $e');
+    }
+  }
+
+  // Check for triggered notifications and add them to history
+  static Future<void> checkAndAddTriggeredNotifications() async {
+    try {
+      final trackingBox = await Hive.openBox('scheduledNotifications');
+      final now = DateTime.now();
+
+      final keys = trackingBox.keys.toList();
+      for (final key in keys) {
+        final data = trackingBox.get(key) as Map?;
+        if (data == null) continue;
+
+        final scheduledFor = DateTime.parse(data['scheduledFor'] as String);
+        final tracked = data['tracked'] as bool? ?? false;
+
+        // If the scheduled time has passed and we haven't tracked it yet
+        if (scheduledFor.isBefore(now) && !tracked) {
+          // Add to notification history
+          await addNotification(
+            title: data['title'] as String,
+            body: data['body'] as String,
+            billId: data['billId'] as String,
+            billTitle: data['billTitle'] as String,
+          );
+
+          // Mark as tracked
+          data['tracked'] = true;
+          await trackingBox.put(key, data);
+
+          print('✅ Added triggered notification to history: ${data['title']}');
+        }
+      }
+
+      // Clean up old tracked notifications (older than 7 days)
+      final cutoffDate = now.subtract(const Duration(days: 7));
+      for (final key in keys) {
+        final data = trackingBox.get(key) as Map?;
+        if (data == null) continue;
+
+        final scheduledFor = DateTime.parse(data['scheduledFor'] as String);
+        final tracked = data['tracked'] as bool? ?? false;
+
+        if (tracked && scheduledFor.isBefore(cutoffDate)) {
+          await trackingBox.delete(key);
+        }
+      }
+    } catch (e) {
+      print('Error checking triggered notifications: $e');
+    }
+  }
+
+  // Remove tracking for a cancelled notification
+  static Future<void> removeScheduledTracking(String billId) async {
+    try {
+      final trackingBox = await Hive.openBox('scheduledNotifications');
+      await trackingBox.delete(billId);
+    } catch (e) {
+      print('Error removing scheduled tracking: $e');
+    }
+  }
 }

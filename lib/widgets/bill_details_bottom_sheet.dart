@@ -452,8 +452,15 @@ class BillDetailsBottomSheet extends StatelessWidget {
                         valueColor: _getStatusColor(),
                       ),
                       _buildDetailRow('Recurring', bill.repeat),
-                      if (repeatCount != null && repeatCount > 0)
-                        _buildDetailRow('Repeat Count', '$repeatCount times'),
+                      if (repeatCount != null && repeatCount > 0) ...[
+                        if (billHive?.recurringSequence != null)
+                          _buildDetailRow(
+                            'Occurrence',
+                            '${billHive!.recurringSequence} of $repeatCount',
+                          )
+                        else
+                          _buildDetailRow('Repeat Count', '$repeatCount times'),
+                      ],
                       if (reminderTiming != null && reminderTiming.isNotEmpty)
                         _buildDetailRow('Reminder', reminderTiming),
                       if (notificationTime != null &&
@@ -650,7 +657,7 @@ class BillDetailsBottomSheet extends StatelessWidget {
                               ),
                               title: const Text('Delete Bill'),
                               content: Text(
-                                'Are you sure you want to delete "${bill.title}"?',
+                                'Are you sure you want to delete "${bill.title}"? This will delete all future recurring bills.',
                               ),
                               actions: [
                                 TextButton(

@@ -6,6 +6,13 @@ import '../models/sync_queue_item.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
 
+/// Optimized Firebase Sync Service
+/// - Offline-first: All operations save to Hive first
+/// - Batched writes: Groups multiple changes into single Firestore batch
+/// - Debounced sync: Delays sync to batch rapid changes (5 seconds)
+/// - Delta sync: Only fetches bills modified since last sync
+/// - Conflict resolution: Last-write-wins based on updatedAt timestamp
+/// - Background sync: Auto-syncs when network reconnects
 class FirebaseSyncService {
   final LocalDatabaseService _localDb = LocalDatabaseService();
   final NotificationService _notificationService = NotificationService();
@@ -15,42 +22,63 @@ class FirebaseSyncService {
   Timer? _debounceTimer;
   bool _isSyncing = false;
   String? _userId;
+  StreamSubscription? _connectivitySubscription;
+
+  // Sync statistics for monitoring
+  int _totalReads = 0;
+  int _totalWrites = 0;
+  DateTime? _lastSyncTime;
 
   // Singleton pattern
   static final FirebaseSyncService _instance = FirebaseSyncService._internal();
   factory FirebaseSyncService() => _instance;
   FirebaseSyncService._internal();
 
+  // Get sync statistics
+  Map<String, dynamic> getSyncStats() {
+    return {
+      'totalReads': _totalReads,
+      'totalWrites': _totalWrites,
+      'lastSyncTime': _lastSyncTime?.toIso8601String(),
+      'isSyncing': _isSyncing,
+    };
+  }
+
   // Initialize sync service
   Future<void> init(String userId) async {
     _userId = userId;
     await _localDb.setUserId(userId);
 
-    // Start periodic sync (every 30 seconds)
-    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // Start periodic sync (every 2 minutes to reduce reads)
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) {
       syncWithFirestore();
     });
 
     // Initial sync
     await syncWithFirestore();
 
-    // Listen to connectivity changes
-    Connectivity().onConnectivityChanged.listen((result) {
+    // Listen to connectivity changes for background sync
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      result,
+    ) {
       if (!result.contains(ConnectivityResult.none)) {
-        syncWithFirestore();
+        print('📡 Network reconnected, triggering sync...');
+        triggerSync();
       }
     });
   }
 
-  // Debounced sync trigger
+  // Debounced sync trigger (5 seconds to batch rapid changes)
   void triggerSync() {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), () {
+    _debounceTimer = Timer(const Duration(seconds: 5), () {
       syncWithFirestore();
     });
   }
 
-  // Main sync function
+  // Main sync function with optimized batching
   Future<void> syncWithFirestore() async {
     if (_isSyncing || _userId == null) return;
 
@@ -60,77 +88,111 @@ class FirebaseSyncService {
       // Check connectivity
       final connectivityResult = await Connectivity().checkConnectivity();
       if (connectivityResult.contains(ConnectivityResult.none)) {
+        print('📵 Offline - skipping sync');
         return;
       }
 
-      // Push local changes
-      await _pushLocalChanges();
+      print('🔄 Starting sync...');
+      final startTime = DateTime.now();
 
-      // Pull remote changes
-      await _pullRemoteChanges();
+      // Push local changes (batched)
+      final writeCount = await _pushLocalChanges();
+      _totalWrites += writeCount;
+
+      // Pull remote changes (delta sync)
+      final readCount = await _pullRemoteChanges();
+      _totalReads += readCount;
+
+      _lastSyncTime = DateTime.now();
+      final duration = _lastSyncTime!.difference(startTime);
+
+      print(
+        '✅ Sync complete in ${duration.inMilliseconds}ms '
+        '(Reads: $readCount, Writes: $writeCount)',
+      );
     } catch (e) {
-      print('Sync error: $e');
+      print('❌ Sync error: $e');
     } finally {
       _isSyncing = false;
     }
   }
 
-  // Push local changes to Firestore
-  Future<void> _pushLocalChanges() async {
+  // Push local changes to Firestore with batching
+  Future<int> _pushLocalChanges() async {
     final syncQueue = _localDb.getSyncQueue();
-    if (syncQueue.isEmpty) return;
+    if (syncQueue.isEmpty) return 0;
 
-    // Batch writes for efficiency
-    final batch = _firestore.batch();
+    print('📤 Pushing ${syncQueue.length} changes...');
+
+    // Firestore batch limit is 500 operations
+    const batchSize = 500;
+    int totalWrites = 0;
     final itemsToRemove = <SyncQueueItem>[];
 
-    for (final item in syncQueue) {
-      try {
-        final bill = _localDb.getBill(item.billId);
-        if (bill == null) continue;
+    // Process in batches
+    for (var i = 0; i < syncQueue.length; i += batchSize) {
+      final batchItems = syncQueue.skip(i).take(batchSize).toList();
+      final batch = _firestore.batch();
+      int batchWrites = 0;
 
-        final docRef = _firestore
-            .collection('users')
-            .doc(_userId)
-            .collection('bills')
-            .doc(bill.id);
+      for (final item in batchItems) {
+        try {
+          final bill = _localDb.getBill(item.billId);
+          if (bill == null) {
+            itemsToRemove.add(item);
+            continue;
+          }
 
-        if (item.operation == 'delete' || bill.isDeleted) {
-          batch.delete(docRef);
-        } else {
-          batch.set(docRef, bill.toFirestore(), SetOptions(merge: true));
-        }
+          final docRef = _firestore
+              .collection('users')
+              .doc(_userId)
+              .collection('bills')
+              .doc(bill.id);
 
-        // Mark for removal from queue
-        itemsToRemove.add(item);
+          if (item.operation == 'delete' || bill.isDeleted) {
+            batch.delete(docRef);
+          } else {
+            // Only sync necessary fields to reduce write size
+            batch.set(docRef, bill.toFirestore(), SetOptions(merge: true));
+          }
 
-        // Update local bill sync status
-        bill.needsSync = false;
-        await bill.save();
-      } catch (e) {
-        print('Error pushing bill ${item.billId}: $e');
-        item.retryCount++;
-        item.lastAttemptAt = DateTime.now();
-        await item.save();
-
-        // Remove from queue after 5 failed attempts
-        if (item.retryCount >= 5) {
+          batchWrites++;
           itemsToRemove.add(item);
+
+          // Update local bill sync status
+          bill.needsSync = false;
+          await bill.save();
+        } catch (e) {
+          print('⚠️ Error preparing bill ${item.billId}: $e');
+          item.retryCount++;
+          item.lastAttemptAt = DateTime.now();
+          await item.save();
+
+          // Remove from queue after 5 failed attempts
+          if (item.retryCount >= 5) {
+            print('❌ Giving up on bill ${item.billId} after 5 retries');
+            itemsToRemove.add(item);
+          }
         }
       }
-    }
 
-    // Commit batch
-    await batch.commit();
+      // Commit batch
+      if (batchWrites > 0) {
+        await batch.commit();
+        totalWrites += batchWrites;
+      }
+    }
 
     // Remove processed items from queue
     for (final item in itemsToRemove) {
       await _localDb.removeSyncQueueItem(item);
     }
+
+    return totalWrites;
   }
 
-  // Pull remote changes from Firestore
-  Future<void> _pullRemoteChanges() async {
+  // Pull remote changes from Firestore (delta sync only)
+  Future<int> _pullRemoteChanges() async {
     final lastPulledAt = _localDb.getLastPulledAt();
 
     Query query = _firestore
@@ -145,10 +207,15 @@ class FirebaseSyncService {
         'updatedAt',
         isGreaterThan: lastPulledAt.toIso8601String(),
       );
+      print('📥 Fetching changes since ${lastPulledAt.toIso8601String()}');
+    } else {
+      print('📥 Fetching all bills (first sync)');
     }
 
     final snapshot = await query.get();
     final now = DateTime.now();
+
+    print('📥 Received ${snapshot.docs.length} changed bills');
 
     for (final doc in snapshot.docs) {
       try {
@@ -168,6 +235,7 @@ class FirebaseSyncService {
           // Conflict resolution: last-write-wins
           if (remoteBill.updatedAt.isAfter(localBill.updatedAt)) {
             // Remote is newer
+            print('🔄 Updating bill ${remoteBill.title} (remote newer)');
             await _localDb.billsBox.put(remoteBill.id, remoteBill);
 
             // Update notification
@@ -178,27 +246,42 @@ class FirebaseSyncService {
             }
           } else if (localBill.needsSync) {
             // Local is newer and needs sync - will be pushed in next cycle
+            print('⏭️ Skipping bill ${localBill.title} (local newer)');
             continue;
           }
         }
       } catch (e) {
-        print('Error processing remote bill ${doc.id}: $e');
+        print('⚠️ Error processing remote bill ${doc.id}: $e');
       }
     }
 
     // Update last pulled timestamp
     await _localDb.setLastPulledAt(now);
+
+    return snapshot.docs.length;
   }
 
   // Force full sync (for initial login or data recovery)
   Future<void> fullSync() async {
+    print('🔄 Starting full sync...');
     await _localDb.setLastPulledAt(DateTime.fromMillisecondsSinceEpoch(0));
     await syncWithFirestore();
+  }
+
+  // Check if there are pending changes
+  bool hasPendingChanges() {
+    return _localDb.getSyncQueue().isNotEmpty;
+  }
+
+  // Get pending changes count
+  int getPendingChangesCount() {
+    return _localDb.getSyncQueue().length;
   }
 
   // Dispose resources
   void dispose() {
     _syncTimer?.cancel();
     _debounceTimer?.cancel();
+    _connectivitySubscription?.cancel();
   }
 }

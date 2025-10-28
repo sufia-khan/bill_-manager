@@ -136,9 +136,8 @@ export default function AddBillScreen() {
             Title <span className="text-red-500">*</span>
           </label>
           <input
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${
-              errors.title ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-            }`}
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${errors.title ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+              }`}
             placeholder="e.g. Electricity bill"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -156,9 +155,8 @@ export default function AddBillScreen() {
           <input
             type="number"
             step="0.01"
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${
-              errors.amount ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-            }`}
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${errors.amount ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+              }`}
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -175,9 +173,8 @@ export default function AddBillScreen() {
           </label>
           <input
             type="date"
-            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${
-              errors.due ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-            }`}
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FF8C00] focus:border-transparent transition-all ${errors.due ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+              }`}
             value={due}
             onChange={(e) => setDue(e.target.value)}
           />

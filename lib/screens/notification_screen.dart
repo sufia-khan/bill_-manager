@@ -20,7 +20,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void initState() {
     super.initState();
+    _checkTriggeredNotifications();
     _loadNotifications();
+  }
+
+  Future<void> _checkTriggeredNotifications() async {
+    try {
+      // Check for any triggered notifications and add to history
+      await NotificationHistoryService.checkAndAddTriggeredNotifications();
+    } catch (e) {
+      debugPrint('Error checking triggered notifications: $e');
+    }
   }
 
   Future<void> _loadNotifications({bool loadMore = false}) async {

@@ -14,13 +14,14 @@ import 'screens/archived_bills_screen.dart';
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
-import 'services/alarm_notification_service.dart';
 import 'services/notification_history_service.dart';
+import 'services/pending_notification_service.dart';
 import 'services/user_preferences_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/sync_provider.dart';
 import 'providers/notification_settings_provider.dart';
 
 void main() async {
@@ -41,11 +42,22 @@ void main() async {
   // Initialize notification service
   await NotificationService().init();
 
-  // Initialize alarm notification service (for background notifications)
-  await AlarmNotificationService().init();
-
   // Initialize notification history service
   await NotificationHistoryService.init();
+
+  // Process any pending notifications that triggered while app was closed
+  await PendingNotificationService.processPendingNotifications();
+
+  // Set up notification tap handler
+  NotificationService.onNotificationTapped = (String? billId) {
+    if (billId != null) {
+      // Navigate to bill details when notification is tapped
+      MyApp.navigatorKey.currentState?.pushNamed(
+        '/bill-details',
+        arguments: billId,
+      );
+    }
+  };
 
   // Note: Background task scheduling removed due to workmanager compatibility issues
   // Maintenance runs automatically on app startup via BillProvider.initialize()
@@ -56,6 +68,10 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  // Global navigator key for notification navigation
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -65,6 +81,7 @@ class MyApp extends StatelessWidget {
           create: (_) => CurrencyProvider()..loadSavedCurrency(),
         ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => SyncProvider()),
         ChangeNotifierProvider(
           create: (_) => NotificationSettingsProvider()..initialize(),
         ),
@@ -80,6 +97,7 @@ class MyApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
           return MaterialApp(
+            navigatorKey: navigatorKey,
             debugShowCheckedModeBanner: false,
             title: 'BillManager',
             routes: {
@@ -114,6 +132,7 @@ class AuthWrapper extends StatefulWidget {
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _hasShownPermissionDialog = false;
   bool _hasShownOnboarding = false;
+  bool _hasLoadedCurrency = false;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +149,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         // If user is authenticated, show onboarding first (only once per user)
         if (authProvider.isAuthenticated) {
+          // Load currency from Firebase after authentication
+          if (!_hasLoadedCurrency) {
+            _hasLoadedCurrency = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              // Small delay to ensure Firebase is ready
+              await Future.delayed(const Duration(milliseconds: 500));
+              if (mounted) {
+                await context.read<CurrencyProvider>().loadSavedCurrency();
+              }
+            });
+          }
+
           // Check if user has seen onboarding
           final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding();
 
@@ -153,6 +184,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
             });
           }
           return const BillManagerScreen();
+        }
+
+        // Reset flags when user logs out
+        if (!authProvider.isAuthenticated) {
+          _hasLoadedCurrency = false;
+          _hasShownPermissionDialog = false;
+          _hasShownOnboarding = false;
         }
 
         // Otherwise, show login screen
