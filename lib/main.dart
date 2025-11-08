@@ -142,7 +142,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         if (authProvider.isLoading) {
           return const Scaffold(
             body: Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+              child: CircularProgressIndicator(color: Color(0xFFF97316)),
             ),
           );
         }
@@ -220,7 +220,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           children: [
             Icon(
               Icons.notifications_active,
-              color: Color(0xFFFF8C00),
+              color: Color(0xFFF97316),
               size: 28,
             ),
             SizedBox(width: 12),
@@ -250,7 +250,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.warning_amber, color: Color(0xFFFF8C00), size: 20),
+                  Icon(Icons.warning_amber, color: Color(0xFFF97316), size: 20),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -274,7 +274,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
@@ -349,7 +349,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.alarm, color: Color(0xFFFF8C00), size: 28),
+            Icon(Icons.alarm, color: Color(0xFFF97316), size: 28),
             SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -382,7 +382,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
                     children: [
                       Icon(
                         Icons.info_outline,
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                         size: 20,
                       ),
                       SizedBox(width: 8),
@@ -414,7 +414,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
@@ -436,7 +436,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber, color: Color(0xFFFF8C00), size: 28),
+            Icon(Icons.warning_amber, color: Color(0xFFF97316), size: 28),
             SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -469,7 +469,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
                     children: [
                       Icon(
                         Icons.warning_amber,
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                         size: 20,
                       ),
                       SizedBox(width: 8),
@@ -499,7 +499,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(

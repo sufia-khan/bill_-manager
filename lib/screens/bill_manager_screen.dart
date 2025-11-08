@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/bill.dart';
@@ -10,6 +11,7 @@ import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
+import '../services/notification_history_service.dart';
 
 class BillManagerScreen extends StatefulWidget {
   const BillManagerScreen({super.key});
@@ -298,7 +300,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                         },
                         icon: const Icon(
                           Icons.notifications_outlined,
-                          color: Color(0xFFFF8C00),
+                          color: Color(0xFFF97316),
                           size: 24,
                         ),
                         tooltip: 'Notifications',
@@ -413,9 +415,9 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                   });
                 },
                 activeTrackColor: const Color(
-                  0xFFFF8C00,
+                  0xFFF97316,
                 ).withValues(alpha: 0.5),
-                activeThumbColor: const Color(0xFFFF8C00),
+                activeThumbColor: const Color(0xFFF97316),
               ),
             ],
           ),
@@ -443,12 +445,22 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF8C00),
+          gradient: LinearGradient(
+            colors: title == 'This month'
+                ? [const Color(0xFF3B82F6), const Color(0xFF4F46E5)]
+                : [const Color(0xFF8B5CF6), const Color(0xFF9333EA)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
-              blurRadius: 8,
+              color:
+                  (title == 'This month'
+                          ? const Color(0xFFBFDBFE)
+                          : const Color(0xFFDDD6FE))
+                      .withValues(alpha: 0.3),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -512,63 +524,154 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
 
   Widget _buildFilterSection() {
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0).withValues(alpha: 0.5),
+          width: 1,
         ),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _buildStatusTab('upcoming', 'Upcoming')),
-          Expanded(child: _buildStatusTab('overdue', 'Overdue')),
-          Expanded(child: _buildStatusTab('paid', 'Paid')),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildStatusTab(
+                  'upcoming',
+                  'Upcoming',
+                  Icons.access_time_rounded,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildStatusTab(
+                  'overdue',
+                  'Overdue',
+                  Icons.bolt_rounded,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildStatusTab(
+                  'paid',
+                  'Paid',
+                  Icons.check_circle_rounded,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildStatusTab(String status, String label) {
+  Widget _buildStatusTab(String status, String label, IconData icon) {
     final isSelected = selectedStatus == status;
 
-    // Get color based on status
-    Color tabColor;
+    // Get colors based on status - matching Tailwind colors exactly
+    Color activeBackgroundColor;
+    Color activeTextColor;
+    Color activeBorderColor;
+
     switch (status) {
       case 'upcoming':
-        tabColor = const Color(0xFFFF8C00); // Orange
+        activeBackgroundColor = const Color(0xFFEFF6FF); // bg-blue-50
+        activeTextColor = const Color(0xFF1D4ED8); // text-blue-700
+        activeBorderColor = const Color(0xFFBFDBFE); // border-blue-200
         break;
       case 'overdue':
-        tabColor = const Color(0xFFEF4444); // Red
+        activeBackgroundColor = const Color(0xFFFFF1F2); // bg-rose-50
+        activeTextColor = const Color(0xFFBE123C); // text-rose-700
+        activeBorderColor = const Color(0xFFFECDD3); // border-rose-200
         break;
       case 'paid':
-        tabColor = const Color(0xFF059669); // Green
+        activeBackgroundColor = const Color(0xFFECFDF5); // bg-emerald-50
+        activeTextColor = const Color(0xFF047857); // text-emerald-700
+        activeBorderColor = const Color(0xFFA7F3D0); // border-emerald-200
         break;
       default:
-        tabColor = const Color(0xFFFF8C00);
+        activeBackgroundColor = const Color(0xFFEFF6FF);
+        activeTextColor = const Color(0xFF1D4ED8);
+        activeBorderColor = const Color(0xFFBFDBFE);
     }
 
-    return InkWell(
-      onTap: () {
-        setState(() {
-          selectedStatus = status;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isSelected ? tabColor : Colors.transparent,
-              width: 3,
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            selectedStatus = status;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        splashColor: activeBackgroundColor.withValues(alpha: 0.2),
+        highlightColor: activeBackgroundColor.withValues(alpha: 0.05),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutQuart,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? activeBackgroundColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: isSelected
+                ? Border.all(color: activeBorderColor, width: 1)
+                : null,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
           ),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.tab(
-            color: isSelected ? tabColor : Colors.grey.shade600,
-            isSelected: isSelected,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOutQuart,
+                child: Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected ? activeTextColor : const Color(0xFF475569),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutQuart,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: isSelected
+                        ? activeTextColor
+                        : const Color(0xFF475569),
+                  ),
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -585,10 +688,10 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFF8C00).withValues(alpha: 0.06),
+        color: const Color(0xFFF97316).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+          color: const Color(0xFFF97316).withValues(alpha: 0.15),
           width: 1,
         ),
       ),
@@ -596,7 +699,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
         children: [
           Icon(
             Icons.filter_list_rounded,
-            color: const Color(0xFFFF8C00),
+            color: const Color(0xFFF97316),
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -618,13 +721,13 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
+                  color: const Color(0xFFF97316).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Icon(
                   Icons.info_outline,
                   size: 14,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                 ),
               ),
             ),
@@ -640,7 +743,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
       return Container(
         padding: const EdgeInsets.all(48),
         child: const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
         ),
       );
     }
@@ -716,14 +819,19 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFFF8C00), Color(0xFFFF6B00)],
+            colors: [
+              Color(0xFFFB923C),
+              Color(0xFFF97316),
+            ], // orange-400 to orange-500
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFF8C00).withOpacity(0.3),
+              color: const Color(
+                0xFFFED7AA,
+              ).withOpacity(0.3), // orange-200 shadow
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -788,7 +896,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
               icon,
               size: 24,
               color: isSelected
-                  ? const Color(0xFFFF8C00)
+                  ? const Color(0xFFF97316)
                   : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
@@ -796,7 +904,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
               label,
               style: AppTextStyles.navLabel(
                 color: isSelected
-                    ? const Color(0xFFFF8C00)
+                    ? const Color(0xFFF97316)
                     : Colors.grey.shade600,
               ),
             ),
@@ -829,12 +937,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                  color: const Color(0xFFF97316).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.check_circle_outline,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                   size: 20,
                 ),
               ),
@@ -912,7 +1020,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                 _markPaid(bill.id);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF8C00),
+                backgroundColor: const Color(0xFFF97316),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,

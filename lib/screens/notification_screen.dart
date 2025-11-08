@@ -22,6 +22,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
     super.initState();
     _checkTriggeredNotifications();
     _loadNotifications();
+    // Auto-mark all notifications as read when screen opens
+    _markAllAsReadSilently();
+  }
+
+  Future<void> _markAllAsReadSilently() async {
+    try {
+      await NotificationHistoryService.markAllAsRead();
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error marking notifications as read: $e');
+    }
   }
 
   Future<void> _checkTriggeredNotifications() async {
@@ -118,19 +129,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  Future<void> _markAllAsRead() async {
-    await NotificationHistoryService.markAllAsRead();
-    _loadNotifications();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All notifications marked as read'),
-          backgroundColor: Color(0xFF059669),
-        ),
-      );
-    }
-  }
-
   Future<void> _deleteNotification(String id) async {
     await NotificationHistoryService.deleteNotification(id);
     _loadNotifications();
@@ -220,16 +218,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ],
         ),
         actions: [
-          if (_notifications.isNotEmpty && unreadCount > 0)
-            IconButton(
-              onPressed: _markAllAsRead,
-              icon: const Icon(
-                Icons.done_all,
-                color: Color(0xFF059669),
-                size: 22,
-              ),
-              tooltip: 'Mark All as Read',
-            ),
           if (_notifications.isNotEmpty)
             IconButton(
               onPressed: _clearAllNotifications,

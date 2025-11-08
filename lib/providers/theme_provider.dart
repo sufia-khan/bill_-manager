@@ -57,29 +57,30 @@ class ThemeProvider with ChangeNotifier {
     }
   }
 
-  // Light theme
+  // Light theme with warm orange gradient colors
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      primaryColor: const Color(0xFFFF8C00),
+      primaryColor: const Color(0xFFF97316), // orange-500
       scaffoldBackgroundColor: Colors.white,
       colorScheme: const ColorScheme.light(
-        primary: Color(0xFFFF8C00),
-        secondary: Color(0xFFFF8C00),
+        primary: Color(0xFFF97316), // orange-500
+        secondary: Color(0xFFFB923C), // orange-400
         surface: Colors.white,
         error: Color(0xFFDC2626),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.white,
-        foregroundColor: Color(0xFFFF8C00),
+        foregroundColor: Color(0xFFF97316), // orange-500
         elevation: 0,
         surfaceTintColor: Colors.white,
-        iconTheme: IconThemeData(color: Color(0xFFFF8C00)),
+        iconTheme: IconThemeData(color: Color(0xFFF97316)), // orange-500
       ),
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 2,
+        shadowColor: const Color(0xFFFED7AA), // orange-200 shadow
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       textTheme: const TextTheme(
@@ -87,7 +88,7 @@ class ThemeProvider with ChangeNotifier {
         bodyMedium: TextStyle(color: Color(0xFF1F2937)),
         titleLarge: TextStyle(color: Color(0xFF1F2937)),
       ),
-      iconTheme: const IconThemeData(color: Color(0xFFFF8C00)),
+      iconTheme: const IconThemeData(color: Color(0xFFF97316)), // orange-500
     );
   }
 

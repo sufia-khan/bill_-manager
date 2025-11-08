@@ -329,7 +329,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  height: 280,
+                  height: 300,
                   child: _buildSummaryCards(
                     totalAmount,
                     paidAmount,
@@ -341,7 +341,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     overdueCount,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 _buildBarChart(monthlyData, bills),
                 const SizedBox(height: 16),
                 _buildTopCategories(bills),
@@ -489,14 +489,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      formatCurrencyShort(totalSpending),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F2937),
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            formatCurrencyShort(totalSpending),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1F2937),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (totalSpending >= 1000) ...[
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () {
+                              AmountInfoBottomSheet.show(
+                                context,
+                                amount: totalSpending,
+                                billCount: bills.length,
+                                title: 'Total Spending',
+                                formattedAmount: formatCurrencyShort(
+                                  totalSpending,
+                                ),
+                              );
+                            },
+                            child: Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -543,13 +571,39 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Text(
-                              formatCurrencyShort(amount),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1F2937),
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  formatCurrencyShort(amount),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1F2937),
+                                  ),
+                                ),
+                                if (amount >= 1000) ...[
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () {
+                                      AmountInfoBottomSheet.show(
+                                        context,
+                                        amount: amount,
+                                        billCount: categoryCount[category] ?? 0,
+                                        title: category,
+                                        formattedAmount: formatCurrencyShort(
+                                          amount,
+                                        ),
+                                      );
+                                    },
+                                    child: Icon(
+                                      Icons.info_outline,
+                                      size: 14,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
                         ),
