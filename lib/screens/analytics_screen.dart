@@ -816,19 +816,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (isActive)
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 12,
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -840,12 +827,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   child: Text(
                     formatCurrencyShort(numericAmount),
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: color,
                       height: 1,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    overflow: TextOverflow.visible,
+                    maxLines: 1,
                   ),
                 ),
                 if (numericAmount >= 1000)
@@ -860,7 +848,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       );
                     },
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
+                      padding: const EdgeInsets.only(bottom: 2, left: 4),
                       child: Icon(
                         Icons.info_outline_rounded,
                         size: 16,
