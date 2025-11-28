@@ -281,7 +281,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
     final primaryColor = isDarkMode
         ? const Color(0xFF6366F1)
-        : const Color(0xFFFF8C00);
+        : const Color(0xFFF97316);
     final backgroundColor = isDarkMode
         ? const Color(0xFF0F172A)
         : const Color(0xFFF3F4F6);
@@ -332,7 +332,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             leading: IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new,
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
                 size: 20,
               ),
               onPressed: () => Navigator.pop(context),
@@ -340,10 +340,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             title: const Text(
               'Calendar',
               style: TextStyle(
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
               ),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(height: 1, color: Colors.grey.shade200),
             ),
           ),
           bottomNavigationBar: _buildBottomNav(
@@ -446,7 +450,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFF8C00), // Orange background
+        color: const Color(0xFFF97316), // Orange background
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -592,7 +596,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: isSelected
-                                ? const Color(0xFFFF8C00)
+                                ? const Color(0xFFF97316)
                                 : Colors.white,
                           ),
                           overflow: TextOverflow.visible,
@@ -605,7 +609,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           height: 4,
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? const Color(0xFFFF8C00)
+                                ? const Color(0xFFF97316)
                                 : Colors.white,
                             shape: BoxShape.circle,
                           ),
@@ -882,7 +886,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     padding: const EdgeInsets.all(3),
                                     decoration: BoxDecoration(
                                       color: const Color(
-                                        0xFFFF8C00,
+                                        0xFFF97316,
                                       ).withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(4),
                                     ),

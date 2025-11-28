@@ -78,12 +78,12 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                  color: const Color(0xFFF97316).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.currency_exchange,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                   size: 24,
                 ),
               ),
@@ -125,7 +125,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                     const Icon(
                       Icons.info_outline,
                       size: 16,
-                      color: Color(0xFFFF8C00),
+                      color: Color(0xFFF97316),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -157,7 +157,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                 widget.onCurrencySelected(currency, false, 1.0);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF8C00),
+                backgroundColor: const Color(0xFFF97316),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -234,13 +234,13 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: const Color(
-                                0xFFFF8C00,
+                                0xFFF97316,
                               ).withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
                               Icons.currency_exchange,
-                              color: Color(0xFFFF8C00),
+                              color: Color(0xFFF97316),
                               size: 20,
                             ),
                           ),
@@ -289,7 +289,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                     helperStyle: const TextStyle(fontSize: 12),
                     prefixIcon: const Icon(
                       Icons.calculate,
-                      color: Color(0xFFFF8C00),
+                      color: Color(0xFFF97316),
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -297,7 +297,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                         width: 2,
                       ),
                     ),
@@ -316,7 +316,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                         },
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: Color(0xFFFF8C00)),
+                          side: const BorderSide(color: Color(0xFFF97316)),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -324,7 +324,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                         child: const Text(
                           'No, Only Change Symbol',
                           style: TextStyle(
-                            color: Color(0xFFFF8C00),
+                            color: Color(0xFFF97316),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -341,7 +341,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                           widget.onCurrencySelected(currency, true, rate);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF8C00),
+                          backgroundColor: const Color(0xFFF97316),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -436,7 +436,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                     width: 2,
                   ),
                 ),
@@ -470,12 +470,12 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                          ? const Color(0xFFF97316).withValues(alpha: 0.1)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isSelected
-                            ? const Color(0xFFFF8C00)
+                            ? const Color(0xFFF97316)
                             : Colors.grey.shade200,
                         width: isSelected ? 2 : 1,
                       ),
@@ -487,7 +487,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                           height: 48,
                           decoration: BoxDecoration(
                             color: const Color(
-                              0xFFFF8C00,
+                              0xFFF97316,
                             ).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -497,7 +497,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                               style: TextStyle(
                                 fontSize: _getSymbolFontSize(currency.symbol),
                                 fontWeight: FontWeight.w600,
-                                color: const Color(0xFFFF8C00),
+                                color: const Color(0xFFF97316),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.visible,
@@ -516,7 +516,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                   color: isSelected
-                                      ? const Color(0xFFFF8C00)
+                                      ? const Color(0xFFF97316)
                                       : const Color(0xFF1F2937),
                                 ),
                               ),
@@ -534,7 +534,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                         if (isSelected)
                           const Icon(
                             Icons.check_circle,
-                            color: Color(0xFFFF8C00),
+                            color: Color(0xFFF97316),
                             size: 24,
                           ),
                       ],

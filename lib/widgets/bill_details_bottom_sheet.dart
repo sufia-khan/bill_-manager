@@ -266,7 +266,7 @@ class BillDetailsBottomSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF5E6),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFF8C00).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFFF97316).withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,28 +406,30 @@ class BillDetailsBottomSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit,
-                              color: Color(0xFFFF8C00),
+                          // Only show edit button for unpaid bills
+                          if (bill.status != 'paid')
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit,
+                                color: Color(0xFFF97316),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        AddBillScreen(billToEdit: bill),
+                                  ),
+                                );
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(
+                                  0xFFF97316,
+                                ).withValues(alpha: 0.1),
+                                padding: const EdgeInsets.all(10),
+                              ),
                             ),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      AddBillScreen(billToEdit: bill),
-                                ),
-                              );
-                            },
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(
-                                0xFFFF8C00,
-                              ).withValues(alpha: 0.1),
-                              padding: const EdgeInsets.all(10),
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -520,8 +522,8 @@ class BillDetailsBottomSheet extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          const Color(0xFFFF8C00).withValues(alpha: 0.8),
-                          const Color(0xFFFF8C00).withValues(alpha: 0.5),
+                          const Color(0xFFF97316).withValues(alpha: 0.8),
+                          const Color(0xFFF97316).withValues(alpha: 0.5),
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -541,67 +543,6 @@ class BillDetailsBottomSheet extends StatelessWidget {
             decoration: const BoxDecoration(color: Colors.white),
             child: Column(
               children: [
-                // Archive button for paid bills
-                if (bill.status == 'paid') ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            title: const Text('Archive Bill'),
-                            content: Text(
-                              'Are you sure you want to archive "${bill.title}"? Archived bills won\'t appear in your active bills list.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: const Color(0xFFFF8C00),
-                                ),
-                                child: const Text('Archive'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true && context.mounted) {
-                          Navigator.pop(context);
-                          await billProvider.archiveBill(bill.id);
-
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Bill "${bill.title}" archived'),
-                                backgroundColor: const Color(0xFFFF8C00),
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.archive, size: 18),
-                      label: const Text('Archive Now'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFFF8C00),
-                        side: const BorderSide(color: Color(0xFFFF8C00)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
                 Row(
                   children: [
                     if (bill.status == 'paid')
@@ -609,12 +550,22 @@ class BillDetailsBottomSheet extends StatelessWidget {
                         child: ElevatedButton.icon(
                           onPressed: () async {
                             Navigator.pop(context);
-                            await billProvider.undoBillPayment(bill.id);
+                            await billProvider.archiveBill(bill.id);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('"${bill.title}" archived'),
+                                  backgroundColor: const Color(0xFF059669),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
                           },
-                          icon: const Icon(Icons.undo, size: 18),
-                          label: const Text('Undo Payment'),
+                          icon: const Icon(Icons.archive_outlined, size: 18),
+                          label: const Text('Archive Now'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF8C00),
+                            backgroundColor: const Color(0xFF059669),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
@@ -628,9 +579,151 @@ class BillDetailsBottomSheet extends StatelessWidget {
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () async {
-                            Navigator.pop(context);
-                            await billProvider.markBillAsPaid(bill.id);
-                            if (onMarkPaid != null) onMarkPaid!();
+                            // Show confirmation dialog first
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                title: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF059669,
+                                        ).withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.check_circle_outline,
+                                        color: Color(0xFF059669),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text('Mark as Paid?'),
+                                  ],
+                                ),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Are you sure you want to mark this bill as paid?',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: Colors.grey.shade200,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            _getCategoryEmoji(),
+                                            style: const TextStyle(
+                                              fontSize: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  bill.title,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Color(0xFF1F2937),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  formatCurrencyFull(
+                                                    bill.amount,
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: Text(
+                                      'Cancel',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF059669),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: const Text('Mark as Paid'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            // Only mark as paid if user confirmed
+                            if (confirm == true && context.mounted) {
+                              Navigator.pop(context);
+                              await billProvider.markBillAsPaid(bill.id);
+
+                              // Show success snackbar
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            '${bill.title} marked as paid!',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: const Color(0xFF059669),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            }
                           },
                           icon: const Icon(Icons.check_circle, size: 18),
                           label: const Text('Mark as Paid'),
@@ -656,8 +749,30 @@ class BillDetailsBottomSheet extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               title: const Text('Delete Bill'),
-                              content: Text(
-                                'Are you sure you want to delete "${bill.title}"? This will delete all future recurring bills.',
+                              content: Builder(
+                                builder: (context) {
+                                  final now = DateTime.now();
+                                  final dueDate = DateTime.parse(
+                                    '${bill.due}T00:00:00',
+                                  );
+                                  final isPaidOrOverdue =
+                                      bill.status == 'paid' ||
+                                      dueDate.isBefore(now);
+
+                                  if (isPaidOrOverdue) {
+                                    return Text(
+                                      'Are you sure you want to delete "${bill.title}"?',
+                                    );
+                                  } else if (bill.repeat != 'none') {
+                                    return Text(
+                                      'Are you sure you want to delete "${bill.title}"? This will also delete all future unpaid occurrences. Paid history will be kept.',
+                                    );
+                                  } else {
+                                    return Text(
+                                      'Are you sure you want to delete "${bill.title}"?',
+                                    );
+                                  }
+                                },
                               ),
                               actions: [
                                 TextButton(
@@ -679,21 +794,26 @@ class BillDetailsBottomSheet extends StatelessWidget {
                             Navigator.pop(context);
                             await billProvider.deleteBill(bill.id);
 
-                            // Show snackbar with undo option
+                            // Show snackbar
                             if (context.mounted) {
+                              final now = DateTime.now();
+                              final dueDate = DateTime.parse(
+                                '${bill.due}T00:00:00',
+                              );
+                              final isPaidOrOverdue =
+                                  bill.status == 'paid' ||
+                                  dueDate.isBefore(now);
+                              final message =
+                                  (bill.repeat != 'none' && !isPaidOrOverdue)
+                                  ? '"${bill.title}" and future occurrences deleted'
+                                  : 'Bill "${bill.title}" deleted';
+
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Bill "${bill.title}" deleted'),
+                                  content: Text(message),
                                   backgroundColor: const Color(0xFFEF4444),
                                   behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 4),
-                                  action: SnackBarAction(
-                                    label: 'UNDO',
-                                    textColor: Colors.white,
-                                    onPressed: () async {
-                                      await billProvider.undoDelete(bill.id);
-                                    },
-                                  ),
+                                  duration: const Duration(seconds: 3),
                                 ),
                               );
                             }

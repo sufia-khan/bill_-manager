@@ -9,6 +9,7 @@ import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/archived_bills_screen.dart';
 // import 'screens/past_bills_screen.dart'; // Removed - paid bills now shown in Paid tab
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
@@ -99,7 +100,7 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             navigatorKey: navigatorKey,
             debugShowCheckedModeBanner: false,
-            title: 'BillManager',
+            title: 'BillMinder',
             routes: {
               '/': (context) => const AuthWrapper(),
               '/login': (context) => const LoginScreen(),
@@ -129,13 +130,79 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
+class _AuthWrapperState extends State<AuthWrapper>
+    with SingleTickerProviderStateMixin {
   bool _hasShownPermissionDialog = false;
   bool _hasShownOnboarding = false;
   bool _hasLoadedCurrency = false;
+  bool _isShowingOnboarding = false;
+  bool _showSplash = true;
+  bool _splashFadeOut = false;
+
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  void _onSplashComplete() async {
+    if (mounted) {
+      setState(() => _splashFadeOut = true);
+      _fadeController.forward();
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) {
+        setState(() => _showSplash = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Show splash screen with fade transition
+    if (_showSplash) {
+      return Stack(
+        children: [
+          // Main content behind splash (preloaded)
+          if (_splashFadeOut)
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, _) {
+                if (authProvider.isAuthenticated) {
+                  return const BillManagerScreen();
+                }
+                return const LoginScreen();
+              },
+            ),
+          // Splash screen fading out
+          if (!_splashFadeOut)
+            SplashScreen(onComplete: _onSplashComplete)
+          else
+            FadeTransition(
+              opacity: Tween<double>(
+                begin: 1.0,
+                end: 0.0,
+              ).animate(_fadeAnimation),
+              child: IgnorePointer(child: SplashScreen(onComplete: () {})),
+            ),
+        ],
+      );
+    }
+
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         // Show loading indicator while checking auth state
@@ -149,6 +216,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         // If user is authenticated, show onboarding first (only once per user)
         if (authProvider.isAuthenticated) {
+          final userId = authProvider.user?.uid;
+
           // Load currency from Firebase after authentication
           if (!_hasLoadedCurrency) {
             _hasLoadedCurrency = true;
@@ -161,28 +230,45 @@ class _AuthWrapperState extends State<AuthWrapper> {
             });
           }
 
-          // Check if user has seen onboarding
-          final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding();
+          // Check if THIS specific user has seen onboarding
+          final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding(
+            userId: userId,
+          );
 
           // Show onboarding screen only once per user account
-          if (!hasSeenOnboarding && !_hasShownOnboarding) {
+          // Use _isShowingOnboarding to prevent multiple navigations
+          if (!hasSeenOnboarding &&
+              !_hasShownOnboarding &&
+              !_isShowingOnboarding) {
             _hasShownOnboarding = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.of(context).push(
+            _isShowingOnboarding = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!mounted) return;
+
+              // Navigate to onboarding and wait for it to complete
+              await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => const OnboardingScreen(),
+                  builder: (context) => OnboardingScreen(userId: userId),
                 ),
               );
+
+              // After onboarding completes, show notification dialog
+              if (mounted && !_hasShownPermissionDialog) {
+                _hasShownPermissionDialog = true;
+                _showNotificationPermissionDialog(context);
+              }
+              _isShowingOnboarding = false;
+            });
+          } else if (hasSeenOnboarding && !_hasShownPermissionDialog) {
+            // User has already seen onboarding, show notification dialog directly
+            _hasShownPermissionDialog = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _showNotificationPermissionDialog(context);
+              }
             });
           }
 
-          // Show notification permission dialog once after login
-          if (!_hasShownPermissionDialog) {
-            _hasShownPermissionDialog = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _showNotificationPermissionDialog(context);
-            });
-          }
           return const BillManagerScreen();
         }
 
@@ -191,6 +277,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           _hasLoadedCurrency = false;
           _hasShownPermissionDialog = false;
           _hasShownOnboarding = false;
+          _isShowingOnboarding = false;
         }
 
         // Otherwise, show login screen
@@ -371,9 +458,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF5E6),
+                color: const Color(0xFFF97316F5E6),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFFE5CC)),
+                border: Border.all(color: const Color(0xFFF97316E5CC)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,9 +545,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF5E6),
+                color: const Color(0xFFF97316F5E6),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFFE5CC)),
+                border: Border.all(color: const Color(0xFFF97316E5CC)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

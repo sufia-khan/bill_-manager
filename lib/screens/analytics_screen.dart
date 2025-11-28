@@ -234,7 +234,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               icon,
               size: 24,
               color: isSelected
-                  ? const Color(0xFFFF8C00)
+                  ? const Color(0xFFF97316)
                   : Colors.grey.shade600,
             ),
             const SizedBox(height: 2),
@@ -243,7 +243,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               style: TextStyle(
                 fontSize: 10,
                 color: isSelected
-                    ? const Color(0xFFFF8C00)
+                    ? const Color(0xFFF97316)
                     : Colors.grey.shade600,
               ),
             ),
@@ -309,7 +309,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               },
               icon: const Icon(
                 Icons.arrow_back_ios_new,
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
                 size: 20,
               ),
             ),
@@ -318,34 +318,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
               ),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(height: 1, color: Colors.grey.shade200),
             ),
           ),
           bottomNavigationBar: _buildBottomNav(),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  height: 300,
-                  child: _buildSummaryCards(
-                    totalAmount,
-                    paidAmount,
-                    pendingAmount,
-                    overdueAmount,
-                    totalCount,
-                    paidCount,
-                    pendingCount,
-                    overdueCount,
-                  ),
+                // Summary Cards Grid
+                _buildSummaryCards(
+                  totalAmount,
+                  paidAmount,
+                  pendingAmount,
+                  overdueAmount,
+                  totalCount,
+                  paidCount,
+                  pendingCount,
+                  overdueCount,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
+                // Bar Chart Section
                 _buildBarChart(monthlyData, bills),
-                const SizedBox(height: 16),
+                const SizedBox(height: 28),
+                // Top Categories Section
                 _buildTopCategories(bills),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -413,7 +417,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final categoryColors = {
       'Subscriptions': const Color(0xFF8B5CF6),
       'Rent': const Color(0xFF3B82F6),
-      'Utilities': const Color(0xFFFF8C00),
+      'Utilities': const Color(0xFFF97316),
       'Electricity': const Color(0xFFF59E0B),
       'Water': const Color(0xFF06B6D4),
       'Gas': const Color(0xFFEF4444),
@@ -449,13 +453,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -463,75 +467,94 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Expanded(
-                child: Text(
-                  'Top Categories',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1F2937),
-                  ),
+              // Icon
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF97316).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.pie_chart_rounded,
+                  color: Color(0xFFF97316),
+                  size: 22,
                 ),
               ),
               const SizedBox(width: 12),
-              Flexible(
+              Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total Spending',
+                    const Text(
+                      'Top Categories',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            formatCurrencyShort(totalSpending),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1F2937),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (totalSpending >= 1000) ...[
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () {
-                              AmountInfoBottomSheet.show(
-                                context,
-                                amount: totalSpending,
-                                billCount: bills.length,
-                                title: 'Total Spending',
-                                formattedAmount: formatCurrencyShort(
-                                  totalSpending,
-                                ),
-                              );
-                            },
-                            child: Icon(
-                              Icons.info_outline,
-                              size: 16,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      '${topCategories.length} categories',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
+                  ],
+                ),
+              ),
+              // Total spending badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      formatCurrencyShort(totalSpending),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                    if (totalSpending >= 1000) ...[
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () {
+                          AmountInfoBottomSheet.show(
+                            context,
+                            amount: totalSpending,
+                            billCount: bills.length,
+                            title: 'Total Spending',
+                            formattedAmount: formatCurrencyShort(totalSpending),
+                          );
+                        },
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          size: 14,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
+          // Divider
+          Container(height: 1, color: Colors.grey.shade100),
+          const SizedBox(height: 16),
           ...topCategories.map((entry) {
             final category = entry.key;
             final amount = entry.value;
@@ -665,45 +688,60 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     int pendingCount,
     int overdueCount,
   ) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.2,
+    return Column(
       children: [
-        _buildSummaryCard(
-          tab: 'total',
-          color: const Color(0xFF8B5CF6),
-          icon: Icons.receipt_long,
-          title: 'Total Bills',
-          amount: formatCurrencyFull(totalAmount),
-          count: totalCount,
+        // First row - Total and Paid
+        Row(
+          children: [
+            Expanded(
+              child: _buildSummaryCard(
+                tab: 'total',
+                color: const Color(0xFF8B5CF6),
+                icon: Icons.receipt_long_rounded,
+                title: 'Total Bills',
+                amount: formatCurrencyFull(totalAmount),
+                count: totalCount,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _buildSummaryCard(
+                tab: 'paid',
+                color: const Color(0xFF10B981),
+                icon: Icons.check_circle_rounded,
+                title: 'Paid Bills',
+                amount: formatCurrencyFull(paidAmount),
+                count: paidCount,
+              ),
+            ),
+          ],
         ),
-        _buildSummaryCard(
-          tab: 'paid',
-          color: const Color(0xFF10B981),
-          icon: Icons.check_circle,
-          title: 'Paid Bills',
-          amount: formatCurrencyFull(paidAmount),
-          count: paidCount,
-        ),
-        _buildSummaryCard(
-          tab: 'pending',
-          color: const Color(0xFF3B82F6),
-          icon: Icons.schedule,
-          title: 'Upcoming Bills',
-          amount: formatCurrencyFull(pendingAmount),
-          count: pendingCount,
-        ),
-        _buildSummaryCard(
-          tab: 'overdue',
-          color: const Color(0xFFEF4444),
-          icon: Icons.warning,
-          title: 'Overdue Bills',
-          amount: formatCurrencyFull(overdueAmount),
-          count: overdueCount,
+        const SizedBox(height: 14),
+        // Second row - Upcoming and Overdue
+        Row(
+          children: [
+            Expanded(
+              child: _buildSummaryCard(
+                tab: 'pending',
+                color: const Color(0xFF3B82F6),
+                icon: Icons.schedule_rounded,
+                title: 'Upcoming',
+                amount: formatCurrencyFull(pendingAmount),
+                count: pendingCount,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _buildSummaryCard(
+                tab: 'overdue',
+                color: const Color(0xFFEF4444),
+                icon: Icons.warning_rounded,
+                title: 'Overdue',
+                amount: formatCurrencyFull(overdueAmount),
+                count: overdueCount,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -723,119 +761,126 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       amount.replaceAll(RegExp(r'[^\d.]'), ''),
     );
 
-    return InkWell(
+    return GestureDetector(
       onTap: () {
         setState(() {
           _activeTab = tab;
-          _showingSecondHalf =
-              false; // Reset to default month view when switching tabs
+          _showingSecondHalf = false;
         });
       },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: isActive ? color.withValues(alpha: 0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isActive ? color : Colors.white,
-            width: isActive ? 3 : 1,
+            color: isActive ? color : Colors.grey.shade200,
+            width: isActive ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              color: isActive
+                  ? color.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: isActive ? 12 : 8,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon and title
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade800,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$count bill${count != 1 ? 's' : ''}',
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
                     style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isActive)
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      size: 12,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          formatCurrencyShort(numericAmount),
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: color,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (numericAmount >= 1000) ...[
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () {
-                            AmountInfoBottomSheet.show(
-                              context,
-                              amount: numericAmount,
-                              billCount: count,
-                              title: title,
-                              formattedAmount: formatCurrencyShort(
-                                numericAmount,
-                              ),
-                            );
-                          },
-                          child: Icon(
-                            Icons.info_outline,
-                            size: 14,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
-                    ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Amount
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    formatCurrencyShort(numericAmount),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                      height: 1,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
+                ),
+                if (numericAmount >= 1000)
+                  GestureDetector(
+                    onTap: () {
+                      AmountInfoBottomSheet.show(
+                        context,
+                        amount: numericAmount,
+                        billCount: count,
+                        title: title,
+                        formattedAmount: formatCurrencyShort(numericAmount),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        size: 16,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Bill count
+            Text(
+              '$count bill${count != 1 ? 's' : ''}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -882,25 +927,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Chart Header
           Row(
             children: [
+              // Color indicator
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: activeColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,62 +960,78 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     Text(
                       chartTitle,
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF374151),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       _getChartPeriodLabel(bills),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF9CA3AF),
+                        color: Colors.grey.shade500,
                       ),
                     ),
                   ],
                 ),
               ),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _showingSecondHalf
-                        ? () {
-                            setState(() {
-                              _showingSecondHalf = false;
-                            });
-                          }
-                        : null,
-                    icon: const Icon(Icons.chevron_left),
-                    color: _showingSecondHalf
-                        ? const Color(0xFFFF8C00)
-                        : Colors.grey.shade300,
-                    iconSize: 24,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: !_showingSecondHalf
-                        ? () {
-                            setState(() {
-                              _showingSecondHalf = true;
-                            });
-                          }
-                        : null,
-                    icon: const Icon(Icons.chevron_right),
-                    color: !_showingSecondHalf
-                        ? const Color(0xFFFF8C00)
-                        : Colors.grey.shade300,
-                    iconSize: 24,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
+              // Navigation buttons
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: _showingSecondHalf
+                          ? () => setState(() => _showingSecondHalf = false)
+                          : null,
+                      borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.chevron_left_rounded,
+                          color: _showingSecondHalf
+                              ? const Color(0xFFF97316)
+                              : Colors.grey.shade300,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 20,
+                      color: Colors.grey.shade300,
+                    ),
+                    InkWell(
+                      onTap: !_showingSecondHalf
+                          ? () => setState(() => _showingSecondHalf = true)
+                          : null,
+                      borderRadius: const BorderRadius.horizontal(
+                        right: Radius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.chevron_right_rounded,
+                          color: !_showingSecondHalf
+                              ? const Color(0xFFF97316)
+                              : Colors.grey.shade300,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           SizedBox(
             height: 200,
             child: BarChart(

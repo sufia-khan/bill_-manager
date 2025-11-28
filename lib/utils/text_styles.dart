@@ -33,7 +33,7 @@ class AppTextStyles {
   static TextStyle appTitle({Color? color}) => GoogleFonts.inter(
     fontSize: 24,
     fontWeight: FontWeight.w700,
-    color: color ?? const Color(0xFFFF8C00),
+    color: color ?? const Color(0xFFF97316),
     letterSpacing: 0.3,
   );
 
@@ -168,7 +168,7 @@ class AppTextStyles {
   static TextStyle filterAmount({Color? color}) => GoogleFonts.poppins(
     fontSize: 14,
     fontWeight: FontWeight.w700,
-    color: color ?? const Color(0xFFFF8C00),
+    color: color ?? const Color(0xFFF97316),
   );
 
   // ============ TABS (Inter) ============

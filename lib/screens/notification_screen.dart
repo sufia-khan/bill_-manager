@@ -159,7 +159,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       } else {
         return const Icon(
           Icons.access_time,
-          color: Color(0xFFFF8C00),
+          color: Color(0xFFF97316),
           size: 22,
         );
       }
@@ -194,7 +194,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
               ),
             ),
             if (unreadCount > 0) ...[
@@ -232,7 +232,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadNotifications(),
-        color: const Color(0xFFFF8C00),
+        color: const Color(0xFFF97316),
         child: _notifications.isEmpty && !_isLoading
             ? ListView(
                 children: const [
@@ -244,7 +244,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         Icon(
                           Icons.notifications_outlined,
                           size: 80,
-                          color: Color(0xFFFF8C00),
+                          color: Color(0xFFF97316),
                         ),
                         SizedBox(height: 24),
                         Text(
@@ -286,7 +286,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         child: _isLoading
                             ? const CircularProgressIndicator(
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFFFF8C00),
+                                  Color(0xFFF97316),
                                 ),
                               )
                             : TextButton.icon(
@@ -294,14 +294,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     _loadNotifications(loadMore: true),
                                 icon: const Icon(
                                   Icons.expand_more,
-                                  color: Color(0xFFFF8C00),
+                                  color: Color(0xFFF97316),
                                 ),
                                 label: const Text(
                                   'Load More',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFFFF8C00),
+                                    color: Color(0xFFF97316),
                                   ),
                                 ),
                                 style: TextButton.styleFrom(
@@ -310,7 +310,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     vertical: 12,
                                   ),
                                   backgroundColor: const Color(
-                                    0xFFFF8C00,
+                                    0xFFF97316,
                                   ).withValues(alpha: 0.1),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
@@ -348,12 +348,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       decoration: BoxDecoration(
                         color: notification.isRead
                             ? Colors.white
-                            : const Color(0xFFFF8C00).withValues(alpha: 0.05),
+                            : const Color(0xFFF97316).withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: notification.isRead
                               ? Colors.grey.shade200
-                              : const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                              : const Color(0xFFF97316).withValues(alpha: 0.2),
                           width: notification.isRead ? 1 : 2,
                         ),
                         boxShadow: [
@@ -416,7 +416,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                           width: 8,
                                           height: 8,
                                           decoration: const BoxDecoration(
-                                            color: Color(0xFFFF8C00),
+                                            color: Color(0xFFF97316),
                                             shape: BoxShape.circle,
                                           ),
                                         ),

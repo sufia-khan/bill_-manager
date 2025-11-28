@@ -34,12 +34,28 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Clear any existing local data before creating new account
+      await HiveService.clearAllData();
+
       final userCredential = await FirebaseService.signUp(email, password);
 
       // Update display name
       await userCredential.user?.updateDisplayName(name);
 
-      _user = userCredential.user;
+      // Reload user to get updated display name
+      await userCredential.user?.reload();
+      _user = FirebaseAuth.instance.currentUser;
+
+      // Save user ID and registration date to local storage
+      if (_user != null) {
+        await HiveService.saveUserData('currentUserId', _user!.uid);
+        // Save registration date for trial tracking
+        await HiveService.saveUserData(
+          'registrationDate_${_user!.uid}',
+          DateTime.now().toIso8601String(),
+        );
+      }
+
       _isLoading = false;
       notifyListeners();
 
@@ -81,8 +97,16 @@ class AuthProvider with ChangeNotifier {
       final userCredential = await FirebaseService.signIn(email, password);
       _user = userCredential.user;
 
-      // Start sync after login
-      await SyncService.initialSync();
+      // Save current user ID for data isolation
+      // This must happen BEFORE initialSync so it knows which user's data to handle
+      final currentUserId = _user?.uid;
+      if (currentUserId != null) {
+        await HiveService.saveUserData('currentUserId', currentUserId);
+      }
+
+      // Note: initialSync() will be called by BillProvider.initialize()
+      // This avoids double Firebase reads
+      // Start periodic sync (every 15 minutes to reduce Firestore costs)
       SyncService.startPeriodicSync();
 
       // Note: Background task scheduling removed due to workmanager compatibility
@@ -139,8 +163,9 @@ class AuthProvider with ChangeNotifier {
       // Clear local data
       await HiveService.clearAllData();
 
-      // Clear user preferences (including onboarding status)
-      await UserPreferencesService.clearAll();
+      // Clear session preferences but KEEP onboarding status per user
+      // This ensures returning users don't see onboarding again
+      await UserPreferencesService.clearSessionPreferences();
 
       // Sign out from Firebase
       await FirebaseService.signOut();

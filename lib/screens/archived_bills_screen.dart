@@ -80,7 +80,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                   ),
                 ),
               ],
@@ -141,7 +141,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
               child: const Icon(
                 Icons.archive_outlined,
                 size: 60,
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
               ),
             ),
             const SizedBox(height: 24),
@@ -183,7 +183,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.archive, color: Color(0xFFFF8C00), size: 24),
+          const Icon(Icons.archive, color: Color(0xFFF97316), size: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -205,7 +205,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                       ),
                     ),
                     if (isFormatted) ...[
@@ -224,14 +224,14 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: const Color(
-                              0xFFFF8C00,
+                              0xFFF97316,
                             ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Icon(
                             Icons.info_outline,
                             size: 14,
-                            color: Color(0xFFFF8C00),
+                            color: Color(0xFFF97316),
                           ),
                         ),
                       ),
@@ -384,14 +384,14 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
                                   color: const Color(
-                                    0xFFFF8C00,
+                                    0xFFF97316,
                                   ).withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Icon(
                                   Icons.info_outline,
                                   size: 14,
-                                  color: Color(0xFFFF8C00),
+                                  color: Color(0xFFF97316),
                                 ),
                               ),
                             ),
@@ -437,14 +437,14 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                     icon: const Icon(
                       Icons.restore,
                       size: 18,
-                      color: Color(0xFFFF8C00),
+                      color: Color(0xFFF97316),
                     ),
                     label: const Text(
                       'Restore',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                       ),
                     ),
                     style: TextButton.styleFrom(
@@ -635,7 +635,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.restore, color: Color(0xFFFF8C00), size: 28),
+            Icon(Icons.restore, color: Color(0xFFF97316), size: 28),
             SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -662,7 +662,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.info_outline, color: Color(0xFFFF8C00), size: 20),
+                  Icon(Icons.info_outline, color: Color(0xFFF97316), size: 20),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -686,7 +686,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(

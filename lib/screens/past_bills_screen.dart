@@ -84,12 +84,12 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFFFF8C00),
+            color: Color(0xFFF97316),
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_vert, color: Color(0xFFFF8C00)),
+            icon: const Icon(Icons.more_vert, color: Color(0xFFF97316)),
             onPressed: _showActionsMenu,
             tooltip: 'More Actions',
           ),
@@ -193,15 +193,15 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.1),
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+            const Color(0xFFF97316).withValues(alpha: 0.1),
+            const Color(0xFFF97316).withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+          color: const Color(0xFFF97316).withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -215,12 +215,12 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                        color: const Color(0xFFF97316).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
                         Icons.attach_money,
-                        color: Color(0xFFFF8C00),
+                        color: Color(0xFFF97316),
                         size: 20,
                       ),
                     ),
@@ -263,7 +263,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
               children: [
                 const Icon(
                   Icons.receipt_long,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                   size: 24,
                 ),
                 const SizedBox(height: 4),
@@ -304,9 +304,9 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                   _currentPage = 1;
                 });
               },
-              backgroundColor: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+              backgroundColor: const Color(0xFFF97316).withValues(alpha: 0.1),
               labelStyle: const TextStyle(
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
                 fontSize: 12,
               ),
             ),
@@ -323,9 +323,9 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                   _currentPage = 1;
                 });
               },
-              backgroundColor: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+              backgroundColor: const Color(0xFFF97316).withValues(alpha: 0.1),
               labelStyle: const TextStyle(
-                color: Color(0xFFFF8C00),
+                color: Color(0xFFF97316),
                 fontSize: 12,
               ),
             ),
@@ -489,14 +489,14 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: const Color(
-                              0xFFFF8C00,
+                              0xFFF97316,
                             ).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Icon(
                             Icons.info_outline,
                             size: 14,
-                            color: Color(0xFFFF8C00),
+                            color: Color(0xFFF97316),
                           ),
                         ),
                       ),
@@ -515,7 +515,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                   icon: const Icon(Icons.restore, size: 16),
                   label: const Text('Restore'),
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFFFF8C00),
+                    foregroundColor: const Color(0xFFF97316),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 6,
@@ -546,7 +546,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         child: ElevatedButton(
           onPressed: _loadMore,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF8C00),
+            backgroundColor: const Color(0xFFF97316),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             shape: RoundedRectangleBorder(
@@ -652,14 +652,14 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                       leading: Icon(
                         category['icon'],
                         color: isSelected
-                            ? const Color(0xFFFF8C00)
+                            ? const Color(0xFFF97316)
                             : Colors.grey.shade600,
                       ),
                       title: Text(
                         category['name'],
                         style: TextStyle(
                           color: isSelected
-                              ? const Color(0xFFFF8C00)
+                              ? const Color(0xFFF97316)
                               : const Color(0xFF1F2937),
                           fontWeight: isSelected
                               ? FontWeight.w600
@@ -667,7 +667,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                         ),
                       ),
                       trailing: isSelected
-                          ? const Icon(Icons.check, color: Color(0xFFFF8C00))
+                          ? const Icon(Icons.check, color: Color(0xFFF97316))
                           : null,
                       onTap: () {
                         setState(() {
@@ -701,7 +701,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFFFF8C00),
+              primary: Color(0xFFF97316),
               onPrimary: Colors.white,
               surface: Colors.white,
               onSurface: Color(0xFF1F2937),
@@ -821,10 +821,10 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                color: const Color(0xFFF97316).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: const Color(0xFFFF8C00), size: 24),
+              child: Icon(icon, color: const Color(0xFFF97316), size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -861,7 +861,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
         ),
       );
 
@@ -899,7 +899,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
         ),
       );
 
@@ -940,7 +940,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
         ),
       );
 
@@ -1029,7 +1029,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
               icon: const Icon(Icons.share),
               label: const Text('Share'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF8C00),
+                backgroundColor: const Color(0xFFF97316),
                 foregroundColor: Colors.white,
               ),
             ),
@@ -1145,7 +1145,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
     required VoidCallback onTap,
     Color? color,
   }) {
-    final tileColor = color ?? const Color(0xFFFF8C00);
+    final tileColor = color ?? const Color(0xFFF97316);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -1213,7 +1213,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                 style: const TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1550,7 +1550,7 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
         ),
       );
 
@@ -1604,12 +1604,12 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                color: const Color(0xFFF97316).withValues(alpha: 0.1),
                 border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.upload_file, color: Color(0xFFFF8C00)),
+                  const Icon(Icons.upload_file, color: Color(0xFFF97316)),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
@@ -1779,7 +1779,7 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
                               return Theme(
                                 data: Theme.of(context).copyWith(
                                   colorScheme: const ColorScheme.light(
-                                    primary: Color(0xFFFF8C00),
+                                    primary: Color(0xFFF97316),
                                     onPrimary: Colors.white,
                                     surface: Colors.white,
                                     onSurface: Color(0xFF1F2937),
@@ -1829,7 +1829,7 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
                               return Theme(
                                 data: Theme.of(context).copyWith(
                                   colorScheme: const ColorScheme.light(
-                                    primary: Color(0xFFFF8C00),
+                                    primary: Color(0xFFF97316),
                                     onPrimary: Colors.white,
                                     surface: Colors.white,
                                     onSurface: Color(0xFF1F2937),
@@ -1885,8 +1885,8 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
                           icon: const Icon(Icons.add),
                           label: const Text('Add to Import List'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFFF8C00),
-                            side: const BorderSide(color: Color(0xFFFF8C00)),
+                            foregroundColor: const Color(0xFFF97316),
+                            side: const BorderSide(color: Color(0xFFF97316)),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
                         ),
@@ -1924,7 +1924,7 @@ class _ImportPastBillsDialogState extends State<_ImportPastBillsDialog> {
                         'Import ${_billsToImport.isEmpty ? '' : '${_billsToImport.length} '}Bill${_billsToImport.length == 1 ? '' : 's'}',
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF8C00),
+                        backgroundColor: const Color(0xFFF97316),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         disabledBackgroundColor: Colors.grey.shade300,

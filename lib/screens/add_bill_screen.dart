@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
 import '../providers/notification_settings_provider.dart';
+import '../services/trial_service.dart';
 
 class AddBillScreen extends StatefulWidget {
   final Bill? billToEdit;
@@ -169,6 +170,15 @@ class _AddBillScreenState extends State<AddBillScreen> {
     try {
       final billProvider = context.read<BillProvider>();
 
+      // Check bill limit for new bills (free users)
+      if (widget.billToEdit == null) {
+        final currentBillCount = billProvider.bills.length;
+        if (TrialService.hasReachedBillLimit(currentBillCount)) {
+          _showProFeatureDialog('Unlimited Bills');
+          return;
+        }
+      }
+
       if (widget.billToEdit != null) {
         // Edit mode - update existing bill
         final billHive = billProvider.bills.firstWhere(
@@ -303,7 +313,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
               ),
             ],
           ),
-          backgroundColor: const Color(0xFFFF8C00), // Orange color
+          backgroundColor: const Color(0xFFF97316), // Orange color
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
         ),
@@ -343,7 +353,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: Color(0xFFFF8C00),
+            color: Color(0xFFF97316),
           ),
         ),
         leading: IconButton(
@@ -358,7 +368,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
           TextButton(
             onPressed: _saveBill,
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFFF8C00),
+              foregroundColor: const Color(0xFFF97316),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
             child: Text(
@@ -369,134 +379,280 @@ class _AddBillScreenState extends State<AddBillScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title field
-              _buildTextField(
-                controller: _titleController,
-                label: 'Bill Title',
-                hint: 'e.g., Electricity Bill',
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a bill title';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 20),
-
-              // Amount field
-              _buildTextField(
-                controller: _amountController,
-                label: 'Amount',
-                hint: '0.00',
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter an amount';
-                  }
-                  try {
-                    final amount = double.parse(value);
-                    if (amount <= 0) {
-                      return 'Amount must be greater than 0';
-                    }
-                  } catch (e) {
-                    return 'Please enter a valid amount';
-                  }
-                  return null;
-                },
-                onChanged: (value) {
-                  setState(() {}); // Update preview
-                },
-              ),
-
-              // Amount preview
-              if (_amountController.text.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 12),
-                  child: Text(
-                    'Preview: ${_getAmountPreview()}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFFFF8C00),
-                      fontWeight: FontWeight.w500,
+              // ============ REQUIRED SECTION CONTAINER ============
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFF97316).withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF97316).withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
+                  ],
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Section Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFF97316,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.star_rounded,
+                            color: Color(0xFFF97316),
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Required',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFF97316),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-              const SizedBox(height: 20),
+                    // Title field
+                    _buildTextField(
+                      controller: _titleController,
+                      label: 'Bill Title',
+                      hint: 'e.g., Electricity Bill',
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a bill title';
+                        }
+                        return null;
+                      },
+                    ),
 
-              // Due date field
-              InkWell(
-                onTap: _selectDueDate,
-                borderRadius: BorderRadius.circular(8),
-                child: IgnorePointer(
-                  child: _buildTextField(
-                    controller: _dueController,
-                    label: 'Due Date',
-                    hint: 'Select date',
-                    readOnly: true,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please select a due date';
-                      }
-                      return null;
-                    },
-                  ),
+                    const SizedBox(height: 16),
+
+                    // Amount and Due Date in a row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Amount field
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTextField(
+                                controller: _amountController,
+                                label: 'Amount',
+                                hint: '0.00',
+                                keyboardType: TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Please enter an amount';
+                                  }
+                                  try {
+                                    final amount = double.parse(value);
+                                    if (amount <= 0) {
+                                      return 'Amount must be greater than 0';
+                                    }
+                                  } catch (e) {
+                                    return 'Please enter a valid amount';
+                                  }
+                                  return null;
+                                },
+                                onChanged: (value) {
+                                  setState(() {});
+                                },
+                              ),
+                              if (_amountController.text.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: 6,
+                                    left: 4,
+                                  ),
+                                  child: Text(
+                                    _getAmountPreview(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Due date field
+                        Expanded(
+                          child: InkWell(
+                            onTap: _selectDueDate,
+                            borderRadius: BorderRadius.circular(8),
+                            child: IgnorePointer(
+                              child: _buildTextField(
+                                controller: _dueController,
+                                label: 'Due Date',
+                                hint: 'Select date',
+                                readOnly: true,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Please select a due date';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Category selector
+                    _buildCategorySelector(),
+                  ],
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              // Category selector
-              _buildCategorySelector(),
+              // ============ OPTIONAL SECTION CONTAINER ============
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF), // Light blue tint
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Section Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF3B82F6,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.tune_rounded,
+                            color: Color(0xFF3B82F6),
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Optional',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF3B82F6),
+                                ),
+                              ),
+                              Text(
+                                'Customize your bill reminder',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-              const SizedBox(height: 20),
+                    // Repeat selector
+                    _buildRepeatSelector(),
 
-              // Repeat selector
-              _buildRepeatSelector(),
+                    // Repeat count selector
+                    if (_selectedRepeat.toLowerCase() != 'none') ...[
+                      const SizedBox(height: 16),
+                      _buildRepeatCountSelector(),
+                    ],
 
-              // Repeat count selector (only show if repeat is not "None")
-              if (_selectedRepeat.toLowerCase() != 'none') ...[
-                const SizedBox(height: 20),
-                _buildRepeatCountSelector(),
-              ],
+                    const SizedBox(height: 16),
 
-              const SizedBox(height: 20),
+                    // Notification Settings Section
+                    _buildNotificationSettings(),
 
-              // Notification Settings Section
-              _buildNotificationSettings(),
+                    const SizedBox(height: 16),
 
-              const SizedBox(height: 20),
-
-              // Notes field
-              _buildTextField(
-                controller: _notesController,
-                label: 'Notes (Optional)',
-                hint: 'Add any additional details...',
-                maxLines: 3,
-                validator: null,
+                    // Notes field (Pro feature)
+                    if (TrialService.canUseNotes())
+                      _buildTextField(
+                        controller: _notesController,
+                        label: 'Notes',
+                        hint: 'Add any additional details...',
+                        maxLines: 3,
+                        validator: null,
+                      )
+                    else
+                      _buildProLockedField(
+                        label: 'Notes',
+                        hint: 'Add notes to your bills',
+                        featureName: 'Bill Notes',
+                      ),
+                  ],
+                ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
               // Save button
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: _saveBill,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF8C00),
+                    backgroundColor: const Color(0xFFF97316),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    elevation: 2,
                   ),
                   child: Text(
                     widget.billToEdit != null ? 'Update Bill' : 'Save Bill',
@@ -570,7 +726,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF8C00), width: 2),
+              borderSide: const BorderSide(color: Color(0xFFF97316), width: 2),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -696,7 +852,163 @@ class _AddBillScreenState extends State<AddBillScreen> {
     );
   }
 
+  void _showProFeatureDialog(String featureName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4AF37).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.workspace_premium,
+                color: Color(0xFFD4AF37),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '$featureName is a Pro Feature',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              TrialService.getMembershipStatus() == MembershipStatus.free
+                  ? 'Your free trial has ended. Upgrade to Pro to unlock:'
+                  : 'Upgrade to Pro to unlock:',
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
+            const SizedBox(height: 16),
+            _buildProFeatureRow('Recurring bills (weekly, monthly, yearly)'),
+            _buildProFeatureRow('Multiple reminder times'),
+            _buildProFeatureRow('Unlimited bills'),
+            _buildProFeatureRow('Cloud sync & backup'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Maybe Later'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Pro subscription coming soon!'),
+                  backgroundColor: Color(0xFFD4AF37),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD4AF37),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Upgrade to Pro'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProFeatureRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: Color(0xFFD4AF37), size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProLockedField({
+    required String label,
+    required String hint,
+    required String featureName,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4AF37),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'PRO',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () => _showProFeatureDialog(featureName),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 18, color: Colors.grey.shade500),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    hint,
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: Color(0xFFD4AF37),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showRepeatBottomSheet() {
+    final canUseRecurring = TrialService.canAddRecurringBill();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -735,55 +1047,83 @@ class _AddBillScreenState extends State<AddBillScreen> {
                   child: Column(
                     children: _repeatOptions.map((option) {
                       final isSelected = option == _selectedRepeat;
+                      final isRecurring = option != 'None';
+                      final isLocked = isRecurring && !canUseRecurring;
 
-                      return InkWell(
-                        onTap: () {
-                          setState(() {
-                            _selectedRepeat = option;
-                          });
-                          Navigator.of(context).pop();
-                        },
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFFFF8C00)
-                                  : Colors.grey.shade200,
+                      return Opacity(
+                        opacity: isLocked ? 0.6 : 1.0,
+                        child: InkWell(
+                          onTap: isLocked
+                              ? () => _showProFeatureDialog('Recurring Bills')
+                              : () {
+                                  setState(() {
+                                    _selectedRepeat = option;
+                                  });
+                                  Navigator.of(context).pop();
+                                },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  option,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: isSelected
-                                        ? const Color(0xFFFF8C00)
-                                        : const Color(0xFF1F2937),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(
+                                      0xFFF97316,
+                                    ).withValues(alpha: 0.1)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFFF97316)
+                                    : Colors.grey.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    option,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: isSelected
+                                          ? const Color(0xFFF97316)
+                                          : const Color(0xFF1F2937),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (isSelected)
-                                const Icon(
-                                  Icons.check,
-                                  color: Color(0xFFFF8C00),
-                                  size: 20,
-                                ),
-                            ],
+                                if (isLocked)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFD4AF37),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'PRO',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                else if (isSelected)
+                                  const Icon(
+                                    Icons.check,
+                                    color: Color(0xFFF97316),
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -853,13 +1193,13 @@ class _AddBillScreenState extends State<AddBillScreen> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                const Color(0xFFFF8C00).withValues(alpha: 0.15),
-                                const Color(0xFFFF8C00).withValues(alpha: 0.08),
+                                const Color(0xFFF97316).withValues(alpha: 0.15),
+                                const Color(0xFFF97316).withValues(alpha: 0.08),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: const Color(0xFFFF8C00),
+                              color: const Color(0xFFF97316),
                               width: 1.5,
                             ),
                           ),
@@ -867,7 +1207,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                             children: [
                               Icon(
                                 Icons.add_circle_outline,
-                                color: Color(0xFFFF8C00),
+                                color: Color(0xFFF97316),
                                 size: 24,
                               ),
                               SizedBox(width: 12),
@@ -877,13 +1217,13 @@ class _AddBillScreenState extends State<AddBillScreen> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFFFF8C00),
+                                    color: Color(0xFFF97316),
                                   ),
                                 ),
                               ),
                               Icon(
                                 Icons.arrow_forward_ios,
-                                color: Color(0xFFFF8C00),
+                                color: Color(0xFFF97316),
                                 size: 16,
                               ),
                             ],
@@ -891,65 +1231,94 @@ class _AddBillScreenState extends State<AddBillScreen> {
                         ),
                       ),
                       // Existing categories
-                      ..._categories.map((category) {
+                      ..._categories.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final category = entry.value;
                         final isSelected =
                             category['name'] == _selectedCategory;
+                        final maxCategories = TrialService.getMaxCategories();
+                        final isLocked =
+                            maxCategories != -1 && index >= maxCategories;
 
-                        return InkWell(
-                          onTap: () {
-                            setState(() {
-                              _selectedCategory = category['name'];
-                            });
-                            Navigator.of(context).pop();
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(
-                                      0xFFFF8C00,
-                                    ).withValues(alpha: 0.1)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFFFF8C00)
-                                    : Colors.grey.shade200,
+                        return Opacity(
+                          opacity: isLocked ? 0.6 : 1.0,
+                          child: InkWell(
+                            onTap: isLocked
+                                ? () => _showProFeatureDialog('All Categories')
+                                : () {
+                                    setState(() {
+                                      _selectedCategory = category['name'];
+                                    });
+                                    Navigator.of(context).pop();
+                                  },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  category['emoji'] ?? '📁',
-                                  style: const TextStyle(fontSize: 20),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(
+                                        0xFFF97316,
+                                      ).withValues(alpha: 0.1)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFFF97316)
+                                      : Colors.grey.shade200,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    category['name'] ?? '',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                      color: isSelected
-                                          ? const Color(0xFFFF8C00)
-                                          : const Color(0xFF1F2937),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    category['emoji'] ?? '📁',
+                                    style: const TextStyle(fontSize: 20),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      category['name'] ?? '',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: isSelected
+                                            ? const Color(0xFFF97316)
+                                            : const Color(0xFF1F2937),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (isSelected)
-                                  const Icon(
-                                    Icons.check,
-                                    color: Color(0xFFFF8C00),
-                                    size: 20,
-                                  ),
-                              ],
+                                  if (isLocked)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD4AF37),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'PRO',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  else if (isSelected)
+                                    const Icon(
+                                      Icons.check,
+                                      color: Color(0xFFF97316),
+                                      size: 20,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -972,13 +1341,13 @@ class _AddBillScreenState extends State<AddBillScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.1),
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+            const Color(0xFFF97316).withValues(alpha: 0.1),
+            const Color(0xFFF97316).withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+          color: const Color(0xFFF97316).withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -989,12 +1358,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                  color: const Color(0xFFF97316).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.repeat,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                   size: 20,
                 ),
               ),
@@ -1056,10 +1425,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFF8C00) : Colors.white,
+          color: isSelected ? const Color(0xFFF97316) : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+            color: isSelected ? const Color(0xFFF97316) : Colors.grey.shade300,
             width: 1.5,
           ),
         ),
@@ -1109,14 +1478,14 @@ class _AddBillScreenState extends State<AddBillScreen> {
               decoration: InputDecoration(
                 labelText: 'Number of times',
                 hintText: 'e.g., 12',
-                prefixIcon: const Icon(Icons.repeat, color: Color(0xFFFF8C00)),
+                prefixIcon: const Icon(Icons.repeat, color: Color(0xFFF97316)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                     width: 2,
                   ),
                 ),
@@ -1145,7 +1514,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
             ),
             child: const Text('Set'),
@@ -1169,13 +1538,13 @@ class _AddBillScreenState extends State<AddBillScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFF8C00).withValues(alpha: 0.1),
-            const Color(0xFFFF8C00).withValues(alpha: 0.05),
+            const Color(0xFFF97316).withValues(alpha: 0.1),
+            const Color(0xFFF97316).withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+          color: const Color(0xFFF97316).withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -1186,12 +1555,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
+                  color: const Color(0xFFF97316).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.notifications_active,
-                  color: Color(0xFFFF8C00),
+                  color: Color(0xFFF97316),
                   size: 20,
                 ),
               ),
@@ -1231,7 +1600,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                   const Icon(
                     Icons.calendar_today,
                     size: 16,
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1273,7 +1642,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                   const Icon(
                     Icons.access_time,
                     size: 16,
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1300,6 +1669,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
         .difference(DateTime(now.year, now.month, now.day))
         .inDays;
 
+    // Check if user can use multiple reminders (Pro feature)
+    final canUseMultipleReminders = TrialService.isFeatureAvailable(
+      'multiple_reminders',
+    );
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -1314,13 +1688,19 @@ class _AddBillScreenState extends State<AddBillScreen> {
           '1 Week Before',
         ];
 
-        // Determine which options should be disabled
+        // Determine which options should be disabled (due date too close)
         bool isOptionDisabled(String option) {
           if (option == 'Same Day') return false; // Always available
           if (option == '1 Day Before') return daysUntilDue < 1;
           if (option == '2 Days Before') return daysUntilDue < 2;
           if (option == '1 Week Before') return daysUntilDue < 7;
           return false;
+        }
+
+        // Check if option is Pro-only (free users only get Same Day)
+        bool isProOnly(String option) {
+          if (canUseMultipleReminders) return false;
+          return option != 'Same Day';
         }
 
         return SingleChildScrollView(
@@ -1350,12 +1730,15 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 ...options.map((option) {
                   final isSelected = option == _reminderTiming;
                   final isDisabled = isOptionDisabled(option);
+                  final isLocked = isProOnly(option);
 
                   return Opacity(
-                    opacity: isDisabled ? 0.4 : 1.0,
+                    opacity: (isDisabled || isLocked) ? 0.6 : 1.0,
                     child: InkWell(
                       onTap: isDisabled
                           ? null
+                          : isLocked
+                          ? () => _showProFeatureDialog('Multiple Reminders')
                           : () {
                               setState(() {
                                 _reminderTiming = option;
@@ -1368,12 +1751,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFFFF8C00).withValues(alpha: 0.1)
+                              ? const Color(0xFFF97316).withValues(alpha: 0.1)
                               : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isSelected
-                                ? const Color(0xFFFF8C00)
+                                ? const Color(0xFFF97316)
                                 : Colors.grey.shade200,
                           ),
                         ),
@@ -1388,18 +1771,37 @@ class _AddBillScreenState extends State<AddBillScreen> {
                                       ? FontWeight.w600
                                       : FontWeight.w400,
                                   color: isSelected
-                                      ? const Color(0xFFFF8C00)
+                                      ? const Color(0xFFF97316)
                                       : const Color(0xFF1F2937),
                                 ),
                               ),
                             ),
-                            if (isSelected)
+                            if (isLocked)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4AF37),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'PRO',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            else if (isSelected)
                               const Icon(
                                 Icons.check,
-                                color: Color(0xFFFF8C00),
+                                color: Color(0xFFF97316),
                                 size: 20,
-                              ),
-                            if (isDisabled)
+                              )
+                            else if (isDisabled)
                               const Icon(
                                 Icons.lock_outline,
                                 color: Color(0xFF9CA3AF),
@@ -1425,7 +1827,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                         const Icon(
                           Icons.info_outline,
                           size: 16,
-                          color: Color(0xFFFF8C00),
+                          color: Color(0xFFF97316),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1460,7 +1862,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(primary: Color(0xFFFF8C00)),
+            colorScheme: const ColorScheme.light(primary: Color(0xFFF97316)),
           ),
           child: child!,
         );
@@ -1528,7 +1930,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
               ),
             ],
           ),
-          backgroundColor: const Color(0xFFFF8C00), // Orange color
+          backgroundColor: const Color(0xFFF97316), // Orange color
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
         ),
@@ -1552,7 +1954,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.add_circle, color: Color(0xFFFF8C00)),
+            Icon(Icons.add_circle, color: Color(0xFFF97316)),
             SizedBox(width: 8),
             Text(
               'Add Custom Category',
@@ -1571,14 +1973,14 @@ class _AddBillScreenState extends State<AddBillScreen> {
               decoration: InputDecoration(
                 labelText: 'Category Name',
                 hintText: 'e.g., Car Payment',
-                prefixIcon: const Icon(Icons.label, color: Color(0xFFFF8C00)),
+                prefixIcon: const Icon(Icons.label, color: Color(0xFFF97316)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(
-                    color: Color(0xFFFF8C00),
+                    color: Color(0xFFF97316),
                     width: 2,
                   ),
                 ),
@@ -1624,7 +2026,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
+              backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
             ),
             child: const Text('Add Category'),

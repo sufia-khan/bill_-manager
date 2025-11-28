@@ -4,7 +4,7 @@ import '../models/bill_hive.dart';
 import '../services/hive_service.dart';
 import '../services/firebase_service.dart';
 import '../services/sync_service.dart';
-import '../services/firebase_sync_service.dart';
+// FirebaseSyncService removed - using SyncService instead for proper needsSync flag handling
 import '../services/recurring_bill_service.dart';
 import '../services/bill_archival_service.dart';
 import '../services/notification_service.dart';
@@ -16,6 +16,7 @@ class BillProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  String? _initializedForUserId; // Track which user we initialized for
   NotificationSettingsProvider? _notificationSettings;
 
   List<BillHive> get bills => _bills;
@@ -28,34 +29,62 @@ class BillProvider with ChangeNotifier {
     _notificationSettings = settings;
   }
 
-  // Trigger debounced sync after changes
+  // Reset provider state (called when user changes/logs out)
+  void reset() {
+    _bills = [];
+    _isLoading = false;
+    _error = null;
+    _isInitialized = false;
+    _initializedForUserId = null;
+    notifyListeners();
+  }
+
+  // Trigger sync after changes - uses SyncService which reads needsSync flag from Hive
+  // Fire-and-forget: sync happens in background without blocking UI
   void _triggerSync() {
-    FirebaseSyncService().triggerSync();
+    // Use SyncService.syncBills() which properly reads bills with needsSync=true from Hive
+    // FirebaseSyncService uses a different sync queue system that's not populated by HiveService
+    SyncService.syncBills().catchError((e) {
+      print('Background sync error: $e');
+    });
   }
 
   // Initialize and load bills
   Future<void> initialize() async {
-    // Prevent multiple initializations
-    if (_isInitialized || _isLoading) {
+    final currentUserId = FirebaseService.currentUserId;
+
+    // Check if we need to reinitialize for a different user
+    final needsReinit =
+        _initializedForUserId != null && _initializedForUserId != currentUserId;
+
+    // Prevent multiple initializations for the same user
+    if ((_isInitialized && !needsReinit) || _isLoading) {
       return;
+    }
+
+    // If user changed, reset state first
+    if (needsReinit) {
+      print('🔄 User changed, reinitializing BillProvider...');
+      _bills = [];
+      _isInitialized = false;
     }
 
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Load from local storage first
+      // Sync with Firebase if user is authenticated (this clears and reloads bills)
+      if (currentUserId != null) {
+        await SyncService.initialSync();
+      }
+
+      // Load from local storage after sync
       _bills = HiveService.getAllBills();
       notifyListeners();
 
-      // Sync with Firebase if user is authenticated
-      if (FirebaseService.currentUserId != null) {
-        await SyncService.initialSync();
-        _bills = HiveService.getAllBills();
-      }
-
       _error = null;
       _isInitialized = true;
+      _initializedForUserId = currentUserId;
 
       // Run maintenance after a delay to avoid blocking UI
       // This ensures the UI is responsive during app startup
@@ -326,7 +355,9 @@ class BillProvider with ChangeNotifier {
     }
   }
 
-  // Delete bill (only if archived)
+  // Delete bill with smart recurring logic:
+  // - PAID/OVERDUE bill: Only delete that one bill (history record)
+  // - UPCOMING bill: Delete this + all future unpaid bills in series
   Future<void> deleteBill(String billId) async {
     try {
       final bill = HiveService.getBillById(billId);
@@ -336,11 +367,57 @@ class BillProvider with ChangeNotifier {
         throw Exception('Bill not found');
       }
 
-      // Cancel notification for deleted bill
-      await NotificationService().cancelBillNotification(billId);
+      final now = DateTime.now();
+      final isPaidOrOverdue = bill.isPaid || bill.dueAt.isBefore(now);
 
-      // Soft delete - mark as deleted
-      await HiveService.deleteBill(billId);
+      // If this is a PAID or OVERDUE bill, only delete this one
+      // (It's just a history record, shouldn't affect future bills)
+      if (isPaidOrOverdue) {
+        print('🗑️ Deleting single paid/overdue bill: ${bill.title}');
+        await NotificationService().cancelBillNotification(billId);
+        await HiveService.deleteBill(billId);
+      }
+      // If this is an UPCOMING recurring bill, delete this + future unpaid bills
+      else if (bill.repeat != 'none') {
+        print(
+          '🗑️ Deleting upcoming recurring bill + future instances: ${bill.title}',
+        );
+
+        // Find the parent ID
+        final parentId = bill.parentBillId ?? bill.id;
+        final currentSequence = bill.recurringSequence ?? 0;
+
+        // Find all UPCOMING (not paid, not overdue) bills in this series
+        final allBills = HiveService.getAllBillsIncludingDeleted();
+        final billsToDelete = allBills.where((b) {
+          final billParentId = b.parentBillId ?? b.id;
+          final billSequence = b.recurringSequence ?? 0;
+          final isInSeries = billParentId == parentId || b.id == parentId;
+          final isFutureOrCurrent = billSequence >= currentSequence;
+          final isUnpaid = !b.isPaid;
+          final isNotOverdue = !b.dueAt.isBefore(now); // Keep overdue bills
+
+          return isInSeries &&
+              isFutureOrCurrent &&
+              isUnpaid &&
+              isNotOverdue &&
+              !b.isDeleted;
+        }).toList();
+
+        print(
+          '   Found ${billsToDelete.length} upcoming bills to delete (keeping paid & overdue)',
+        );
+
+        // Delete all unpaid future bills in the series
+        for (final billToDelete in billsToDelete) {
+          await NotificationService().cancelBillNotification(billToDelete.id);
+          await HiveService.deleteBill(billToDelete.id);
+        }
+      } else {
+        // Non-recurring upcoming bill - just delete this one
+        await NotificationService().cancelBillNotification(billId);
+        await HiveService.deleteBill(billId);
+      }
 
       // Force refresh to update UI immediately
       _bills = HiveService.getAllBills(forceRefresh: true);
@@ -908,6 +985,12 @@ class BillProvider with ChangeNotifier {
     try {
       // Initialize Hive in the isolate
       await HiveService.init();
+
+      // Debug: Print bill statistics before processing
+      HiveService.printBillStats();
+
+      // Purge soft-deleted bills to prevent any stale data issues
+      await HiveService.purgeDeletedBills();
 
       // Process recurring bills
       final billsCreated = await RecurringBillService.processRecurringBills();

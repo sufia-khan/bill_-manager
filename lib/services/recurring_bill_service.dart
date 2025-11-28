@@ -101,11 +101,13 @@ class RecurringBillService {
 
   /// Check if next instance of a recurring bill already exists
   /// Returns true if a bill with matching parentBillId and due date exists
+  /// [excludeBillId] - ID of the bill being processed (to exclude from check)
   /// Returns false on error to prevent duplicate creation
   static Future<bool> hasNextInstance(
     String parentBillId,
-    DateTime nextDueDate,
-  ) async {
+    DateTime nextDueDate, {
+    String? excludeBillId,
+  }) async {
     try {
       // Validate input
       if (parentBillId.isEmpty) {
@@ -115,12 +117,13 @@ class RecurringBillService {
       final allBills = HiveService.getAllBills();
 
       // Check if any bill has this parentBillId and a due date close to nextDueDate
-      // Using 5-minute tolerance to account for time differences (works for testing and production)
-      final startRange = nextDueDate.subtract(const Duration(minutes: 5));
-      final endRange = nextDueDate.add(const Duration(minutes: 5));
+      // Using 30-second tolerance for 1-minute testing, works for all intervals
+      final startRange = nextDueDate.subtract(const Duration(seconds: 30));
+      final endRange = nextDueDate.add(const Duration(seconds: 30));
 
       return allBills.any(
         (bill) =>
+            bill.id != excludeBillId && // Exclude the source bill
             bill.parentBillId == parentBillId &&
             bill.dueAt.isAfter(startRange) &&
             bill.dueAt.isBefore(endRange) &&
@@ -186,8 +189,12 @@ class RecurringBillService {
         );
       }
 
-      // Check if next instance already exists
-      final exists = await hasNextInstance(parentBill.id, nextDueDate);
+      // Check if next instance already exists (exclude current bill from check)
+      final exists = await hasNextInstance(
+        parentBill.id,
+        nextDueDate,
+        excludeBillId: parentBill.id,
+      );
       if (exists) {
         Logger.info(
           'Next instance already exists for bill: ${parentBill.title}',
@@ -297,9 +304,13 @@ class RecurringBillService {
           // Calculate what the next due date would be
           final nextDueDate = calculateNextDueDate(bill.dueAt, bill.repeat);
 
-          // Check if next instance already exists
+          // Check if next instance already exists (exclude current bill from check)
           final parentId = bill.parentBillId ?? bill.id;
-          final exists = await hasNextInstance(parentId, nextDueDate);
+          final exists = await hasNextInstance(
+            parentId,
+            nextDueDate,
+            excludeBillId: bill.id,
+          );
 
           if (!exists) {
             // Prepare next instance (don't save yet)

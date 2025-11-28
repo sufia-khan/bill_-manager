@@ -1,7 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/bill_hive.dart';
 import '../models/notification_history.dart';
-import '../services/notification_history_service.dart';
 
 class HiveService {
   static const String billBoxName = 'bills';
@@ -156,6 +155,64 @@ class HiveService {
     final userBox = getUserBox();
     await billBox.clear();
     await userBox.clear();
+    _invalidateCache();
+  }
+
+  // Clear only bills data (preserves user settings like currentUserId)
+  static Future<void> clearBillsOnly() async {
+    final billBox = getBillsBox();
+    await billBox.clear();
+    _invalidateCache();
+
+    // Also clear last sync time so we do a fresh pull
+    final userBox = getUserBox();
+    await userBox.delete('last_sync_time');
+  }
+
+  // Hard delete all soft-deleted bills (permanently remove from database)
+  static Future<int> purgeDeletedBills() async {
+    final box = getBillsBox();
+    final deletedBills = box.values.where((bill) => bill.isDeleted).toList();
+
+    int count = 0;
+    for (final bill in deletedBills) {
+      await box.delete(bill.id);
+      count++;
+    }
+
+    _invalidateCache();
+    print('🧹 Purged $count deleted bills from local storage');
+    return count;
+  }
+
+  // Debug: Get all bills including deleted ones (for debugging)
+  static List<BillHive> getAllBillsIncludingDeleted() {
+    final box = getBillsBox();
+    return box.values.toList();
+  }
+
+  // Debug: Print bill statistics
+  static void printBillStats() {
+    final box = getBillsBox();
+    final allBills = box.values.toList();
+    final deletedBills = allBills.where((b) => b.isDeleted).toList();
+    final activeBills = allBills.where((b) => !b.isDeleted).toList();
+    final recurringBills = activeBills
+        .where((b) => b.repeat != 'none')
+        .toList();
+
+    print('📊 Bill Statistics:');
+    print('   Total in DB: ${allBills.length}');
+    print('   Active (not deleted): ${activeBills.length}');
+    print('   Soft-deleted: ${deletedBills.length}');
+    print('   Recurring (active): ${recurringBills.length}');
+
+    if (deletedBills.isNotEmpty) {
+      print('   Deleted bills:');
+      for (final bill in deletedBills) {
+        print('     - ${bill.title} (${bill.id.substring(0, 8)}...)');
+      }
+    }
   }
 
   // Save user data

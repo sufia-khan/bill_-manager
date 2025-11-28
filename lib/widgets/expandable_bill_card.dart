@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/bill.dart';
 import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
-import '../providers/sync_provider.dart';
 import 'bill_details_bottom_sheet.dart';
 import 'amount_info_bottom_sheet.dart';
-import 'sync_status_indicator.dart';
 
 class ExpandableBillCard extends StatelessWidget {
   final Bill bill;
@@ -83,7 +80,7 @@ class ExpandableBillCard extends StatelessWidget {
           if (difference == 0) {
             return Text(
               'Due today',
-              style: AppTextStyles.dueDate(color: const Color(0xFFFF8C00)),
+              style: AppTextStyles.dueDate(color: const Color(0xFFF97316)),
             );
           } else if (difference == 1) {
             prefix = 'Due in: ';
@@ -105,7 +102,7 @@ class ExpandableBillCard extends StatelessWidget {
       } else if (bill.status == 'overdue') {
         dateColor = const Color(0xFFEF4444); // Red
       } else {
-        dateColor = const Color(0xFFFF8C00); // Orange
+        dateColor = const Color(0xFFF97316); // Orange
       }
 
       // For paid bills, no icon here (icon is next to status)
@@ -240,7 +237,7 @@ class ExpandableBillCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF8C00).withValues(alpha: 0.1),
+                color: const Color(0xFFF97316).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -255,29 +252,11 @@ class ExpandableBillCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          bill.title,
-                          style: AppTextStyles.billTitle(),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Consumer<SyncProvider>(
-                        builder: (context, syncProvider, _) {
-                          final syncStatus = syncProvider.getBillSyncStatus(
-                            bill.id,
-                          );
-                          return SyncStatusIndicator(
-                            status: syncStatus,
-                            size: 14,
-                          );
-                        },
-                      ),
-                    ],
+                  Text(
+                    bill.title,
+                    style: AppTextStyles.billTitle(),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                   const SizedBox(height: 8),
                   Text(bill.category, style: AppTextStyles.label()),
@@ -316,14 +295,14 @@ class ExpandableBillCard extends StatelessWidget {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: const Color(
-                              0xFFFF8C00,
+                              0xFFF97316,
                             ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Icon(
                             Icons.info_outline,
                             size: 14,
-                            color: Color(0xFFFF8C00),
+                            color: Color(0xFFF97316),
                           ),
                         ),
                       ),

@@ -7,10 +7,11 @@ class SyncService {
   static const String lastSyncKey = 'last_sync_time';
   static Timer? _syncTimer;
 
-  // Start periodic sync (every 5 minutes)
+  // Start periodic sync (every 15 minutes to reduce Firestore costs)
+  // Bills are synced immediately when added/updated, this is just for backup
   static void startPeriodicSync() {
     _syncTimer?.cancel();
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+    _syncTimer = Timer.periodic(const Duration(minutes: 15), (_) {
       syncBills();
     });
   }
@@ -26,8 +27,17 @@ class SyncService {
     return !connectivityResult.contains(ConnectivityResult.none);
   }
 
+  // Sync lock to prevent concurrent syncs
+  static bool _isSyncing = false;
+
   // Full sync: Push local changes and pull server changes
   static Future<void> syncBills() async {
+    // Prevent concurrent syncs
+    if (_isSyncing) {
+      print('Sync already in progress, skipping');
+      return;
+    }
+
     if (!await isOnline()) {
       print('Device is offline, skipping sync');
       return;
@@ -38,12 +48,16 @@ class SyncService {
       return;
     }
 
+    _isSyncing = true;
     try {
-      // Step 1: Push local changes to server
-      await _pushLocalChanges();
+      // Step 1: Push local changes to server (WRITES)
+      final pushedCount = await _pushLocalChanges();
 
-      // Step 2: Pull server changes
-      await _pullServerChanges();
+      // Step 2: Pull server changes only if we pushed something
+      // This reduces unnecessary reads - delta sync handles the rest
+      if (pushedCount > 0) {
+        await _pullServerChanges();
+      }
 
       // Step 3: Update last sync time
       await HiveService.saveUserData(
@@ -51,29 +65,34 @@ class SyncService {
         DateTime.now().toIso8601String(),
       );
 
-      print('Sync completed successfully');
+      if (pushedCount > 0) {
+        print('Sync completed: pushed $pushedCount bills');
+      }
     } catch (e) {
       print('Sync failed: $e');
+    } finally {
+      _isSyncing = false;
     }
   }
 
-  // Push local changes to Firebase
-  static Future<void> _pushLocalChanges() async {
+  // Push local changes to Firebase - returns count of pushed bills
+  static Future<int> _pushLocalChanges() async {
     final billsNeedingSync = HiveService.getBillsNeedingSync();
 
     if (billsNeedingSync.isEmpty) {
-      return;
+      return 0;
     }
 
-    // Sync bills to Firebase
+    // Sync bills to Firebase using batch write (1 write operation)
     await FirebaseService.syncLocalBillsToServer(billsNeedingSync);
 
-    // Mark bills as synced
+    // Mark bills as synced locally
     for (var bill in billsNeedingSync) {
       await HiveService.markBillAsSynced(bill.id);
     }
 
-    print('Pushed ${billsNeedingSync.length} bills to server');
+    print('📤 Pushed ${billsNeedingSync.length} bills to server');
+    return billsNeedingSync.length;
   }
 
   // Pull server changes to local
@@ -104,13 +123,46 @@ class SyncService {
 
   // Initial sync after login
   static Future<void> initialSync() async {
+    final currentUserId = FirebaseService.currentUserId;
+    final storedUserId = HiveService.getUserData('currentUserId') as String?;
+
+    // SECURITY: Only push unsynced bills if they belong to the SAME user
+    // This prevents data leakage if user A's bills are still in local storage
+    // and user B logs in - we must NOT push A's bills to B's Firebase!
+    if (await isOnline() &&
+        currentUserId != null &&
+        storedUserId == currentUserId) {
+      try {
+        final unsyncedBills = HiveService.getBillsNeedingSync();
+        if (unsyncedBills.isNotEmpty) {
+          print(
+            '📤 Found ${unsyncedBills.length} unsynced bills for same user, pushing...',
+          );
+          await FirebaseService.syncLocalBillsToServer(unsyncedBills);
+          print('✅ Pushed unsynced bills to Firebase');
+        }
+      } catch (e) {
+        print('⚠️ Could not push unsynced bills: $e');
+        // Continue anyway
+      }
+    } else if (storedUserId != null && storedUserId != currentUserId) {
+      print(
+        '⚠️ Different user detected, discarding old local bills to prevent data leakage',
+      );
+    }
+
+    // ALWAYS clear local bills to prevent data leaking between users
+    // This must happen even if offline - better to show no data than wrong data
+    await HiveService.clearBillsOnly();
+    print('🧹 Cleared local bills for clean user session');
+
     if (!await isOnline()) {
-      print('Device is offline, using local data only');
+      print('Device is offline, will sync when online');
       return;
     }
 
     try {
-      // Get all bills from server
+      // Get all bills from server for the current user
       final serverBills = await FirebaseService.getAllBills();
 
       // Save to local storage
@@ -124,7 +176,9 @@ class SyncService {
         DateTime.now().toIso8601String(),
       );
 
-      print('Initial sync completed: ${serverBills.length} bills loaded');
+      print(
+        'Initial sync completed: ${serverBills.length} bills loaded for user ${FirebaseService.currentUserId}',
+      );
     } catch (e) {
       print('Initial sync failed: $e');
     }
