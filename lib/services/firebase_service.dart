@@ -13,32 +13,6 @@ class FirebaseService {
   // Get current user ID
   static String? get currentUserId => _auth.currentUser?.uid;
 
-  // Auth: Sign up with email and password
-  static Future<UserCredential> signUp(String email, String password) async {
-    return await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-  }
-
-  // Auth: Sign in with email and password
-  static Future<UserCredential> signIn(String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-  }
-
-  // Auth: Sign out
-  static Future<void> signOut() async {
-    await _auth.signOut();
-  }
-
-  // Auth: Reset password
-  static Future<void> resetPassword(String email) async {
-    await _auth.sendPasswordResetEmail(email: email);
-  }
-
   // Auth: Sign in with Google
   static Future<UserCredential?> signInWithGoogle() async {
     // Trigger the authentication flow

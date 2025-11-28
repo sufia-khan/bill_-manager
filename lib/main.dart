@@ -3,7 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
-import 'screens/auth_screen.dart';
 import 'screens/bill_manager_screen.dart';
 import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
@@ -104,7 +103,7 @@ class MyApp extends StatelessWidget {
             routes: {
               '/': (context) => const AuthWrapper(),
               '/login': (context) => const LoginScreen(),
-              '/auth': (context) => const AuthScreen(),
+              '/auth': (context) => const LoginScreen(),
               '/analytics': (context) => const AnalyticsScreen(),
               // '/export': (context) => const ExportScreen(), // Hidden for MVP
               '/calendar': (context) => const CalendarScreen(),

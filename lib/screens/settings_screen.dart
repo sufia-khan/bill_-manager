@@ -12,6 +12,8 @@ import 'analytics_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
 import 'onboarding_screen.dart';
+import 'terms_and_conditions_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -560,6 +562,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'About App',
               onTap: () {
                 _showAboutAppDialog(context);
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // Legal Section
+            _buildSectionHeader('Legal'),
+            const SizedBox(height: 12),
+
+            // Terms & Conditions
+            _buildSettingsOption(
+              icon: Icons.description_outlined,
+              title: 'Terms & Conditions',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TermsAndConditionsScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Privacy Policy
+            _buildSettingsOption(
+              icon: Icons.privacy_tip_outlined,
+              title: 'Privacy Policy',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PrivacyPolicyScreen(),
+                  ),
+                );
               },
             ),
 
