@@ -149,6 +149,61 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Sign in with Google
+  Future<bool> signInWithGoogle() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final userCredential = await FirebaseService.signInWithGoogle();
+
+      // User cancelled the sign-in
+      if (userCredential == null) {
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      _user = userCredential.user;
+
+      // Save current user ID for data isolation
+      final currentUserId = _user?.uid;
+      if (currentUserId != null) {
+        await HiveService.saveUserData('currentUserId', currentUserId);
+
+        // Check if this is a new user (first time sign-in)
+        final registrationKey = 'registrationDate_$currentUserId';
+        final existingRegDate = HiveService.getUserData(registrationKey);
+        if (existingRegDate == null) {
+          // Save registration date for trial tracking (new user)
+          await HiveService.saveUserData(
+            registrationKey,
+            DateTime.now().toIso8601String(),
+          );
+        }
+      }
+
+      // Start periodic sync
+      SyncService.startPeriodicSync();
+
+      _isLoading = false;
+      notifyListeners();
+
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      _error = e.message ?? 'Google sign in failed';
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _error = 'Google sign in failed. Please try again.';
+      notifyListeners();
+      return false;
+    }
+  }
+
   // Sign out
   Future<void> signOut() async {
     _isLoading = true;
@@ -167,8 +222,8 @@ class AuthProvider with ChangeNotifier {
       // This ensures returning users don't see onboarding again
       await UserPreferencesService.clearSessionPreferences();
 
-      // Sign out from Firebase
-      await FirebaseService.signOut();
+      // Sign out from Firebase and Google
+      await FirebaseService.signOutGoogle();
 
       _user = null;
       _error = null;

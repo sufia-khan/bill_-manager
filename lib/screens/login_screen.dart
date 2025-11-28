@@ -49,6 +49,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    final authProvider = context.read<AuthProvider>();
+    final billProvider = context.read<BillProvider>();
+
+    final success = await authProvider.signInWithGoogle();
+
+    if (success && mounted) {
+      // Initialize bills after Google sign-in
+      await billProvider.initialize();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const BillManagerScreen()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -402,6 +419,90 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // OR Divider
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 1,
+                          color: const Color(0xFFE5E7EB), // gray-200
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'OR',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF9CA3AF), // gray-400
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          height: 1,
+                          color: const Color(0xFFE5E7EB), // gray-200
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Google Sign In Button
+                  Consumer<AuthProvider>(
+                    builder: (context, authProvider, _) {
+                      return SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : _handleGoogleSignIn,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(
+                              0xFF4B5563,
+                            ), // gray-600
+                            side: const BorderSide(
+                              color: Color(0xFFE5E7EB), // gray-200
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor: Colors.white,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.network(
+                                'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+                                height: 20,
+                                width: 20,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Icon(
+                                    FontAwesomeIcons.google,
+                                    size: 18,
+                                    color: Color(0xFF4285F4),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Continue with Google',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
 
