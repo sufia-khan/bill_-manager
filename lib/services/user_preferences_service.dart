@@ -68,6 +68,28 @@ class UserPreferencesService {
     await _box?.put(key, false);
   }
 
+  /// Get auto-delete archived bills preference (default: true)
+  static bool getAutoDeleteArchivedBills() {
+    return _box?.get('autoDeleteArchivedBills', defaultValue: true) ?? true;
+  }
+
+  /// Set auto-delete archived bills preference
+  static Future<void> setAutoDeleteArchivedBills(bool enabled) async {
+    await _box?.put('autoDeleteArchivedBills', enabled);
+    print('💾 Auto-delete archived bills: $enabled');
+  }
+
+  /// Get default reminder time (default: 09:00)
+  static String getDefaultReminderTime() {
+    return _box?.get('defaultReminderTime', defaultValue: '09:00') ?? '09:00';
+  }
+
+  /// Set default reminder time (format: HH:mm in 24-hour format)
+  static Future<void> setDefaultReminderTime(String time) async {
+    await _box?.put('defaultReminderTime', time);
+    print('💾 Default reminder time: $time');
+  }
+
   /// Clear session-specific preferences (NOT onboarding status)
   /// Call this on logout to reset session data while preserving onboarding history
   static Future<void> clearSessionPreferences() async {

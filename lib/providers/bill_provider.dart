@@ -9,6 +9,7 @@ import '../services/recurring_bill_service.dart';
 import '../services/bill_archival_service.dart';
 import '../services/notification_service.dart';
 import '../services/notification_history_service.dart';
+import '../services/trial_service.dart';
 import '../providers/notification_settings_provider.dart';
 
 class BillProvider with ChangeNotifier {
@@ -51,7 +52,12 @@ class BillProvider with ChangeNotifier {
 
   // Initialize and load bills
   Future<void> initialize() async {
+    print('\n🚀 ========== BILL PROVIDER INITIALIZE ==========');
     final currentUserId = FirebaseService.currentUserId;
+    print('👤 Current User: $currentUserId');
+    print('💾 Initialized For: $_initializedForUserId');
+    print('✅ Is Initialized: $_isInitialized');
+    print('⏳ Is Loading: $_isLoading');
 
     // Check if we need to reinitialize for a different user
     final needsReinit =
@@ -59,6 +65,8 @@ class BillProvider with ChangeNotifier {
 
     // Prevent multiple initializations for the same user
     if ((_isInitialized && !needsReinit) || _isLoading) {
+      print('⏭️ Skipping initialization (already initialized or loading)');
+      print('================================================\n');
       return;
     }
 
@@ -73,22 +81,44 @@ class BillProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Sync with Firebase if user is authenticated (this clears and reloads bills)
-      if (currentUserId != null) {
-        await SyncService.initialSync();
+      // Load local bills first for instant UI (offline-first approach)
+      _bills = HiveService.getAllBills();
+      print('📱 Loaded ${_bills.length} bills from local storage');
+      for (var bill in _bills) {
+        print('   - ${bill.title} (${bill.id.substring(0, 8)})');
       }
 
-      // Load from local storage after sync
-      _bills = HiveService.getAllBills();
-      notifyListeners();
-
-      _error = null;
+      // Update UI immediately with local data
+      _isLoading = false;
       _isInitialized = true;
       _initializedForUserId = currentUserId;
+      notifyListeners();
 
-      // Run maintenance after a delay to avoid blocking UI
+      // Sync with Firebase in background if user is authenticated
+      if (currentUserId != null) {
+        print('🔄 Starting background sync...');
+        SyncService.initialSync()
+            .then((_) {
+              // Reload bills after sync completes
+              _bills = HiveService.getAllBills();
+              print('✅ Background sync completed, UI updated');
+              notifyListeners();
+            })
+            .catchError((e) {
+              print('⚠️ Background sync failed: $e');
+              print('💾 Continuing with local data');
+              // Don't show error to user - offline mode is expected
+            });
+      }
+
+      _error = null;
+
+      print('✅ Initialization complete');
+      print('================================================\n');
+
+      // Run maintenance in background without any delay (fire-and-forget)
       // This ensures the UI is responsive during app startup
-      Future.delayed(const Duration(seconds: 2), () async {
+      Future.microtask(() async {
         try {
           await runMaintenance();
           // Check for triggered notifications and add to history
@@ -100,8 +130,8 @@ class BillProvider with ChangeNotifier {
       });
     } catch (e) {
       _error = e.toString();
-      print('Error initializing bills: $e');
-    } finally {
+      print('❌ Error initializing bills: $e');
+      print('================================================\n');
       _isLoading = false;
       notifyListeners();
     }
@@ -334,8 +364,13 @@ class BillProvider with ChangeNotifier {
     }
   }
 
-  // Archive bill manually
+  // Archive bill manually (PRO FEATURE)
   Future<void> archiveBill(String billId) async {
+    // Check if user has Pro access
+    if (!TrialService.canArchiveBills()) {
+      throw Exception('Archive feature is only available for Pro users');
+    }
+
     try {
       final bill = HiveService.getBillById(billId);
       if (bill != null) {
@@ -368,7 +403,40 @@ class BillProvider with ChangeNotifier {
       }
 
       final now = DateTime.now();
-      final isPaidOrOverdue = bill.isPaid || bill.dueAt.isBefore(now);
+
+      // Check if bill is overdue using reminder time logic
+      bool isOverdue = false;
+      if (!bill.isPaid) {
+        final today = DateTime(now.year, now.month, now.day);
+        final dueDate = DateTime(
+          bill.dueAt.year,
+          bill.dueAt.month,
+          bill.dueAt.day,
+        );
+
+        if (today.isAfter(dueDate)) {
+          isOverdue = true;
+        } else if (today.isAtSameMomentAs(dueDate)) {
+          final reminderTime = bill.notificationTime ?? '09:00';
+          final reminderParts = reminderTime.split(':');
+          final reminderHour = int.parse(reminderParts[0]);
+          final reminderMinute = int.parse(reminderParts[1]);
+
+          final reminderDateTime = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            reminderHour,
+            reminderMinute,
+          );
+
+          isOverdue =
+              now.isAfter(reminderDateTime) ||
+              now.isAtSameMomentAs(reminderDateTime);
+        }
+      }
+
+      final isPaidOrOverdue = bill.isPaid || isOverdue;
 
       // If this is a PAID or OVERDUE bill, only delete this one
       // (It's just a history record, shouldn't affect future bills)
@@ -395,7 +463,34 @@ class BillProvider with ChangeNotifier {
           final isInSeries = billParentId == parentId || b.id == parentId;
           final isFutureOrCurrent = billSequence >= currentSequence;
           final isUnpaid = !b.isPaid;
-          final isNotOverdue = !b.dueAt.isBefore(now); // Keep overdue bills
+
+          // Check if bill is overdue using reminder time logic
+          bool isBillOverdue = false;
+          final today = DateTime(now.year, now.month, now.day);
+          final dueDate = DateTime(b.dueAt.year, b.dueAt.month, b.dueAt.day);
+
+          if (today.isAfter(dueDate)) {
+            isBillOverdue = true;
+          } else if (today.isAtSameMomentAs(dueDate)) {
+            final reminderTime = b.notificationTime ?? '09:00';
+            final reminderParts = reminderTime.split(':');
+            final reminderHour = int.parse(reminderParts[0]);
+            final reminderMinute = int.parse(reminderParts[1]);
+
+            final reminderDateTime = DateTime(
+              now.year,
+              now.month,
+              now.day,
+              reminderHour,
+              reminderMinute,
+            );
+
+            isBillOverdue =
+                now.isAfter(reminderDateTime) ||
+                now.isAtSameMomentAs(reminderDateTime);
+          }
+
+          final isNotOverdue = !isBillOverdue; // Keep overdue bills
 
           return isInSeries &&
               isFutureOrCurrent &&
@@ -666,22 +761,79 @@ class BillProvider with ChangeNotifier {
     return _bills.where((bill) => bill.category == category).toList();
   }
 
-  // Get upcoming bills
+  // Get upcoming bills (considering reminder time)
   List<BillHive> getUpcomingBills() {
     final now = DateTime.now();
-    return _bills
-        .where((bill) => !bill.isPaid && bill.dueAt.isAfter(now))
-        .toList()
-      ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    return _bills.where((bill) {
+      if (bill.isPaid) return false;
+
+      final today = DateTime(now.year, now.month, now.day);
+      final dueDate = DateTime(
+        bill.dueAt.year,
+        bill.dueAt.month,
+        bill.dueAt.day,
+      );
+
+      // If before due date, it's upcoming
+      if (today.isBefore(dueDate)) return true;
+
+      // If after due date, it's not upcoming
+      if (today.isAfter(dueDate)) return false;
+
+      // On due date - check reminder time
+      final reminderTime = bill.notificationTime ?? '09:00';
+      final reminderParts = reminderTime.split(':');
+      final reminderHour = int.parse(reminderParts[0]);
+      final reminderMinute = int.parse(reminderParts[1]);
+
+      final reminderDateTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        reminderHour,
+        reminderMinute,
+      );
+
+      return now.isBefore(reminderDateTime);
+    }).toList()..sort((a, b) => a.dueAt.compareTo(b.dueAt));
   }
 
-  // Get overdue bills
+  // Get overdue bills (considering reminder time)
   List<BillHive> getOverdueBills() {
     final now = DateTime.now();
-    return _bills
-        .where((bill) => !bill.isPaid && bill.dueAt.isBefore(now))
-        .toList()
-      ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    return _bills.where((bill) {
+      if (bill.isPaid) return false;
+
+      final today = DateTime(now.year, now.month, now.day);
+      final dueDate = DateTime(
+        bill.dueAt.year,
+        bill.dueAt.month,
+        bill.dueAt.day,
+      );
+
+      // If after due date, it's overdue
+      if (today.isAfter(dueDate)) return true;
+
+      // If before due date, it's not overdue
+      if (today.isBefore(dueDate)) return false;
+
+      // On due date - check reminder time
+      final reminderTime = bill.notificationTime ?? '09:00';
+      final reminderParts = reminderTime.split(':');
+      final reminderHour = int.parse(reminderParts[0]);
+      final reminderMinute = int.parse(reminderParts[1]);
+
+      final reminderDateTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        reminderHour,
+        reminderMinute,
+      );
+
+      return now.isAfter(reminderDateTime) ||
+          now.isAtSameMomentAs(reminderDateTime);
+    }).toList()..sort((a, b) => a.dueAt.compareTo(b.dueAt));
   }
 
   // Get paid bills (excluding archived)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../models/bill.dart';
 import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
@@ -9,8 +10,11 @@ import '../widgets/expandable_bill_card.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
+import '../utils/bill_status_helper.dart';
+import '../services/trial_service.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
+import 'subscription_screen.dart';
 
 class BillManagerScreen extends StatefulWidget {
   const BillManagerScreen({super.key});
@@ -99,9 +103,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                 due: billHive.dueAt.toIso8601String().split('T')[0],
                 repeat: billHive.repeat,
                 category: billHive.category,
-                status: billHive.isPaid
-                    ? 'paid'
-                    : (billHive.dueAt.isBefore(now) ? 'overdue' : 'upcoming'),
+                status: BillStatusHelper.calculateStatus(billHive),
               ),
             )
             .toList();
@@ -334,10 +336,14 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                   children: [
                     Expanded(
                       child: _buildSummaryCard(
-                        'This month',
+                        'This ${DateFormat('MMM').format(DateTime.now())}',
                         thisMonthTotal,
-                        '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''}',
-                        const Text('📅', style: TextStyle(fontSize: 20)),
+                        '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''} due',
+                        const Icon(
+                          Icons.calendar_today_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                         thisMonthCount,
                       ),
                     ),
@@ -346,8 +352,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                       child: _buildSummaryCard(
                         'Next 7 days',
                         next7DaysTotal,
-                        '$next7DaysCount bill${next7DaysCount != 1 ? 's' : ''}',
-                        const Text('⏰', style: TextStyle(fontSize: 20)),
+                        '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
+                        const Icon(
+                          Icons.access_time_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                         next7DaysCount,
                       ),
                     ),
@@ -462,92 +472,124 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           title: title,
         );
       },
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: title == 'This month'
-                ? [const Color(0xFF3B82F6), const Color(0xFF4F46E5)]
-                : [const Color(0xFFF97316), const Color(0xFFF97316)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      child: AnimatedScale(
+        scale: 1.0,
+        duration: const Duration(milliseconds: 300),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: title != 'Next 7 days'
+                  ? [
+                      const Color(0xFFFED7AA), // orange-100
+                      const Color(0xFFFDE68A), // amber-100
+                      const Color(0xFFFEF08A), // yellow-100
+                    ]
+                  : [
+                      const Color(0xFFDBEAFE), // blue-100
+                      const Color(0xFFE0F2FE), // sky-100
+                      const Color(0xFFCFFAFE), // cyan-100
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: title != 'Next 7 days'
+                  ? const Color(0xFFFED7AA).withValues(alpha: 0.6) // orange-200
+                  : const Color(0xFFBFDBFE).withValues(alpha: 0.6), // blue-200
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    (title != 'Next 7 days'
+                            ? const Color(0xFFFB923C) // orange-400
+                            : const Color(0xFF3B82F6)) // blue-500
+                        .withValues(alpha: 0.25),
+                blurRadius: 30,
+                offset: const Offset(0, 8),
+                spreadRadius: 0,
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color:
-                  (title == 'This month'
-                          ? const Color(0xFF3B82F6)
-                          : const Color(0xFFF97316))
-                      .withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                icon,
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    amount >= 1000
-                        ? formatCurrencyShort(amount)
-                        : formatCurrencyFull(amount),
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (amount >= 1000) ...[
-                  const SizedBox(width: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
                   Container(
-                    padding: const EdgeInsets.all(4),
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(6),
+                      gradient: LinearGradient(
+                        colors: title != 'Next 7 days'
+                            ? [
+                                const Color(0xFFFB923C), // orange-400
+                                const Color(0xFFF97316), // orange-500
+                              ]
+                            : [
+                                const Color(0xFF60A5FA), // blue-400
+                                const Color(0xFF3B82F6), // blue-500
+                              ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              (title != 'Next 7 days'
+                                      ? const Color(0xFFFB923C) // orange-400
+                                      : const Color(0xFF60A5FA)) // blue-400
+                                  .withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.info_outline,
-                      size: 14,
-                      color: Colors.white,
+                    child: icon,
+                  ),
+                  Flexible(
+                    child: Text(
+                      title.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: title != 'Next 7 days'
+                            ? const Color(0xFFC2410C) // orange-700
+                            : const Color(0xFF1D4ED8), // blue-700
+                        letterSpacing: 0.8,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.8),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                formatCurrencyShort(amount),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B), // slate-800
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF334155), // slate-700
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -853,11 +895,21 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildNavItem(0, Icons.home_outlined, 'Home'),
-            _buildNavItem(1, Icons.analytics_outlined, 'Analytics'),
+            _buildNavItem(0, Icons.home_outlined, 'Home', isPro: false),
+            _buildNavItem(
+              1,
+              Icons.analytics_outlined,
+              'Analytics',
+              isPro: true,
+            ),
             _buildAddNavItem(),
-            _buildNavItem(2, Icons.calendar_today_outlined, 'Calendar'),
-            _buildNavItem(3, Icons.settings_outlined, 'Settings'),
+            _buildNavItem(
+              2,
+              Icons.calendar_today_outlined,
+              'Calendar',
+              isPro: true,
+            ),
+            _buildNavItem(3, Icons.settings_outlined, 'Settings', isPro: false),
           ],
         ),
       ),
@@ -900,8 +952,16 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label, {
+    bool isPro = false,
+  }) {
     final isSelected = _selectedTabIndex == index;
+    final hasProAccess = TrialService.canAccessProFeatures();
+    final showProBadge = isPro && !hasProAccess;
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -913,7 +973,14 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           // Home tab - pop back to home if on another screen
           Navigator.popUntil(context, (route) => route.isFirst);
         } else if (index == 1) {
-          // Analytics tab
+          // Analytics tab - Pro feature
+          if (!TrialService.canAccessProFeatures()) {
+            _showProFeatureDialog('Advanced Analytics');
+            setState(() {
+              _selectedTabIndex = 0;
+            });
+            return;
+          }
           Navigator.pushNamed(context, '/analytics').then((_) {
             // Reset to home tab when returning
             if (mounted) {
@@ -923,7 +990,14 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
             }
           });
         } else if (index == 2) {
-          // Calendar tab
+          // Calendar tab - Pro feature
+          if (!TrialService.canAccessProFeatures()) {
+            _showProFeatureDialog('Calendar View');
+            setState(() {
+              _selectedTabIndex = 0;
+            });
+            return;
+          }
           Navigator.pushNamed(context, '/calendar').then((_) {
             // Reset to home tab when returning
             if (mounted) {
@@ -950,12 +1024,40 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isSelected
-                  ? const Color(0xFFF97316)
-                  : Colors.grey.shade600,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  size: 24,
+                  color: isSelected
+                      ? const Color(0xFFF97316)
+                      : Colors.grey.shade600,
+                ),
+                if (showProBadge)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'PRO',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
@@ -1133,6 +1235,182 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           ),
         ),
       );
+    }
+  }
+
+  void _showProFeatureDialog(String featureName) {
+    final featureDetails = _getFeatureDetails(featureName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4AF37).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                featureDetails['icon'] as IconData,
+                color: const Color(0xFFD4AF37),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                featureName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5E6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFE5CC)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.lock_open,
+                          color: Color(0xFFF97316),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            featureDetails['title'] as String,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1F2937),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      featureDetails['description'] as String,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                TrialService.getMembershipStatus() == MembershipStatus.free
+                    ? 'Your free trial has ended. Upgrade to Pro to unlock all features.'
+                    : 'Upgrade to Pro to unlock all premium features.',
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Other Pro Features:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...TrialService.getProFeaturesList()
+                  .where((f) => f['title'] != featureDetails['title'])
+                  .take(4)
+                  .map((feature) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFFD4AF37),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              feature['title'] as String,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Maybe Later'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionScreen(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD4AF37),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Upgrade to Pro'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Map<String, dynamic> _getFeatureDetails(String featureName) {
+    switch (featureName) {
+      case 'Advanced Analytics':
+        return {
+          'icon': Icons.analytics,
+          'title': 'Advanced Analytics & Insights',
+          'description':
+              'Get detailed insights into your spending patterns with interactive charts, category breakdowns, monthly trends, and spending forecasts. Make smarter financial decisions with data-driven insights.',
+        };
+      case 'Calendar View':
+        return {
+          'icon': Icons.calendar_month,
+          'title': 'Calendar View',
+          'description':
+              'Visualize all your bills in a beautiful calendar layout. See upcoming bills, due dates, and payment history at a glance. Never miss a payment with the calendar overview.',
+        };
+      default:
+        return {
+          'icon': Icons.workspace_premium,
+          'title': 'Pro Feature',
+          'description':
+              'This is a premium feature available only to Pro subscribers. Upgrade to unlock all Pro features.',
+        };
     }
   }
 }

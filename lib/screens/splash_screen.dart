@@ -16,6 +16,8 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _textController;
   late AnimationController _pulseController;
 
+  bool _isDisposed = false;
+
   late Animation<double> _logoScale;
   late Animation<double> _logoOpacity;
   late Animation<double> _textOpacity;
@@ -79,23 +81,28 @@ class _SplashScreenState extends State<SplashScreen>
   void _startAnimations() async {
     // Start logo animation
     await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted || _isDisposed) return;
     _logoController.forward();
 
     // Start text animation after logo
     await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted || _isDisposed) return;
     _textController.forward();
 
     // Start pulse animation
     await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted || _isDisposed) return;
     _pulseController.repeat(reverse: true);
 
     // Wait and then complete
     await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted || _isDisposed) return;
     widget.onComplete();
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _logoController.dispose();
     _textController.dispose();
     _pulseController.dispose();

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bill_provider.dart';
 import 'bill_manager_screen.dart';
+import 'terms_and_conditions_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -15,13 +17,14 @@ class LoginScreen extends StatelessWidget {
     final success = await authProvider.signInWithGoogle();
 
     if (success && context.mounted) {
-      // Initialize bills after Google sign-in
-      await billProvider.initialize();
-
+      // Navigate immediately - bills will load in background
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const BillManagerScreen()),
       );
+
+      // Initialize bills in background (fire-and-forget)
+      billProvider.initialize();
     }
   }
 
@@ -229,35 +232,68 @@ class LoginScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 32),
 
-                  // Terms and Conditions
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text.rich(
-                      TextSpan(
-                        text: 'By continuing, you agree to our ',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9CA3AF),
+                  // Terms and Conditions / Privacy Policy (clickable)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text(
+                          'By continuing, you agree to our ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'Terms and Conditions',
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const TermsAndConditionsScreen(),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'Terms and Conditions',
                             style: TextStyle(
+                              fontSize: 12,
                               color: Color(0xFFF97316),
                               decoration: TextDecoration.underline,
                             ),
                           ),
-                          TextSpan(text: ' and '),
-                          TextSpan(
-                            text: 'Privacy Policy',
+                        ),
+                        const Text(
+                          ' and ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const PrivacyPolicyScreen(),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'Privacy Policy',
                             style: TextStyle(
+                              fontSize: 12,
                               color: Color(0xFFF97316),
                               decoration: TextDecoration.underline,
                             ),
                           ),
-                        ],
-                      ),
-                      textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
                 ],

@@ -67,6 +67,9 @@ class BillHive extends HiveObject {
   @HiveField(20)
   String? notificationTime; // Format: 'HH:mm' (24-hour format)
 
+  @HiveField(21)
+  bool isPinned; // Exclude from auto-delete when archived
+
   BillHive({
     required this.id,
     required this.title,
@@ -89,6 +92,7 @@ class BillHive extends HiveObject {
     this.repeatCount,
     this.reminderTiming,
     this.notificationTime,
+    this.isPinned = false,
   });
 
   // Convert to Firestore format
@@ -114,6 +118,7 @@ class BillHive extends HiveObject {
       'repeatCount': repeatCount,
       'reminderTiming': reminderTiming,
       'notificationTime': notificationTime,
+      'isPinned': isPinned,
     };
   }
 
@@ -145,11 +150,44 @@ class BillHive extends HiveObject {
       repeatCount: data['repeatCount'] as int?,
       reminderTiming: data['reminderTiming'] as String?,
       notificationTime: data['notificationTime'] as String?,
+      isPinned: data['isPinned'] as bool? ?? false,
     );
   }
 
   // Convert to legacy Bill model for UI compatibility
   Map<String, dynamic> toLegacyBill() {
+    // Calculate status based on reminder time
+    String status;
+    if (isPaid) {
+      status = 'paid';
+    } else {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final dueDate = DateTime(dueAt.year, dueAt.month, dueAt.day);
+
+      if (today.isBefore(dueDate)) {
+        status = 'upcoming';
+      } else if (today.isAfter(dueDate)) {
+        status = 'overdue';
+      } else {
+        // Today equals due date - check reminder time
+        final reminderTime = notificationTime ?? '09:00';
+        final reminderParts = reminderTime.split(':');
+        final reminderHour = int.parse(reminderParts[0]);
+        final reminderMinute = int.parse(reminderParts[1]);
+
+        final reminderDateTime = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          reminderHour,
+          reminderMinute,
+        );
+
+        status = now.isBefore(reminderDateTime) ? 'upcoming' : 'overdue';
+      }
+    }
+
     return {
       'id': id,
       'title': title,
@@ -158,9 +196,7 @@ class BillHive extends HiveObject {
       'due': dueAt.toIso8601String().split('T')[0],
       'repeat': repeat,
       'category': category,
-      'status': isPaid
-          ? 'paid'
-          : (dueAt.isBefore(DateTime.now()) ? 'overdue' : 'upcoming'),
+      'status': status,
     };
   }
 
@@ -186,6 +222,7 @@ class BillHive extends HiveObject {
     int? repeatCount,
     String? reminderTiming,
     String? notificationTime,
+    bool? isPinned,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -209,6 +246,7 @@ class BillHive extends HiveObject {
       repeatCount: repeatCount ?? this.repeatCount,
       reminderTiming: reminderTiming ?? this.reminderTiming,
       notificationTime: notificationTime ?? this.notificationTime,
+      isPinned: isPinned ?? this.isPinned,
     );
   }
 }

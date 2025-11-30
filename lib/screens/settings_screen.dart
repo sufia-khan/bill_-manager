@@ -4,9 +4,14 @@ import 'package:flutter/material.dart' as material;
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../services/trial_service.dart';
+import '../services/sync_service.dart';
+import '../services/hive_service.dart';
+import '../services/firebase_service.dart';
+import '../services/user_preferences_service.dart';
 import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
@@ -14,6 +19,7 @@ import 'login_screen.dart';
 import 'onboarding_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'subscription_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -304,6 +310,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 24),
 
+            // 🧪 TESTING SECTION (Remove in production)
+            _buildTestingSection(),
+
+            const SizedBox(height: 24),
+
             // Preferences Section
             _buildSectionHeader('Preferences'),
             const SizedBox(height: 12),
@@ -351,6 +362,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Default Reminder Time
+            _buildSettingsOption(
+              icon: Icons.access_time,
+              title: 'Default Reminder Time',
+              subtitle: 'Set preferred time for bill reminders',
+              trailing: Text(
+                _formatReminderTime(
+                  UserPreferencesService.getDefaultReminderTime(),
+                ),
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              onTap: () => _showReminderTimePicker(),
+            ),
+            const SizedBox(height: 12),
+
             // Currency (Pro feature to change)
             Consumer<CurrencyProvider>(
               builder: (context, currencyProvider, _) {
@@ -381,45 +411,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ),
                         ),
-                      currencyProvider.isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFFF97316),
-                                ),
-                              ),
-                            )
-                          : Text(
-                              '${currencyProvider.selectedCurrency.code} (${currencyProvider.selectedCurrency.symbol})',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
+                      Text(
+                        '${currencyProvider.selectedCurrency.code} (${currencyProvider.selectedCurrency.symbol})',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
                     ],
                   ),
-                  onTap: currencyProvider.isLoading
-                      ? () {} // Disable tap while loading
-                      : !canChangeCurrency
+                  onTap: !canChangeCurrency
                       ? () => _showProFeatureDialogSettings('Currency Settings')
                       : () {
+                          // Capture the settings screen context
+                          final settingsContext = context;
+
                           showModalBottomSheet(
                             context: context,
                             backgroundColor: Colors.transparent,
                             isScrollControlled: true,
-                            builder: (context) => CurrencySelectorSheet(
+                            builder: (sheetContext) => CurrencySelectorSheet(
                               currentCurrency:
                                   currencyProvider.selectedCurrency,
                               onCurrencySelected: (currency, convert, rate) async {
-                                // Show loading overlay with blur
+                                // Close the currency selector sheet first
+                                Navigator.of(sheetContext).pop();
+
+                                // Show loading dialog for better UX
                                 showDialog(
-                                  context: context,
+                                  context: settingsContext,
                                   barrierDismissible: false,
                                   barrierColor: Colors.black54,
-                                  builder: (context) => PopScope(
+                                  builder: (dialogContext) => PopScope(
                                     canPop: false,
                                     child: BackdropFilter(
                                       filter: ImageFilter.blur(
@@ -453,14 +476,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                   color: Color(0xFF1F2937),
                                                 ),
                                               ),
-                                              const SizedBox(height: 8),
-                                              const Text(
-                                                'Please wait',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Color(0xFF6B7280),
-                                                ),
-                                              ),
                                             ],
                                           ),
                                         ),
@@ -469,43 +484,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 );
 
-                                // Change currency in background
-                                currencyProvider
-                                    .setCurrency(currency, convert, rate)
-                                    .then((_) {
-                                      if (mounted) {
-                                        Navigator.pop(context); // Close loading
-                                      }
-                                    });
-
-                                // Navigate to home immediately
-                                await Future.delayed(
-                                  const Duration(milliseconds: 100),
-                                );
-                                if (mounted) {
-                                  Navigator.pop(context); // Close settings
-                                  Navigator.pop(context); // Go to home
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.check_circle,
-                                            color: Colors.white,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'Currency changed to ${currency.code} • All amounts updated!',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      backgroundColor: const Color(0xFF059669),
-                                      behavior: SnackBarBehavior.floating,
-                                      duration: const Duration(seconds: 3),
-                                    ),
+                                try {
+                                  // Change currency first
+                                  await currencyProvider.setCurrency(
+                                    currency,
+                                    convert,
+                                    rate,
                                   );
+
+                                  // Wait 2 seconds for better UX
+                                  await Future.delayed(
+                                    const Duration(seconds: 2),
+                                  );
+
+                                  if (mounted) {
+                                    // Close loading dialog
+                                    Navigator.of(settingsContext).pop();
+
+                                    // Navigate back to home screen
+                                    Navigator.of(settingsContext).pop();
+
+                                    // Show success message
+                                    ScaffoldMessenger.of(
+                                      settingsContext,
+                                    ).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.check_circle,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Currency changed to ${currency.code}',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        backgroundColor: const Color(
+                                          0xFF059669,
+                                        ),
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    // Close loading dialog
+                                    Navigator.of(settingsContext).pop();
+
+                                    // Show error message
+                                    ScaffoldMessenger.of(
+                                      settingsContext,
+                                    ).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.error,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Failed to change currency: $e',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 3),
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                             ),
@@ -531,12 +586,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Archived Bills
+            // Archived Bills (Pro Feature)
             _buildSettingsOption(
               icon: Icons.archive_outlined,
               title: 'Archived Bills',
+              trailing: !TrialService.canArchiveBills()
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD4AF37),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'PRO',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 20,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ],
+                    )
+                  : null,
               onTap: () {
+                if (!TrialService.canArchiveBills()) {
+                  _showProFeatureDialogSettings('Archive Bills');
+                  return;
+                }
                 Navigator.pushNamed(context, '/archived-bills');
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Sync Now
+            _buildSettingsOption(
+              icon: Icons.sync,
+              title: 'Sync Now',
+              subtitle: 'Manually sync bills with cloud',
+              onTap: () async {
+                // Show loading
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFFF97316)),
+                            SizedBox(height: 16),
+                            Text('Syncing bills...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+
+                try {
+                  // Import sync service
+                  final billProvider = Provider.of<BillProvider>(
+                    context,
+                    listen: false,
+                  );
+                  await billProvider.forceSync();
+
+                  if (mounted) {
+                    Navigator.pop(context); // Close loading
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text('Sync completed successfully!'),
+                          ],
+                        ),
+                        backgroundColor: Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Navigator.pop(context); // Close loading
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const Icon(Icons.error, color: Colors.white),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text('Sync failed: $e')),
+                          ],
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
               },
             ),
             const SizedBox(height: 12),
@@ -612,36 +775,269 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Logout',
               titleColor: Colors.red,
               onTap: () async {
-                final shouldLogout = await showDialog<bool>(
+                // Check for unsynced bills
+                final unsyncedCount = authProvider.getUnsyncedBillsCount();
+
+                // Show dialog with 3 options
+                final logoutChoice = await showDialog<String>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to logout?'),
+                    title: const Row(
+                      children: [
+                        Icon(Icons.logout, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Logout'),
+                      ],
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('How would you like to logout?'),
+                        if (unsyncedCount > 0) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange.shade700,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'You have $unsyncedCount unsynced bill${unsyncedCount != 1 ? 's' : ''}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     actions: [
                       TextButton(
-                        onPressed: () => Navigator.pop(context, false),
+                        onPressed: () => Navigator.pop(context, 'cancel'),
                         child: const Text('Cancel'),
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.red),
+                      if (unsyncedCount > 0)
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.pop(context, 'logout_only'),
+                          child: const Text(
+                            'Logout Only',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, 'sync_logout'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF97316),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          unsyncedCount > 0 ? 'Sync & Logout' : 'Logout',
                         ),
                       ),
                     ],
                   ),
                 );
 
-                if (shouldLogout == true && mounted) {
-                  await authProvider.signOut();
-                  if (mounted) {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (context) => const LoginScreen(),
+                if (logoutChoice == null || logoutChoice == 'cancel') {
+                  // User cancelled, do nothing
+                  return;
+                }
+
+                if (!mounted) return;
+
+                if (logoutChoice == 'logout_only') {
+                  // Logout without syncing - just clear and sign out
+                  try {
+                    // Stop sync
+                    SyncService.stopPeriodicSync();
+                    // Clear local data
+                    await HiveService.clearAllData();
+                    // Clear session
+                    await UserPreferencesService.clearSessionPreferences();
+                    // Sign out
+                    await FirebaseService.signOutGoogle();
+
+                    if (mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Logout failed: $e'),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
+                } else if (logoutChoice == 'sync_logout') {
+                  // Check if online
+                  final isOnline = await SyncService.isOnline();
+
+                  if (!isOnline && unsyncedCount > 0) {
+                    // Show network error dialog with auto-retry
+                    if (mounted) {
+                      final shouldRetry = await showDialog<bool>(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (context) => AlertDialog(
+                          title: const Row(
+                            children: [
+                              Icon(Icons.wifi_off, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text('No Internet'),
+                            ],
+                          ),
+                          content: const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'You need an internet connection to sync bills.',
+                                style: TextStyle(fontSize: 14),
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                'Please turn on WiFi or mobile data, then tap "Retry".',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFF97316),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      // If user cancelled, don't logout
+                      if (shouldRetry != true) return;
+
+                      // User wants to retry - check network again
+                      final isNowOnline = await SyncService.isOnline();
+                      if (!isNowOnline) {
+                        // Still offline - show error
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.wifi_off, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Still offline. Please check your connection.',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.orange,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
+                      // Now online - proceed with sync
+                    }
+                  }
+
+                  // Show syncing dialog
+                  if (mounted && unsyncedCount > 0) {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const AlertDialog(
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFFF97316)),
+                            SizedBox(height: 16),
+                            Text('Syncing bills to cloud...'),
+                            SizedBox(height: 8),
+                            Text(
+                              'Please wait',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      (route) => false,
                     );
+                  }
+
+                  try {
+                    await authProvider.signOut();
+
+                    if (mounted) {
+                      // Close syncing dialog if shown
+                      if (unsyncedCount > 0) {
+                        Navigator.pop(context);
+                      }
+
+                      // Navigate to login
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      // Close syncing dialog if shown
+                      if (unsyncedCount > 0) {
+                        Navigator.pop(context);
+                      }
+
+                      // Show error
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Logout failed: $e'),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
                   }
                 }
               },
@@ -1204,22 +1600,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ElevatedButton(
                   onPressed: () async {
                     Navigator.pop(context);
-                    // TODO: Implement account deletion logic
-                    await authProvider.signOut();
+
+                    // Show loading dialog
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => PopScope(
+                        canPop: false,
+                        child: const AlertDialog(
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(color: Colors.red),
+                              SizedBox(height: 16),
+                              Text('Deleting account...'),
+                              SizedBox(height: 8),
+                              Text(
+                                'Please wait',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF6B7280),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+
+                    // Delete account in background (fire-and-forget)
+                    authProvider.deleteAccount();
+
+                    // Show loading for exactly 2 seconds
+                    await Future.delayed(const Duration(seconds: 2));
+
                     if (context.mounted) {
+                      // Close loading dialog
+                      Navigator.pop(context);
+
+                      // Navigate to login screen
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
                           builder: (context) => const LoginScreen(),
                         ),
                         (route) => false,
                       );
+
+                      // Show success message
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Row(
                             children: [
                               Icon(Icons.check_circle, color: Colors.white),
                               SizedBox(width: 8),
-                              Text('Account deleted'),
+                              Text('Account deleted successfully'),
                             ],
                           ),
                           backgroundColor: Colors.red,
@@ -1272,6 +1706,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedTabIndex == index;
+    final isPro = (index == 1 || index == 2); // Analytics and Calendar are Pro
+    final hasProAccess = TrialService.canAccessProFeatures();
+    final showProBadge = isPro && !hasProAccess;
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -1283,13 +1721,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Home tab
           Navigator.pop(context);
         } else if (index == 1) {
-          // Analytics tab
+          // Analytics tab - Pro feature
+          if (!TrialService.canAccessProFeatures()) {
+            _showProFeatureDialogSettings('Advanced Analytics');
+            setState(() {
+              _selectedTabIndex = 3;
+            });
+            return;
+          }
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
           );
         } else if (index == 2) {
-          // Calendar tab
+          // Calendar tab - Pro feature
+          if (!TrialService.canAccessProFeatures()) {
+            _showProFeatureDialogSettings('Calendar View');
+            setState(() {
+              _selectedTabIndex = 3;
+            });
+            return;
+          }
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const CalendarScreen()),
@@ -1302,12 +1754,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isSelected
-                  ? const Color(0xFFF97316)
-                  : Colors.grey.shade600,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  size: 24,
+                  color: isSelected
+                      ? const Color(0xFFF97316)
+                      : Colors.grey.shade600,
+                ),
+                if (showProBadge)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'PRO',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
@@ -1502,7 +1982,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _showUpgradeDialog,
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SubscriptionScreen(),
+                    ),
+                  );
+                  if (result == true && mounted) {
+                    setState(() {});
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: const Color(0xFFB8860B), // Dark gold
@@ -1523,26 +2013,215 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          ] else if (status == MembershipStatus.pro) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SubscriptionScreen(),
+                    ),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.white),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Manage Subscription',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildProFeatureItem(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+  Widget _buildTestingSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.purple.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple.shade200, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle, color: Color(0xFFF97316), size: 18),
-          const SizedBox(width: 8),
-          Text(text, style: const TextStyle(fontSize: 14)),
+          Row(
+            children: [
+              Icon(Icons.science, color: Colors.purple.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '🧪 TESTING MODE',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.purple.shade700,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'DEV ONLY',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Switch between trial states to test Pro features',
+            style: TextStyle(fontSize: 13, color: Colors.purple.shade700),
+          ),
+          const SizedBox(height: 16),
+
+          // Test mode buttons
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildTestModeButton(
+                'Trial Start',
+                'trial_start',
+                Icons.play_circle,
+                Colors.green,
+              ),
+              _buildTestModeButton(
+                'Trial Middle',
+                'trial_middle',
+                Icons.timelapse,
+                Colors.blue,
+              ),
+              _buildTestModeButton(
+                'Trial Ending',
+                'trial_ending',
+                Icons.warning,
+                Colors.orange,
+              ),
+              _buildTestModeButton(
+                'Trial Expired',
+                'trial_expired',
+                Icons.block,
+                Colors.red,
+              ),
+              _buildTestModeButton(
+                'Pro Member',
+                'pro',
+                Icons.workspace_premium,
+                Colors.amber,
+              ),
+              _buildTestModeButton(
+                'Real Mode',
+                null,
+                Icons.refresh,
+                Colors.grey,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade100,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Colors.purple.shade700,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Current: ${TrialService.testMode ?? "Real Mode"}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.purple.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
+  Widget _buildTestModeButton(
+    String label,
+    String? mode,
+    IconData icon,
+    Color color,
+  ) {
+    final isActive = TrialService.testMode == mode;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          TrialService.testMode = mode;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Test mode: ${mode ?? "Real Mode"}'),
+            backgroundColor: color,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? color : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color, width: isActive ? 2 : 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: isActive ? Colors.white : color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isActive ? Colors.white : color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showProFeatureDialogSettings(String featureName) {
+    // Get feature details
+    final featureDetails = _getFeatureDetails(featureName);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1555,54 +2234,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: const Color(0xFFD4AF37).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.workspace_premium,
-                color: Color(0xFFD4AF37),
+              child: Icon(
+                featureDetails['icon'] as IconData,
+                color: const Color(0xFFD4AF37),
                 size: 24,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '$featureName is a Pro Feature',
-                style: const TextStyle(fontSize: 18),
+                featureName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              TrialService.getMembershipStatus() == MembershipStatus.free
-                  ? 'Your free trial has ended. Upgrade to Pro to unlock this feature.'
-                  : 'Upgrade to Pro to unlock this feature.',
-              style: const TextStyle(color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 16),
-            ...TrialService.getProFeaturesList().take(5).map((feature) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Feature-specific description
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5E6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFE5CC)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.check_circle,
-                      color: Color(0xFFD4AF37),
-                      size: 18,
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.lock_open,
+                          color: Color(0xFFF97316),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            featureDetails['title'] as String,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1F2937),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        feature['title'] as String,
-                        style: const TextStyle(fontSize: 14),
+                    const SizedBox(height: 8),
+                    Text(
+                      featureDetails['description'] as String,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF6B7280),
                       ),
                     ),
                   ],
                 ),
-              );
-            }),
-          ],
+              ),
+              const SizedBox(height: 16),
+
+              // Trial status message
+              Text(
+                TrialService.getMembershipStatus() == MembershipStatus.free
+                    ? 'Your free trial has ended. Upgrade to Pro to unlock all features.'
+                    : 'Upgrade to Pro to unlock all premium features.',
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+
+              // Other Pro features
+              const Text(
+                'Other Pro Features:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...TrialService.getProFeaturesList()
+                  .where((f) => f['title'] != featureDetails['title'])
+                  .take(4)
+                  .map((feature) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFFD4AF37),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              feature['title'] as String,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -1612,16 +2355,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Pro subscription coming soon!'),
-                  backgroundColor: Color(0xFFD4AF37),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionScreen(),
                 ),
               );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFD4AF37),
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             child: const Text('Upgrade to Pro'),
           ),
@@ -1630,66 +2374,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showUpgradeDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.workspace_premium, color: Color(0xFFF97316), size: 28),
-            SizedBox(width: 8),
-            Text('Upgrade to Pro'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Unlock all Pro features:',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            _buildProFeatureItem('Unlimited bills tracking'),
-            _buildProFeatureItem('Advanced analytics'),
-            _buildProFeatureItem('Cloud backup & sync'),
-            _buildProFeatureItem('Priority support'),
-            _buildProFeatureItem('No ads'),
-            const SizedBox(height: 16),
-            const Text(
-              'Pro subscription coming soon!',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Pro subscription coming soon!'),
-                  backgroundColor: Color(0xFFF97316),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF97316),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Notify Me'),
-          ),
-        ],
-      ),
-    );
+  Map<String, dynamic> _getFeatureDetails(String featureName) {
+    switch (featureName) {
+      case 'Currency Settings':
+        return {
+          'icon': Icons.attach_money,
+          'title': 'Change Currency Anytime',
+          'description':
+              'Switch between different currencies and automatically convert all your bill amounts. Perfect for travelers or managing bills in multiple currencies.',
+        };
+      case 'Archive Bills':
+        return {
+          'icon': Icons.archive,
+          'title': 'Archive Paid Bills',
+          'description':
+              'Keep your bill history organized by archiving paid bills. Access them anytime while keeping your active bills list clean and focused.',
+        };
+      case 'Recurring Bills':
+        return {
+          'icon': Icons.repeat,
+          'title': 'Set Up Recurring Bills',
+          'description':
+              'Automatically create bills that repeat weekly, monthly, or yearly. Never manually add the same bill again - set it once and forget it.',
+        };
+      case 'Multiple Reminders':
+        return {
+          'icon': Icons.notifications_active,
+          'title': 'Multiple Reminder Options',
+          'description':
+              'Get notified 1 day, 2 days, or 1 week before bills are due. Choose the perfect reminder timing for each bill.',
+        };
+      case 'Bill Notes':
+        return {
+          'icon': Icons.note,
+          'title': 'Add Notes to Bills',
+          'description':
+              'Keep important information with each bill. Add account numbers, payment methods, or any details you need to remember.',
+        };
+      case 'Cloud Sync':
+        return {
+          'icon': Icons.cloud_sync,
+          'title': 'Cloud Backup & Sync',
+          'description':
+              'Your bills are automatically backed up to the cloud and synced across all your devices. Never lose your data.',
+        };
+      case 'Advanced Analytics':
+        return {
+          'icon': Icons.analytics,
+          'title': 'Advanced Analytics',
+          'description':
+              'Get detailed insights into your spending patterns with charts, trends, and category breakdowns. Make smarter financial decisions.',
+        };
+      case 'Export Data':
+        return {
+          'icon': Icons.file_download,
+          'title': 'Export to CSV/PDF',
+          'description':
+              'Export your bills and reports to CSV or PDF format. Perfect for record-keeping, taxes, or sharing with accountants.',
+        };
+      case 'Unlimited Bills':
+        return {
+          'icon': Icons.all_inclusive,
+          'title': 'Track Unlimited Bills',
+          'description':
+              'Add as many bills as you need without any limits. Free plan is limited to 5 bills, Pro gives you unlimited tracking.',
+        };
+      case 'All Categories':
+        return {
+          'icon': Icons.category,
+          'title': 'Access All Categories',
+          'description':
+              'Choose from 30+ bill categories to organize your expenses. Free plan only has 10 basic categories.',
+        };
+      default:
+        return {
+          'icon': Icons.workspace_premium,
+          'title': 'Pro Feature',
+          'description':
+              'This is a premium feature available only to Pro subscribers. Upgrade to unlock all Pro features.',
+        };
+    }
   }
 
   Widget _buildSectionHeader(String title) {
@@ -1780,5 +2544,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  String _formatReminderTime(String time24) {
+    try {
+      final parts = time24.split(':');
+      if (parts.length == 2) {
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        final period = hour >= 12 ? 'PM' : 'AM';
+        final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+        final displayMinute = minute.toString().padLeft(2, '0');
+        return '$displayHour:$displayMinute $period';
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return time24;
+  }
+
+  Future<void> _showReminderTimePicker() async {
+    final currentTime = UserPreferencesService.getDefaultReminderTime();
+    final parts = currentTime.split(':');
+    final initialHour = int.parse(parts[0]);
+    final initialMinute = int.parse(parts[1]);
+
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFFF97316),
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF1F2937),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFF97316),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      final time24 =
+          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      await UserPreferencesService.setDefaultReminderTime(time24);
+      setState(() {});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Default reminder time set to ${_formatReminderTime(time24)}',
+            ),
+            backgroundColor: const Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 }

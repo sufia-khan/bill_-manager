@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -16,10 +17,15 @@ class FirebaseService {
   // Auth: Sign in with Google
   static Future<UserCredential?> signInWithGoogle() async {
     // Trigger the authentication flow
-    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+    debugPrint('[Auth] Starting Google sign-in');
+    final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
+    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
     // User cancelled the sign-in
-    if (googleUser == null) return null;
+    if (googleUser == null) {
+      debugPrint('[Auth] Google sign-in cancelled by user');
+      return null;
+    }
 
     // Obtain the auth details from the request
     final GoogleSignInAuthentication googleAuth =
@@ -32,13 +38,118 @@ class FirebaseService {
     );
 
     // Sign in to Firebase with the Google credential
-    return await _auth.signInWithCredential(credential);
+    debugPrint('[Auth] Signing in to Firebase with Google credential');
+    final result = await _auth.signInWithCredential(credential);
+    debugPrint(
+      '[Auth] Firebase sign-in completed for uid: \'${result.user?.uid}\'',
+    );
+    return result;
   }
 
   // Auth: Sign out from Google
   static Future<void> signOutGoogle() async {
-    await GoogleSignIn().signOut();
+    final GoogleSignIn googleSignIn = GoogleSignIn();
+    await googleSignIn.signOut();
     await _auth.signOut();
+  }
+
+  // Auth: Delete user account and all data (OPTIMIZED FOR SPEED)
+  static Future<void> deleteUserAccount() async {
+    if (currentUserId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final userId = currentUserId!; // Save userId before deletion
+    debugPrint('[Auth] 🗑️ Fast-deleting account for uid: $userId');
+
+    try {
+      final currentAuthUser = _auth.currentUser;
+
+      // Run Firestore deletions in parallel for maximum speed
+      debugPrint('[Auth] Deleting Firestore data in parallel...');
+      await Future.wait([
+        // Delete bills collection
+        _deleteUserBillsCollection(userId),
+        // Delete user document
+        _firestore.collection('users').doc(userId).delete(),
+      ]);
+      debugPrint('[Auth] ✅ Firestore data deleted');
+
+      // Delete Firebase Auth account
+      debugPrint('[Auth] Deleting Firebase Auth account...');
+      if (currentAuthUser != null) {
+        try {
+          await currentAuthUser.delete();
+          debugPrint('[Auth] ✅ Auth account deleted');
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'requires-recent-login') {
+            throw Exception(
+              'For security, please sign out and sign in again before deleting your account.',
+            );
+          }
+          rethrow;
+        }
+      }
+
+      // Sign out from Google
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      await Future.wait([googleSignIn.signOut(), _auth.signOut()]);
+      debugPrint('[Auth] ✅ Signed out');
+
+      debugPrint('[Auth] 🎉 Account deleted successfully!');
+    } catch (e, stackTrace) {
+      debugPrint('[Auth] ❌ Error: $e');
+      debugPrint('[Auth] Stack: $stackTrace');
+      rethrow;
+    }
+  }
+
+  // Helper: Delete all bills in user's collection (optimized)
+  static Future<void> _deleteUserBillsCollection(String userId) async {
+    final billsCollection = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('bills');
+
+    final billsSnapshot = await billsCollection.get();
+    final billCount = billsSnapshot.docs.length;
+
+    if (billCount == 0) {
+      debugPrint('[Auth] No bills to delete');
+      return;
+    }
+
+    debugPrint('[Auth] Deleting $billCount bills...');
+
+    // Delete all bills in a single batch (up to 500) or multiple parallel batches
+    if (billCount <= 500) {
+      // Single batch - fastest for small collections
+      final batch = _firestore.batch();
+      for (var doc in billsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } else {
+      // Multiple parallel batches for large collections
+      final batchSize = 500;
+      final batches = <Future>[];
+
+      for (var i = 0; i < billCount; i += batchSize) {
+        final batch = _firestore.batch();
+        final end = (i + batchSize < billCount) ? i + batchSize : billCount;
+
+        for (var j = i; j < end; j++) {
+          batch.delete(billsSnapshot.docs[j].reference);
+        }
+
+        batches.add(batch.commit());
+      }
+
+      // Execute all batches in parallel
+      await Future.wait(batches);
+    }
+
+    debugPrint('[Auth] ✅ $billCount bills deleted');
   }
 
   // Firestore: Get user's bills collection reference

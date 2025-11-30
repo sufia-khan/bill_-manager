@@ -12,8 +12,7 @@ class TrialService {
   // 'trial_ending' = Trial ending soon (7 days left)
   // 'trial_expired' = Trial expired
   // 'pro' = Pro member
-  static String? testMode =
-      'trial_expired'; // Set to test different states (null = real mode)
+  static String? testMode; // Set to test different states (null = real mode)
   // ===================================
 
   /// Get registration date for current user
@@ -99,14 +98,17 @@ class TrialService {
     return registrationDate.add(const Duration(days: trialDurationDays));
   }
 
-  /// Check if user has Pro subscription (placeholder for future implementation)
+  /// Check if user has Pro subscription
   static bool hasProSubscription() {
     // TEST MODE: Return true if testing pro mode
     if (testMode == 'pro') return true;
 
-    // TODO: Implement actual subscription check with payment provider
-    // For now, return false - users are either in trial or need to subscribe
-    return false;
+    // Check actual subscription status from SubscriptionService
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    final status = HiveService.getUserData('subscription_status_${user.uid}');
+    return status == 'active';
   }
 
   /// Check if user can access Pro features

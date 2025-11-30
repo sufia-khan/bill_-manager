@@ -17,6 +17,7 @@ import 'services/notification_service.dart';
 import 'services/notification_history_service.dart';
 import 'services/pending_notification_service.dart';
 import 'services/user_preferences_service.dart';
+import 'services/archive_management_service.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
@@ -47,6 +48,16 @@ void main() async {
 
   // Process any pending notifications that triggered while app was closed
   await PendingNotificationService.processPendingNotifications();
+
+  // Perform auto-cleanup of old archived bills (respects user preferences)
+  try {
+    final deletedCount = await ArchiveManagementService.performAutoCleanup();
+    if (deletedCount > 0) {
+      print('🗑️ Auto-deleted $deletedCount old archived bills');
+    }
+  } catch (e) {
+    print('⚠️ Auto-cleanup error: $e');
+  }
 
   // Set up notification tap handler
   NotificationService.onNotificationTapped = (String? billId) {
@@ -217,14 +228,13 @@ class _AuthWrapperState extends State<AuthWrapper>
         if (authProvider.isAuthenticated) {
           final userId = authProvider.user?.uid;
 
-          // Load currency from Firebase after authentication
+          // Load currency from Firebase after authentication (in background)
           if (!_hasLoadedCurrency) {
             _hasLoadedCurrency = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              // Small delay to ensure Firebase is ready
-              await Future.delayed(const Duration(milliseconds: 500));
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Load currency in background without blocking UI
               if (mounted) {
-                await context.read<CurrencyProvider>().loadSavedCurrency();
+                context.read<CurrencyProvider>().loadSavedCurrency();
               }
             });
           }
@@ -256,8 +266,19 @@ class _AuthWrapperState extends State<AuthWrapper>
                 _hasShownPermissionDialog = true;
                 _showNotificationPermissionDialog(context);
               }
-              _isShowingOnboarding = false;
+              if (mounted) {
+                setState(() {
+                  _isShowingOnboarding = false;
+                });
+              }
             });
+
+            // Show loading while onboarding is being displayed
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: Color(0xFFF97316)),
+              ),
+            );
           } else if (hasSeenOnboarding && !_hasShownPermissionDialog) {
             // User has already seen onboarding, show notification dialog directly
             _hasShownPermissionDialog = true;

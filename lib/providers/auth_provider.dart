@@ -4,6 +4,7 @@ import '../services/firebase_service.dart';
 import '../services/hive_service.dart';
 import '../services/sync_service.dart';
 import '../services/user_preferences_service.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
@@ -78,18 +79,61 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Sign out
+  // Check if there are unsynced bills
+  int getUnsyncedBillsCount() {
+    try {
+      final unsyncedBills = HiveService.getBillsNeedingSync();
+      return unsyncedBills.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Sign out with automatic sync
   Future<void> signOut() async {
     _isLoading = true;
     notifyListeners();
 
     try {
+      print('\n🚪 ========== LOGOUT STARTED ==========');
+
+      // CRITICAL: Sync any unsynced bills BEFORE clearing data
+      final unsyncedBills = HiveService.getBillsNeedingSync();
+      if (unsyncedBills.isNotEmpty) {
+        print('⚠️ Found ${unsyncedBills.length} unsynced bills before logout');
+        print('📤 Syncing to Firebase before clearing...');
+
+        try {
+          // Force sync now
+          await SyncService.syncBills();
+          print('✅ Unsynced bills pushed to Firebase');
+        } catch (e) {
+          print('❌ Failed to sync bills before logout: $e');
+          print('⚠️ Bills will be lost! Consider canceling logout.');
+          // Rethrow to let UI handle the error
+          rethrow;
+        }
+      } else {
+        print('✅ No unsynced bills to push');
+      }
+
       // Stop sync
       SyncService.stopPeriodicSync();
 
       // Note: Background task cancellation removed (workmanager not used)
 
+      // Cancel all scheduled notifications for the current user
+      print('🔕 Cancelling all scheduled notifications...');
+      try {
+        await NotificationService().cancelAllNotifications();
+        print('✅ All notifications cancelled');
+      } catch (e) {
+        print('⚠️ Failed to cancel notifications: $e');
+        // Continue with logout even if notification cancellation fails
+      }
+
       // Clear local data
+      print('🧹 Clearing local data...');
       await HiveService.clearAllData();
 
       // Clear session preferences but KEEP onboarding status per user
@@ -97,12 +141,19 @@ class AuthProvider with ChangeNotifier {
       await UserPreferencesService.clearSessionPreferences();
 
       // Sign out from Firebase and Google
+      print('🔓 Signing out from Firebase...');
       await FirebaseService.signOutGoogle();
 
       _user = null;
       _error = null;
+
+      print('✅ Logout completed successfully');
+      print('========================================\n');
     } catch (e) {
-      _error = 'Sign out failed';
+      _error = 'Sign out failed: $e';
+      print('❌ Logout failed: $e');
+      print('========================================\n');
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -122,6 +173,66 @@ class AuthProvider with ChangeNotifier {
       await currentUser.reload();
       _user = FirebaseAuth.instance.currentUser;
       notifyListeners();
+    }
+  }
+
+  // Delete account permanently (ULTRA-FAST)
+  Future<void> deleteAccount() async {
+    try {
+      print('\n🗑️ ========== ULTRA-FAST ACCOUNT DELETION ==========');
+
+      // Stop sync service immediately
+      SyncService.stopPeriodicSync();
+
+      // Cancel all scheduled notifications
+      print('🔕 Cancelling all scheduled notifications...');
+      try {
+        await NotificationService().cancelAllNotifications();
+        print('✅ All notifications cancelled');
+      } catch (e) {
+        print('⚠️ Failed to cancel notifications: $e');
+        // Continue with account deletion even if notification cancellation fails
+      }
+
+      // Update state immediately so UI can proceed (don't wait for anything)
+      _user = null;
+      _error = null;
+      _isLoading = false;
+      notifyListeners();
+
+      // Delete from Firestore and Firebase Auth in background
+      print('🔥 Deleting cloud data in background...');
+      FirebaseService.deleteUserAccount()
+          .then((_) {
+            print('✅ Cloud data deleted');
+          })
+          .catchError((e) {
+            print('⚠️ Cloud deletion error (non-critical): $e');
+          });
+
+      // Clear local data in background (don't wait for this)
+      print('🧹 Clearing local data in background...');
+      Future.wait([
+            HiveService.clearAllData(),
+            UserPreferencesService.clearAll(),
+          ])
+          .then((_) {
+            print('✅ Local data cleared');
+            print('🎉 Account deleted!');
+            print('========================================\n');
+          })
+          .catchError((e) {
+            print('⚠️ Local cleanup error (non-critical): $e');
+            print('========================================\n');
+          });
+    } catch (e, stackTrace) {
+      _error = 'Account deletion failed: $e';
+      print('❌ Failed: $e');
+      print('Stack: $stackTrace');
+      print('========================================\n');
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
     }
   }
 }

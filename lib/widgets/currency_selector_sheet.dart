@@ -152,8 +152,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context); // Close confirmation
-                Navigator.pop(context); // Close currency selector
+                Navigator.pop(context); // Close confirmation only
                 widget.onCurrencySelected(currency, false, 1.0);
               },
               style: ElevatedButton.styleFrom(

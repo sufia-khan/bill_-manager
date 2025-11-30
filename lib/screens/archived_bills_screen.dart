@@ -7,6 +7,8 @@ import '../providers/currency_provider.dart';
 import '../utils/formatters.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 import '../widgets/custom_snackbar.dart';
+import '../services/archive_management_service.dart';
+import '../services/hive_service.dart';
 
 class ArchivedBillsScreen extends StatefulWidget {
   const ArchivedBillsScreen({super.key});
@@ -429,36 +431,92 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => _showRestoreDialog(bill, billProvider),
-                    icon: const Icon(
-                      Icons.restore,
-                      size: 18,
-                      color: Color(0xFFF97316),
-                    ),
-                    label: const Text(
-                      'Restore',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFF97316),
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              // Pin/Unpin button
+              _buildPinButton(bill, billProvider),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPinButton(Bill bill, BillProvider billProvider) {
+    final billHive = HiveService.getBillById(bill.id);
+    if (billHive == null) return const SizedBox.shrink();
+
+    final isPinned = billHive.isPinned;
+    final daysUntilDeletion = ArchiveManagementService.getDaysUntilDeletion(
+      billHive,
+    );
+    final isAtRisk = ArchiveManagementService.isAtRiskOfDeletion(billHive);
+
+    return TextButton.icon(
+      onPressed: () async {
+        await ArchiveManagementService.togglePinStatus(bill.id);
+        setState(() {});
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isPinned
+                    ? '${bill.title} unpinned'
+                    : '${bill.title} pinned - won\'t be auto-deleted',
+              ),
+              backgroundColor: isPinned
+                  ? const Color(0xFF6B7280)
+                  : const Color(0xFFD4AF37),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      icon: Icon(
+        isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+        size: 18,
+        color: isPinned ? const Color(0xFFD4AF37) : const Color(0xFF6B7280),
+      ),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            isPinned ? 'Pinned' : 'Pin',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isPinned
+                  ? const Color(0xFFD4AF37)
+                  : const Color(0xFF6B7280),
+            ),
+          ),
+          if (isAtRisk && !isPinned && daysUntilDeletion != null) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${daysUntilDeletion}d',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        backgroundColor: isPinned
+            ? const Color(0xFFD4AF37).withValues(alpha: 0.1)
+            : isAtRisk
+            ? Colors.red.withValues(alpha: 0.1)
+            : null,
       ),
     );
   }
@@ -622,91 +680,6 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
         CustomSnackBar.showSuccess(
           context,
           'Permanently deleted $billCount archived bills',
-          duration: const Duration(seconds: 2),
-        );
-      }
-    }
-  }
-
-  Future<void> _showRestoreDialog(Bill bill, BillProvider billProvider) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.restore, color: Color(0xFFF97316), size: 28),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Restore Bill?',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Do you want to restore "${bill.title}"?',
-              style: const TextStyle(fontSize: 15),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF5E6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Color(0xFFF97316), size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'This will move the bill back to the Paid tab',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF1F2937)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF97316),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Restore'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      await billProvider.restoreBill(bill.id);
-      if (mounted) {
-        // Force refresh to remove from archived list
-        setState(() {});
-        CustomSnackBar.showSuccess(
-          context,
-          '${bill.title} restored successfully!',
           duration: const Duration(seconds: 2),
         );
       }

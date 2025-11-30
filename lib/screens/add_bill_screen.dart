@@ -4,6 +4,7 @@ import '../models/bill.dart';
 import '../providers/bill_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../services/trial_service.dart';
+import '../services/user_preferences_service.dart';
 
 class AddBillScreen extends StatefulWidget {
   final Bill? billToEdit;
@@ -74,19 +75,29 @@ class _AddBillScreenState extends State<AddBillScreen> {
   void initState() {
     super.initState();
 
-    // Load default notification settings
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final notificationProvider = context.read<NotificationSettingsProvider>();
-      setState(() {
-        _reminderTiming = notificationProvider.reminderTiming;
-        _notificationTime = notificationProvider.notificationTime;
-      });
-    });
-
-    // If editing, prefill the fields
+    // If editing, prefill the fields (including notification time from bill)
     if (widget.billToEdit != null) {
       _prefillFieldsForEdit();
     } else {
+      // For new bills, load default notification settings from user preferences
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final notificationProvider = context
+            .read<NotificationSettingsProvider>();
+
+        // Get default reminder time from user preferences (or 9:00 if not set)
+        final defaultTime = UserPreferencesService.getDefaultReminderTime();
+        final parts = defaultTime.split(':');
+        final defaultTimeOfDay = TimeOfDay(
+          hour: int.parse(parts[0]),
+          minute: int.parse(parts[1]),
+        );
+
+        setState(() {
+          _reminderTiming = notificationProvider.reminderTiming;
+          _notificationTime = defaultTimeOfDay;
+        });
+      });
+
       // Set default due date to 30 days from now for new bills
       _selectedDueDate = DateTime.now().add(const Duration(days: 30));
       _dueController.text = _formatDate(_selectedDueDate!);
@@ -109,23 +120,50 @@ class _AddBillScreenState extends State<AddBillScreen> {
         final notificationProvider = context
             .read<NotificationSettingsProvider>();
         final billHive = billProvider.bills.firstWhere((b) => b.id == bill.id);
+
+        // Priority for notification time when editing:
+        // 1. Bill's existing time
+        // 2. User's preferred time from settings
+        // 3. Default (9:00)
+        TimeOfDay timeToUse;
+        if (billHive.notificationTime != null) {
+          // Use bill's existing time
+          final parts = billHive.notificationTime!.split(':');
+          timeToUse = TimeOfDay(
+            hour: int.parse(parts[0]),
+            minute: int.parse(parts[1]),
+          );
+        } else {
+          // Use user's preferred time from settings
+          final defaultTime = UserPreferencesService.getDefaultReminderTime();
+          final parts = defaultTime.split(':');
+          timeToUse = TimeOfDay(
+            hour: int.parse(parts[0]),
+            minute: int.parse(parts[1]),
+          );
+        }
+
         setState(() {
           _notesController.text = billHive.notes ?? '';
-          // Load notification settings from bill or use defaults
+          _repeatCount = billHive.repeatCount;
+          // Load reminder timing from bill or use defaults
           _reminderTiming =
               billHive.reminderTiming ?? notificationProvider.reminderTiming;
-          if (billHive.notificationTime != null) {
-            final parts = billHive.notificationTime!.split(':');
-            _notificationTime = TimeOfDay(
-              hour: int.parse(parts[0]),
-              minute: int.parse(parts[1]),
-            );
-          } else {
-            _notificationTime = notificationProvider.notificationTime;
-          }
+          _notificationTime = timeToUse;
         });
       } catch (e) {
-        // Notes not found, leave empty
+        // Bill not found, use defaults
+        final defaultTime = UserPreferencesService.getDefaultReminderTime();
+        final parts = defaultTime.split(':');
+        setState(() {
+          _notificationTime = TimeOfDay(
+            hour: int.parse(parts[0]),
+            minute: int.parse(parts[1]),
+          );
+          _reminderTiming = context
+              .read<NotificationSettingsProvider>()
+              .reminderTiming;
+        });
       }
     });
   }
@@ -853,6 +891,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
   }
 
   void _showProFeatureDialog(String featureName) {
+    // Get feature details
+    final featureDetails = _getFeatureDetails(featureName);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -865,37 +906,118 @@ class _AddBillScreenState extends State<AddBillScreen> {
                 color: const Color(0xFFD4AF37).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.workspace_premium,
-                color: Color(0xFFD4AF37),
+              child: Icon(
+                featureDetails['icon'] as IconData,
+                color: const Color(0xFFD4AF37),
                 size: 24,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '$featureName is a Pro Feature',
-                style: const TextStyle(fontSize: 18),
+                featureName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              TrialService.getMembershipStatus() == MembershipStatus.free
-                  ? 'Your free trial has ended. Upgrade to Pro to unlock:'
-                  : 'Upgrade to Pro to unlock:',
-              style: const TextStyle(color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 16),
-            _buildProFeatureRow('Recurring bills (weekly, monthly, yearly)'),
-            _buildProFeatureRow('Multiple reminder times'),
-            _buildProFeatureRow('Unlimited bills'),
-            _buildProFeatureRow('Cloud sync & backup'),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Feature-specific description
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5E6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFE5CC)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.lock_open,
+                          color: Color(0xFFF97316),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            featureDetails['title'] as String,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1F2937),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      featureDetails['description'] as String,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Trial status message
+              Text(
+                TrialService.getMembershipStatus() == MembershipStatus.free
+                    ? 'Your free trial has ended. Upgrade to Pro to unlock all features.'
+                    : 'Upgrade to Pro to unlock all premium features.',
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+
+              // Other Pro features
+              const Text(
+                'Other Pro Features:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...TrialService.getProFeaturesList()
+                  .where((f) => f['title'] != featureDetails['title'])
+                  .take(4)
+                  .map((feature) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFFD4AF37),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              feature['title'] as String,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -905,16 +1027,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Pro subscription coming soon!'),
-                  backgroundColor: Color(0xFFD4AF37),
-                ),
-              );
+              Navigator.pushNamed(context, '/settings');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFD4AF37),
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             child: const Text('Upgrade to Pro'),
           ),
@@ -923,17 +1041,51 @@ class _AddBillScreenState extends State<AddBillScreen> {
     );
   }
 
-  Widget _buildProFeatureRow(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle, color: Color(0xFFD4AF37), size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
-        ],
-      ),
-    );
+  Map<String, dynamic> _getFeatureDetails(String featureName) {
+    switch (featureName) {
+      case 'Recurring Bills':
+        return {
+          'icon': Icons.repeat,
+          'title': 'Set Up Recurring Bills',
+          'description':
+              'Automatically create bills that repeat weekly, monthly, or yearly. Never manually add the same bill again - set it once and forget it.',
+        };
+      case 'Multiple Reminders':
+        return {
+          'icon': Icons.notifications_active,
+          'title': 'Multiple Reminder Options',
+          'description':
+              'Get notified 1 day, 2 days, or 1 week before bills are due. Choose the perfect reminder timing for each bill.',
+        };
+      case 'Unlimited Bills':
+        return {
+          'icon': Icons.all_inclusive,
+          'title': 'Track Unlimited Bills',
+          'description':
+              'Add as many bills as you need without any limits. Free plan is limited to 5 bills, Pro gives you unlimited tracking.',
+        };
+      case 'All Categories':
+        return {
+          'icon': Icons.category,
+          'title': 'Access All Categories',
+          'description':
+              'Choose from 30+ bill categories to organize your expenses. Free plan only has 10 basic categories.',
+        };
+      case 'Bill Notes':
+        return {
+          'icon': Icons.note,
+          'title': 'Add Notes to Bills',
+          'description':
+              'Keep important information with each bill. Add account numbers, payment methods, or any details you need to remember.',
+        };
+      default:
+        return {
+          'icon': Icons.workspace_premium,
+          'title': 'Pro Feature',
+          'description':
+              'This is a premium feature available only to Pro subscribers. Upgrade to unlock all Pro features.',
+        };
+    }
   }
 
   Widget _buildProLockedField({

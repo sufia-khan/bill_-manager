@@ -80,6 +80,8 @@ class HiveService {
     final box = getBillsBox();
     await box.put(bill.id, bill);
     _invalidateCache();
+    print('💾 Saved bill to Hive: ${bill.title} (${bill.id})');
+    print('   Total bills in box now: ${box.length}');
   }
 
   // Get all bills (cached for performance)
@@ -96,11 +98,21 @@ class HiveService {
         _cachedBills != null &&
         _cacheTimestamp != null &&
         now.difference(_cacheTimestamp!) < _cacheExpiry) {
+      print('📦 Using cached bills: ${_cachedBills!.length}');
       return _cachedBills!;
     }
 
     // Refresh cache
-    _cachedBills = box.values.where((bill) => !bill.isDeleted).toList();
+    final allBillsInBox = box.values.toList();
+    final nonDeletedBills = allBillsInBox
+        .where((bill) => !bill.isDeleted)
+        .toList();
+
+    print('📦 Refreshing bill cache:');
+    print('   Total in Hive box: ${allBillsInBox.length}');
+    print('   Non-deleted: ${nonDeletedBills.length}');
+
+    _cachedBills = nonDeletedBills;
     _cacheTimestamp = now;
     return _cachedBills!;
   }
@@ -159,7 +171,18 @@ class HiveService {
   }
 
   // Clear only bills data (preserves user settings like currentUserId)
+  // SAFETY: Warns if there are unsynced bills
   static Future<void> clearBillsOnly() async {
+    // Safety check: warn if clearing bills that need sync
+    final unsyncedBills = getBillsNeedingSync();
+    if (unsyncedBills.isNotEmpty) {
+      print('⚠️⚠️⚠️ WARNING: Clearing ${unsyncedBills.length} unsynced bills!');
+      for (var bill in unsyncedBills) {
+        print('   - ${bill.title} (${bill.id}) - needsSync: ${bill.needsSync}');
+      }
+      print('⚠️⚠️⚠️ These bills should have been synced first!');
+    }
+
     final billBox = getBillsBox();
     await billBox.clear();
     _invalidateCache();

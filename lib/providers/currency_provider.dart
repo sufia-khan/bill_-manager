@@ -9,12 +9,10 @@ class CurrencyProvider with ChangeNotifier {
   Currency _selectedCurrency = Currency.currencies[0]; // Default to USD
   bool _convertAmounts = false;
   double _conversionRate = 1.0;
-  bool _isLoading = false;
 
   Currency get selectedCurrency => _selectedCurrency;
   bool get convertAmounts => _convertAmounts;
   double get conversionRate => _conversionRate;
-  bool get isLoading => _isLoading;
 
   // Load saved currency on init
   Future<void> loadSavedCurrency() async {
@@ -99,13 +97,7 @@ class CurrencyProvider with ChangeNotifier {
     bool convertAmounts,
     double conversionRate,
   ) async {
-    _isLoading = true;
-    notifyListeners();
-
     try {
-      // Show loading spinner for 500ms for instant feel
-      await Future.delayed(const Duration(milliseconds: 500));
-
       _selectedCurrency = currency;
       _convertAmounts = convertAmounts;
       _conversionRate = conversionRate;
@@ -139,10 +131,8 @@ class CurrencyProvider with ChangeNotifier {
         }
       }
 
-      _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _isLoading = false;
       notifyListeners();
       rethrow;
     }

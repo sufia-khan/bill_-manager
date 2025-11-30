@@ -5,6 +5,7 @@ import '../models/bill_hive.dart';
 import '../providers/bill_provider.dart';
 import '../utils/formatters.dart';
 import '../screens/add_bill_screen.dart';
+import '../services/trial_service.dart';
 
 class BillDetailsBottomSheet extends StatelessWidget {
   final Bill bill;
@@ -256,55 +257,6 @@ class BillDetailsBottomSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildArchiveInfo(DateTime paidAt) {
-    final now = DateTime.now();
-    final daysSincePaid = now.difference(paidAt).inDays;
-    final daysUntilArchive = 2 - daysSincePaid;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF5E6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF97316).withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.archive_outlined,
-                size: 20,
-                color: Colors.grey.shade700,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Auto-Archive',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            daysUntilArchive > 0
-                ? 'Will auto-archive in $daysUntilArchive day${daysUntilArchive != 1 ? 's' : ''}. Archive manually now if you prefer.'
-                : 'Ready to be archived.',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade700,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final billProvider = context.read<BillProvider>();
@@ -406,8 +358,8 @@ class BillDetailsBottomSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                          // Only show edit button for unpaid bills
-                          if (bill.status != 'paid')
+                          // Only show edit button for upcoming bills
+                          if (bill.status == 'upcoming')
                             IconButton(
                               icon: const Icon(
                                 Icons.edit,
@@ -504,11 +456,6 @@ class BillDetailsBottomSheet extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Archive info for paid bills
-                      if (bill.status == 'paid' && paidAt != null) ...[
-                        const SizedBox(height: 20),
-                        _buildArchiveInfo(paidAt),
-                      ],
                     ],
                   ),
                 ),
@@ -549,21 +496,176 @@ class BillDetailsBottomSheet extends StatelessWidget {
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () async {
+                            // Check if user can archive bills
+                            if (!TrialService.canArchiveBills()) {
+                              Navigator.pop(context);
+                              _showProFeatureDialog(context, 'Archive Bills');
+                              return;
+                            }
+
                             Navigator.pop(context);
-                            await billProvider.archiveBill(bill.id);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('"${bill.title}" archived'),
-                                  backgroundColor: const Color(0xFF059669),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 2),
+
+                            // Show loading dialog
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) => PopScope(
+                                canPop: false,
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircularProgressIndicator(
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Color(0xFF059669),
+                                              ),
+                                        ),
+                                        SizedBox(height: 16),
+                                        Text(
+                                          'Archiving bill...',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1F2937),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              );
+                              ),
+                            );
+
+                            try {
+                              // Archive the bill (fast operation)
+                              await billProvider.archiveBill(bill.id);
+
+                              // Show loading for minimum 2 seconds for better UX
+                              await Future.delayed(const Duration(seconds: 2));
+
+                              if (context.mounted) {
+                                Navigator.pop(context); // Close loading dialog
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('"${bill.title}" archived'),
+                                    backgroundColor: const Color(0xFF059669),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                Navigator.pop(context); // Close loading dialog
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error: $e'),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             }
                           },
                           icon: const Icon(Icons.archive_outlined, size: 18),
-                          label: const Text('Archive Now'),
+                          label: Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!TrialService.canArchiveBills()) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFD4AF37),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'PRO',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                const Flexible(
+                                  child: Text(
+                                    'Archive',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                GestureDetector(
+                                  onTap: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                        title: const Row(
+                                          children: [
+                                            Icon(
+                                              Icons.info_outline,
+                                              color: Color(0xFF059669),
+                                              size: 24,
+                                            ),
+                                            SizedBox(width: 12),
+                                            Text(
+                                              'Auto-Archive',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        content: const Text(
+                                          'Paid bills are automatically archived after 30 days. You can also archive them manually anytime.',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            color: Color(0xFF374151),
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context),
+                                            child: const Text(
+                                              'Got it',
+                                              style: TextStyle(
+                                                color: Color(0xFF059669),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF059669),
                             foregroundColor: Colors.white,
@@ -854,4 +956,91 @@ class BillDetailsBottomSheet extends StatelessWidget {
           BillDetailsBottomSheet(bill: bill, onMarkPaid: onMarkPaid),
     );
   }
+}
+
+// Pro Feature Dialog
+void _showProFeatureDialog(BuildContext context, String featureName) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4AF37).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.workspace_premium,
+              color: Color(0xFFD4AF37),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$featureName is a Pro Feature',
+              style: const TextStyle(fontSize: 18),
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your free trial has ended. Upgrade to Pro to unlock this feature.',
+            style: TextStyle(color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 16),
+          ...TrialService.getProFeaturesList().take(5).map((feature) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFFD4AF37),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      feature['title'] as String,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Maybe Later'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Pro subscription coming soon!'),
+                backgroundColor: Color(0xFFD4AF37),
+              ),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFD4AF37),
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Upgrade to Pro'),
+        ),
+      ],
+    ),
+  );
 }

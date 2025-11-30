@@ -12,7 +12,20 @@
           "package_name": "com.example.bill_manager"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1062156198667-g420vhb73p2rn7sp0cg6ipa2l07ods7j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.bill_manager",
+            "certificate_hash": "c67daa6b0394dbac4e5d8f48040d11846e24c7f0"
+          }
+        },
+        {
+          "client_id": "1062156198667-msrds33evko9vq4gi7k75kaaesom9q4h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBX94A6RP7FkhqiiiIyq1J5Gd12R88wXiM"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1062156198667-msrds33evko9vq4gi7k75kaaesom9q4h.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

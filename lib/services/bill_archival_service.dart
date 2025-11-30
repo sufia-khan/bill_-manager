@@ -1,6 +1,7 @@
 import '../models/bill_hive.dart';
 import '../utils/logger.dart';
 import '../services/hive_service.dart';
+import 'archive_management_service.dart';
 
 /// Service for managing automatic archival of paid bills immediately
 class BillArchivalService {
@@ -227,70 +228,18 @@ class BillArchivalService {
 
   /// Auto-delete archived bills that are older than 90 days
   /// Returns the count of bills that were deleted
+  /// Uses ArchiveManagementService for deletion logic
   static Future<int> processAutoDeletion() async {
     try {
-      final now = DateTime.now();
+      // Import is at top of file
+      final deletedCount = await ArchiveManagementService.performAutoCleanup();
 
-      // Get all archived bills
-      final archivedBills = HiveService.getArchivedBills();
-
-      if (archivedBills.isEmpty) {
-        Logger.info('No archived bills to process for auto-deletion', _tag);
-        return 0;
+      if (deletedCount > 0) {
+        Logger.info(
+          'Auto-deletion complete. Deleted $deletedCount bills.',
+          _tag,
+        );
       }
-
-      Logger.info(
-        'Processing ${archivedBills.length} archived bills for auto-deletion...',
-        _tag,
-      );
-
-      // Bills are eligible for deletion 90 days after archival
-      final eligibleBills = archivedBills.where((bill) {
-        if (bill.archivedAt == null) return false;
-        final daysSinceArchival = now.difference(bill.archivedAt!).inDays;
-        return daysSinceArchival >= 90;
-      }).toList();
-
-      if (eligibleBills.isEmpty) {
-        Logger.info('No bills eligible for auto-deletion', _tag);
-        return 0;
-      }
-
-      Logger.info(
-        'Found ${eligibleBills.length} bills eligible for auto-deletion',
-        _tag,
-      );
-
-      int deletedCount = 0;
-      int errorCount = 0;
-
-      // Delete eligible bills
-      for (final bill in eligibleBills) {
-        try {
-          await HiveService.deleteBill(bill.id);
-          deletedCount++;
-
-          Logger.info(
-            'Auto-deleted bill ${bill.id} (${bill.title}) - archived ${now.difference(bill.archivedAt!).inDays} days ago',
-            _tag,
-          );
-        } catch (e, stackTrace) {
-          errorCount++;
-          Logger.error(
-            'Failed to auto-delete bill ${bill.id} (${bill.title})',
-            error: e,
-            stackTrace: stackTrace,
-            tag: _tag,
-          );
-          // Continue processing other bills
-        }
-      }
-
-      Logger.info(
-        'Auto-deletion processing complete. Deleted $deletedCount bills.'
-        '${errorCount > 0 ? ' $errorCount errors occurred.' : ''}',
-        _tag,
-      );
 
       return deletedCount;
     } catch (e, stackTrace) {
@@ -305,4 +254,6 @@ class BillArchivalService {
   }
 
   // Note: Bills are archived 30 days after payment and auto-deleted 90 days after archival
+  // Auto-archival only works for Pro/Trial users
+  // Auto-deletion respects user preferences and pinned bills
 }

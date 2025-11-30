@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/bill_provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/bill_hive.dart';
+import '../services/trial_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 
@@ -229,6 +230,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     Color subtextColor,
   ) {
     final isSelected = _selectedTabIndex == index;
+    final isPro = (index == 1 || index == 2); // Analytics and Calendar are Pro
+    final hasProAccess = TrialService.canAccessProFeatures();
+    final showProBadge =
+        isPro &&
+        !hasProAccess &&
+        index != 2; // Don't show badge on current screen
+
     return InkWell(
       onTap: () {
         // Don't navigate if already on calendar screen
@@ -242,7 +250,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
           // Home tab - pop back to root
           Navigator.popUntil(context, (route) => route.isFirst);
         } else if (index == 1) {
-          // Analytics tab
+          // Analytics tab - Pro feature
+          if (!TrialService.canAccessProFeatures()) {
+            // User shouldn't be here, but redirect to home
+            Navigator.popUntil(context, (route) => route.isFirst);
+            return;
+          }
           Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushNamed(context, '/analytics');
         } else if (index == 3) {
@@ -257,10 +270,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isSelected ? primaryColor : subtextColor,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  size: 24,
+                  color: isSelected ? primaryColor : subtextColor,
+                ),
+                if (showProBadge)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'PRO',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
