@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- White background for seamless transition to Flutter splash -->
+    <color name="splash_background">#FFFFFF</color>
+</resources>

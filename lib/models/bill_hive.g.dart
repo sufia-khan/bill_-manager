@@ -39,13 +39,15 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       reminderTiming: fields[19] as String?,
       notificationTime: fields[20] as String?,
       isPinned: fields[21] as bool,
+      createdAt: fields[22] as DateTime?,
+      createdDuringProTrial: fields[23] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BillHive obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -89,7 +91,11 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       ..writeByte(20)
       ..write(obj.notificationTime)
       ..writeByte(21)
-      ..write(obj.isPinned);
+      ..write(obj.isPinned)
+      ..writeByte(22)
+      ..write(obj.createdAt)
+      ..writeByte(23)
+      ..write(obj.createdDuringProTrial);
   }
 
   @override

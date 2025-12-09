@@ -249,7 +249,7 @@ class RecurringBillDeleteBottomSheet {
         : repeat.substring(0, 1).toUpperCase() + repeat.substring(1);
 
     if (repeatCount == null) {
-      return '$repeatText • Forever recurring';
+      return '$repeatText • Recurring';
     } else {
       final remaining = repeatCount - sequence;
       return '$repeatText • ${sequence + 1} of $repeatCount ($remaining remaining)';

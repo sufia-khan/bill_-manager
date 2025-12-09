@@ -49,13 +49,12 @@ class LoginScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // App Icon
+                  // App Logo
                   Container(
-                    width: 100,
-                    height: 100,
+                    width: 120,
+                    height: 120,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF97316), // orange-500
-                      borderRadius: BorderRadius.circular(24),
+                      shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFFF97316).withValues(alpha: 0.3),
@@ -64,10 +63,13 @@ class LoginScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.receipt_long_rounded,
-                      color: Colors.white,
-                      size: 50,
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/billminder_app_icon.jpg',
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- White background for splash screen -->
+    <color name="splash_background">#FFFFFF</color>
+    <!-- Launcher icon background color -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

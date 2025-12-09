@@ -25,13 +25,15 @@ class NotificationHistoryAdapter extends TypeAdapter<NotificationHistory> {
       billTitle: fields[5] as String?,
       isRead: fields[6] as bool,
       createdAt: fields[7] as DateTime,
+      userId: fields[8] as String?,
+      isHighlighted: fields[9] as bool? ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, NotificationHistory obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +49,11 @@ class NotificationHistoryAdapter extends TypeAdapter<NotificationHistory> {
       ..writeByte(6)
       ..write(obj.isRead)
       ..writeByte(7)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(8)
+      ..write(obj.userId)
+      ..writeByte(9)
+      ..write(obj.isHighlighted);
   }
 
   @override

@@ -87,21 +87,62 @@ class RecurringBillDeleteService {
     }
   }
 
-  /// Delete this and all future occurrences
+  /// Delete this and all future occurrences (unpaid only)
+  /// Keeps paid and overdue bills as history records
+  /// This effectively cancels the recurring series from this point forward
   static Future<String> deleteThisAndFuture(BillHive bill) async {
     try {
       final box = HiveService.getBillsBox();
       final parentId = bill.parentBillId ?? bill.id;
       final currentSequence = bill.recurringSequence ?? 0;
+      final now = DateTime.now();
 
-      // Find all bills in this series with sequence >= current
+      // Find all UNPAID bills in this series with sequence >= current
+      // Keep paid and overdue bills as history
       final billsToDelete = box.values.where((b) {
         final billParentId = b.parentBillId ?? b.id;
         final billSequence = b.recurringSequence ?? 0;
-        return billParentId == parentId && billSequence >= currentSequence;
+        final isInSeries = billParentId == parentId || b.id == parentId;
+        final isFutureOrCurrent = billSequence >= currentSequence;
+        final isUnpaid = !b.isPaid;
+
+        // Check if bill is overdue
+        bool isBillOverdue = false;
+        final today = DateTime(now.year, now.month, now.day);
+        final dueDate = DateTime(b.dueAt.year, b.dueAt.month, b.dueAt.day);
+
+        if (today.isAfter(dueDate)) {
+          isBillOverdue = true;
+        } else if (today.isAtSameMomentAs(dueDate)) {
+          final reminderTime = b.notificationTime ?? '09:00';
+          final reminderParts = reminderTime.split(':');
+          final reminderHour = int.parse(reminderParts[0]);
+          final reminderMinute = int.parse(reminderParts[1]);
+
+          final reminderDateTime = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            reminderHour,
+            reminderMinute,
+          );
+
+          isBillOverdue =
+              now.isAfter(reminderDateTime) ||
+              now.isAtSameMomentAs(reminderDateTime);
+        }
+
+        final isNotOverdue = !isBillOverdue;
+
+        return isInSeries &&
+            isFutureOrCurrent &&
+            isUnpaid &&
+            isNotOverdue &&
+            !b.isDeleted;
       }).toList();
 
-      // Cancel notifications and delete all future bills
+      // Cancel notifications and delete all upcoming/future bills
+      // This soft-deletes them which signals RecurringBillService to stop creating new instances
       for (final billToDelete in billsToDelete) {
         await NotificationService().cancelBillNotification(billToDelete.id);
         await HiveService.deleteBill(billToDelete.id);
@@ -114,15 +155,15 @@ class RecurringBillDeleteService {
       if (repeatCount != null) {
         final remaining = repeatCount - currentSequence;
         if (deletedCount == 1) {
-          return 'Bill deleted successfully.';
+          return 'Bill deleted. No future occurrences will be created.';
         } else {
-          return 'This and all remaining $remaining occurrences deleted.';
+          return 'This and $remaining future occurrences deleted permanently.';
         }
       } else {
         if (deletedCount == 1) {
-          return 'Bill deleted. Recurrence stopped.';
+          return 'Bill deleted. Recurring series cancelled.';
         } else {
-          return 'This and all future recurring bills deleted. Recurrence stopped.';
+          return '$deletedCount bills deleted. Recurring series cancelled permanently.';
         }
       }
     } catch (e) {

@@ -10,6 +10,7 @@ class ExpandableBillCard extends StatelessWidget {
   final bool compactAmounts;
   final int? daysRemaining;
   final VoidCallback? onMarkPaid;
+  final bool isHighlighted;
 
   const ExpandableBillCard({
     super.key,
@@ -17,6 +18,7 @@ class ExpandableBillCard extends StatelessWidget {
     this.compactAmounts = true,
     this.daysRemaining,
     this.onMarkPaid,
+    this.isHighlighted = false,
   });
 
   Widget _buildDueDateText() {
@@ -26,6 +28,9 @@ class ExpandableBillCard extends StatelessWidget {
       final today = DateTime(now.year, now.month, now.day);
       final dueDay = DateTime(date.year, date.month, date.day);
       final difference = dueDay.difference(today).inDays;
+      debugPrint(
+        '🔍 Bill "${bill.title}": due="${bill.due}", today=$today, dueDay=$dueDay, diff=$difference',
+      );
 
       final months = [
         'Jan',
@@ -51,7 +56,11 @@ class ExpandableBillCard extends StatelessWidget {
       // For paid bills
       if (bill.status == 'paid') {
         prefix = 'Paid on: ';
-        dateText = '$day $month $year';
+        final paidDate = bill.paidAt ?? date;
+        final pDay = paidDate.day;
+        final pMonth = months[paidDate.month - 1];
+        final pYear = paidDate.year;
+        dateText = '$pDay $pMonth $pYear';
       }
       // For overdue bills
       else if (bill.status == 'overdue') {
@@ -210,23 +219,36 @@ class ExpandableBillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isHighlighted ? const Color(0xFFFFF7ED) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: isHighlighted
+            ? Border.all(color: const Color(0xFFF97316), width: 2)
+            : null,
+        boxShadow: isHighlighted
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFF97316).withValues(alpha: 0.3),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                  spreadRadius: 2,
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(18),

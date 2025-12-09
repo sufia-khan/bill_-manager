@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/currency.dart';
 
 class CurrencySelectorSheet extends StatefulWidget {
@@ -60,6 +59,66 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
     } else {
       return 12.0; // Longer symbols
     }
+  }
+
+  // Helper to get colorful pastel colors for currency symbols
+  Color _getCurrencyColor(String currencyCode) {
+    // Beautiful pastel colors for different currencies
+    final colorMap = {
+      'USD': const Color(0xFF93C5FD), // Pastel Blue
+      'EUR': const Color(0xFFA78BFA), // Pastel Purple
+      'GBP': const Color(0xFFFDA4AF), // Pastel Pink
+      'JPY': const Color(0xFFFBBF24), // Pastel Yellow
+      'CNY': const Color(0xFFEF4444), // Pastel Red
+      'INR': const Color(0xFFFB923C), // Pastel Orange
+      'AUD': const Color(0xFF34D399), // Pastel Green
+      'CAD': const Color(0xFFFF6B9D), // Pastel Rose
+      'CHF': const Color(0xFF60A5FA), // Pastel Sky Blue
+      'SEK': const Color(0xFFFBBF24), // Pastel Amber
+      'NZD': const Color(0xFF4ADE80), // Pastel Emerald
+      'SGD': const Color(0xFFF472B6), // Pastel Pink
+      'HKD': const Color(0xFFFCA5A5), // Pastel Red
+      'NOK': const Color(0xFF818CF8), // Pastel Indigo
+      'KRW': const Color(0xFFC084FC), // Pastel Purple
+      'TRY': const Color(0xFFFF8A80), // Pastel Coral
+      'RUB': const Color(0xFF90CAF9), // Pastel Light Blue
+      'BRL': const Color(0xFF81C784), // Pastel Green
+      'ZAR': const Color(0xFFFFD54F), // Pastel Yellow
+      'MXN': const Color(0xFFFF8A65), // Pastel Deep Orange
+      'IDR': const Color(0xFFBA68C8), // Pastel Purple
+      'MYR': const Color(0xFF4DD0E1), // Pastel Cyan
+      'PHP': const Color(0xFFAED581), // Pastel Light Green
+      'THB': const Color(0xFFFFB74D), // Pastel Orange
+      'DKK': const Color(0xFFE57373), // Pastel Red
+      'PLN': const Color(0xFF9575CD), // Pastel Deep Purple
+      'CZK': const Color(0xFF64B5F6), // Pastel Blue
+      'ILS': const Color(0xFFFFD740), // Pastel Yellow
+      'CLP': const Color(0xFFFF6E40), // Pastel Deep Orange
+      'AED': const Color(0xFF4FC3F7), // Pastel Light Blue
+      'SAR': const Color(0xFF66BB6A), // Pastel Green
+    };
+
+    // Return mapped color or generate a color based on hash
+    if (colorMap.containsKey(currencyCode)) {
+      return colorMap[currencyCode]!;
+    }
+
+    // Generate a pastel color based on currency code hash
+    final hash = currencyCode.hashCode;
+    final pastelColors = [
+      const Color(0xFF93C5FD), // Pastel Blue
+      const Color(0xFFA78BFA), // Pastel Purple
+      const Color(0xFFFDA4AF), // Pastel Pink
+      const Color(0xFFFBBF24), // Pastel Yellow
+      const Color(0xFF34D399), // Pastel Green
+      const Color(0xFFFB923C), // Pastel Orange
+      const Color(0xFF60A5FA), // Pastel Sky
+      const Color(0xFFF472B6), // Pastel Rose
+      const Color(0xFF4ADE80), // Pastel Emerald
+      const Color(0xFFC084FC), // Pastel Violet
+    ];
+
+    return pastelColors[hash.abs() % pastelColors.length];
   }
 
   void _showConversionBottomSheet(Currency currency) {
@@ -165,200 +224,6 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
               child: const Text('Change Currency'),
             ),
           ],
-        ),
-      ),
-    );
-    return; // Skip old code below
-
-    final conversionController = TextEditingController(text: '1.0');
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Drag handle
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Title
-                const Text(
-                  'Currency Conversion',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Question
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFFFEDD5)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(
-                                0xFFF97316,
-                              ).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.currency_exchange,
-                              color: Color(0xFFF97316),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Changing from ${widget.currentCurrency.code} to ${currency.code}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Do you want to convert all existing bills to the new currency using today\'s exchange rate?',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Exchange rate input
-                TextField(
-                  controller: conversionController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d+\.?\d{0,4}'),
-                    ),
-                  ],
-                  decoration: InputDecoration(
-                    labelText: 'Exchange Rate',
-                    hintText: '1.0',
-                    helperText:
-                        '1 ${widget.currentCurrency.code} = ? ${currency.code}',
-                    helperStyle: const TextStyle(fontSize: 12),
-                    prefixIcon: const Icon(
-                      Icons.calculate,
-                      color: Color(0xFFF97316),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Color(0xFFF97316),
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.pop(context);
-                          widget.onCurrencySelected(currency, false, 1.0);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: Color(0xFFF97316)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'No, Only Change Symbol',
-                          style: TextStyle(
-                            color: Color(0xFFF97316),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final rate =
-                              double.tryParse(conversionController.text) ?? 1.0;
-                          Navigator.pop(context);
-                          Navigator.pop(context);
-                          widget.onCurrencySelected(currency, true, rate);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF97316),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Yes, Convert',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -485,9 +350,9 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFF97316,
-                            ).withValues(alpha: 0.1),
+                            color: _getCurrencyColor(
+                              currency.code,
+                            ).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
@@ -496,7 +361,7 @@ class _CurrencySelectorSheetState extends State<CurrencySelectorSheet> {
                               style: TextStyle(
                                 fontSize: _getSymbolFontSize(currency.symbol),
                                 fontWeight: FontWeight.w600,
-                                color: const Color(0xFFF97316),
+                                color: _getCurrencyColor(currency.code),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.visible,

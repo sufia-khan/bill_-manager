@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:hive_flutter/hive_flutter.dart';
 import '../models/bill_hive.dart';
 import 'notification_history_service.dart';
 import 'native_alarm_service.dart';
@@ -266,14 +267,17 @@ class NotificationService {
     int daysBeforeDue = 1,
     int notificationHour = 9,
     int notificationMinute = 0,
+    String?
+    userId, // Add userId parameter to track which user owns this notification
+    bool forceReschedule =
+        false, // Only cancel and reschedule if explicitly requested
   }) async {
     try {
-      // Cancel existing notification for this bill
-      await cancelBillNotification(bill.id);
-
       // Don't schedule if already paid or deleted
       if (bill.isPaid || bill.isDeleted) {
         debugPrint('⏭️ Skipping notification for ${bill.title} (paid/deleted)');
+        // Cancel any existing notification for paid/deleted bills
+        await cancelBillNotification(bill.id);
         return;
       }
 
@@ -301,8 +305,27 @@ class NotificationService {
           '   Difference: ${now.difference(scheduledTime).inMinutes} minutes ago\n'
           '   TIP: Set due date further in future or use "Same Day" reminder',
         );
+        // Don't cancel existing alarm - it may have already fired or is about to fire
         return;
       }
+
+      // Check if notification is already scheduled with same parameters
+      // Only cancel and reschedule if forceReschedule is true or settings changed
+      if (!forceReschedule) {
+        final isAlreadyScheduled = await _isNotificationAlreadyScheduled(
+          bill.id,
+          scheduledTime,
+        );
+        if (isAlreadyScheduled) {
+          debugPrint(
+            '✅ Notification already scheduled for ${bill.title} at $scheduledTime - skipping',
+          );
+          return;
+        }
+      }
+
+      // Cancel existing notification only when we're sure we need to reschedule
+      await cancelBillNotification(bill.id);
 
       debugPrint(
         '⏰ Scheduling notification:\n'
@@ -329,32 +352,6 @@ class NotificationService {
       final body =
           '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
 
-      // Android notification details with androidAllowWhileIdle
-      const androidDetails = AndroidNotificationDetails(
-        'bill_reminders',
-        'Bill Reminders',
-        channelDescription: 'Notifications for upcoming bill payments',
-        importance: Importance.max,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-        playSound: true,
-        enableVibration: true,
-        enableLights: true,
-        showWhen: true,
-        visibility: NotificationVisibility.public,
-      );
-
-      const iosDetails = DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: true,
-      );
-
-      const details = NotificationDetails(
-        android: androidDetails,
-        iOS: iosDetails,
-      );
-
       // Log exact scheduling details for debugging
       debugPrint(
         '🔧 EXACT SCHEDULING DETAILS:\n'
@@ -372,16 +369,33 @@ class NotificationService {
 
       // Use Native AlarmManager for reliable delivery (PRIMARY METHOD)
       debugPrint('📱 Scheduling via Native AlarmManager...');
+
+      // Check if this is a recurring bill
+      final isRecurring = bill.repeat != 'none';
+      final recurringType = bill.repeat;
+      final currentSequence = bill.recurringSequence ?? 1;
+      final repeatCount = bill.repeatCount ?? -1;
+
       try {
         final nativeSuccess = await NativeAlarmService.scheduleAlarm(
           dateTime: alarmTime,
           title: title,
           body: body,
           notificationId: bill.id.hashCode,
+          userId: userId,
+          billId: bill.id,
+          isRecurring: isRecurring,
+          recurringType: recurringType,
+          billTitle: bill.title,
+          billAmount: bill.amount,
+          billVendor: bill.vendor,
+          currentSequence: currentSequence,
+          repeatCount: repeatCount,
         );
 
         if (nativeSuccess) {
           debugPrint('✅ Native AlarmManager scheduled successfully!');
+          debugPrint('   isRecurring: $isRecurring, type: $recurringType');
         } else {
           debugPrint(
             '⚠️ Native AlarmManager returned false, using flutter_local_notifications as fallback',
@@ -392,33 +406,18 @@ class NotificationService {
         debugPrint('⚠️ Falling back to flutter_local_notifications only');
       }
 
-      // Also schedule via flutter_local_notifications as backup
-      try {
-        await _notifications.zonedSchedule(
-          bill.id.hashCode, // Unique ID per bill
-          title,
-          body,
-          scheduledTime,
-          details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          payload: bill.id, // Pass bill ID for navigation
-        );
-        debugPrint(
-          '✅ Backup notification also scheduled via flutter_local_notifications',
-        );
-      } catch (e) {
-        debugPrint('⚠️ Backup notification failed: $e');
-      }
+      // NOTE: Removed flutter_local_notifications backup to prevent duplicate notifications
+      // Native AlarmManager is the primary and only method now
+      // The backup was causing duplicate notifications on device
 
-      // Track this scheduled notification for history
+      // Track this scheduled notification for history with userId
       await NotificationHistoryService.trackScheduledNotification(
         billId: bill.id,
         billTitle: bill.title,
         title: title,
         body: body,
         scheduledFor: scheduledTime.toLocal(),
+        userId: userId, // Track which user this notification belongs to
       );
 
       debugPrint(
@@ -431,7 +430,7 @@ class NotificationService {
         '   Title: $title\n'
         '   Body: $body\n'
         '   📝 Tracked for notification history\n'
-        '   🔔 Using Native AlarmManager + flutter_local_notifications backup',
+        '   🔔 Using Native AlarmManager only',
       );
     } catch (e) {
       debugPrint('❌ Error scheduling notification for ${bill.title}: $e');
@@ -445,6 +444,7 @@ class NotificationService {
     String? payload,
     String? billId,
     String? billTitle,
+    String? userId, // Add userId parameter
   }) async {
     try {
       debugPrint('🔔 Showing immediate notification...');
@@ -503,12 +503,13 @@ class NotificationService {
 
       debugPrint('✅ Immediate notification shown successfully!');
 
-      // Save to notification history
+      // Save to notification history with userId
       await NotificationHistoryService.addNotification(
         title: title,
         body: body,
         billId: billId,
         billTitle: billTitle,
+        userId: userId, // Pass userId
       );
 
       debugPrint('💾 Saved to notification history');
@@ -586,33 +587,7 @@ class NotificationService {
       debugPrint('⏰ Scheduled time: $scheduledTime');
       debugPrint('⏰ Timezone: ${tz.local.name}');
 
-      const androidDetails = AndroidNotificationDetails(
-        'bill_reminders',
-        'Bill Reminders',
-        channelDescription: 'Notifications for upcoming bill payments',
-        importance: Importance.max,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-        playSound: true,
-        enableVibration: true,
-        enableLights: true,
-        visibility: NotificationVisibility.public,
-      );
-
-      const iosDetails = DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: true,
-      );
-
-      const details = NotificationDetails(
-        android: androidDetails,
-        iOS: iosDetails,
-      );
-
       final title = 'Scheduled Test Notification';
-      final body =
-          'This was scheduled at ${now.hour}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} and appeared at ${scheduledTime.hour}:${scheduledTime.minute.toString().padLeft(2, '0')}:${scheduledTime.second.toString().padLeft(2, '0')} (10 seconds later)';
 
       debugPrint('🔔 Scheduling notification using AlarmManager:');
       debugPrint('   ID: 999999');
@@ -636,6 +611,7 @@ class NotificationService {
         body:
             'This was triggered by native AlarmManager at ${DateTime.now().toString().substring(11, 19)}. Works when app is closed!',
         notificationId: 999999,
+        billId: 'test_notification', // Test notification ID
       );
 
       if (success) {
@@ -649,32 +625,8 @@ class NotificationService {
         throw Exception('Failed to schedule native alarm');
       }
 
-      // Also schedule via flutter_local_notifications as backup
-      try {
-        await _notifications.zonedSchedule(
-          999998, // Different ID for backup
-          title,
-          body,
-          scheduledTime,
-          details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
-        debugPrint(
-          '✅ Backup notification also scheduled via flutter_local_notifications',
-        );
-      } catch (e) {
-        debugPrint('⚠️ Backup notification failed: $e');
-      }
-
-      // Verify it was scheduled
-      final pending = await getPendingNotifications();
-      debugPrint('📋 Total pending notifications: ${pending.length}');
-
-      for (var p in pending) {
-        debugPrint('   - ID: ${p.id}, Title: ${p.title}');
-      }
+      // NOTE: Removed flutter_local_notifications backup to prevent duplicate notifications
+      // Native AlarmManager is the primary and only method now
     } catch (e, stackTrace) {
       debugPrint('❌ Error scheduling test notification: $e');
       debugPrint('Stack trace: $stackTrace');
@@ -684,6 +636,48 @@ class NotificationService {
   /// Get list of pending notifications (for debugging)
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
     return await _notifications.pendingNotificationRequests();
+  }
+
+  /// Check if a notification is already scheduled for a bill at the given time
+  /// This prevents unnecessary cancellation and rescheduling of native alarms
+  Future<bool> _isNotificationAlreadyScheduled(
+    String billId,
+    tz.TZDateTime scheduledTime,
+  ) async {
+    try {
+      final trackingBox = await Hive.openBox('scheduledNotifications');
+      final trackingKey = 'scheduled_$billId';
+      final existingData = trackingBox.get(trackingKey);
+
+      if (existingData == null || existingData is! Map) {
+        return false;
+      }
+
+      // Check if the scheduled time matches (within 1 minute tolerance)
+      final existingTimeMs = existingData['scheduledFor'] as int?;
+      if (existingTimeMs == null) {
+        return false;
+      }
+
+      final existingTime = DateTime.fromMillisecondsSinceEpoch(existingTimeMs);
+      final newTime = DateTime.fromMillisecondsSinceEpoch(
+        scheduledTime.millisecondsSinceEpoch,
+      );
+
+      // If times are within 1 minute of each other, consider it already scheduled
+      final difference = existingTime.difference(newTime).inMinutes.abs();
+      if (difference <= 1) {
+        debugPrint(
+          '📋 Found existing scheduled notification for $billId at $existingTime',
+        );
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ Error checking scheduled notification: $e');
+      return false;
+    }
   }
 
   /// Cancel notification for a specific bill
@@ -699,20 +693,65 @@ class NotificationService {
     );
   }
 
-  /// Cancel all notifications
+  /// Cancel all notifications (both flutter_local_notifications and native alarms)
   Future<void> cancelAllNotifications() async {
-    await _notifications.cancelAll();
-    debugPrint('🗑️ Cancelled all notifications');
+    try {
+      debugPrint('🗑️ Cancelling all notifications...');
+
+      // First, cancel from flutter_local_notifications
+      await _notifications.cancelAll();
+      debugPrint('✅ Cancelled all flutter notifications');
+
+      // Cancel all native alarms using the tracking box
+      // We must use the tracking box because NativeAlarmService alarms are not returned
+      // by _notifications.pendingNotificationRequests()
+      try {
+        final trackingBox = await Hive.openBox('scheduledNotifications');
+        final keys = trackingBox.keys.toList();
+        int cancelledCount = 0;
+
+        for (var key in keys) {
+          try {
+            final data = trackingBox.get(key);
+            if (data != null && data is Map) {
+              // Extract billId to regenerate the notificationId (hashCode)
+              final billId = data['billId'] as String?;
+              if (billId != null) {
+                await NativeAlarmService.cancelAlarm(billId.hashCode);
+                cancelledCount++;
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Failed to cancel native alarm for key $key: $e');
+          }
+        }
+
+        // Clear the scheduled notification tracking
+        await trackingBox.clear();
+        debugPrint(
+          '✅ Cancelled $cancelledCount native alarms and cleared tracking',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Failed to access tracking box: $e');
+      }
+
+      debugPrint('✅ All notifications cancelled successfully');
+    } catch (e) {
+      debugPrint('❌ Error cancelling all notifications: $e');
+    }
   }
 
   /// Reschedule all notifications (call after app restart/reboot)
-  Future<void> rescheduleAllNotifications(List<BillHive> bills) async {
-    debugPrint('🔄 Rescheduling all notifications...');
+  Future<void> rescheduleAllNotifications(
+    List<BillHive> bills, {
+    String? userId,
+  }) async {
+    debugPrint('🔄 Rescheduling all notifications for user: $userId');
 
     int scheduled = 0;
     for (var bill in bills) {
       if (!bill.isPaid && !bill.isDeleted) {
-        await scheduleBillNotification(bill);
+        await scheduleBillNotification(bill, userId: userId);
         scheduled++;
       }
     }

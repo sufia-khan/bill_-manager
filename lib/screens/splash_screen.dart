@@ -11,91 +11,66 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _logoController;
-  late AnimationController _textController;
-  late AnimationController _pulseController;
-
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
   bool _isDisposed = false;
 
-  late Animation<double> _logoScale;
-  late Animation<double> _logoOpacity;
+  late Animation<double> _shadowOpacity;
   late Animation<double> _textOpacity;
   late Animation<Offset> _textSlide;
-  late Animation<double> _pulseAnimation;
+  late Animation<double> _loaderOpacity;
 
   @override
   void initState() {
     super.initState();
 
-    // Logo animation controller
-    _logoController = AnimationController(
+    // Single controller for all animations - fast and smooth
+    _controller = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
 
-    // Text animation controller
-    _textController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-
-    // Pulse animation controller
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-
-    // Logo animations
-    _logoScale = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _logoController, curve: Curves.elasticOut),
-    );
-
-    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+    // Shadow fades in quickly
+    _shadowOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+        parent: _controller,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
       ),
     );
 
-    // Text animations
-    _textOpacity = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeIn));
-
-    _textSlide = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeOut));
-
-    // Pulse animation
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    // Text slides up and fades in
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
+      ),
     );
 
-    // Start animations sequence
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
+          ),
+        );
+
+    // Loader fades in last
+    _loaderOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
+      ),
+    );
+
     _startAnimations();
   }
 
   void _startAnimations() async {
-    // Start logo animation
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (!mounted || _isDisposed) return;
-    _logoController.forward();
+    // Start immediately - no delay
+    _controller.forward();
 
-    // Start text animation after logo
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted || _isDisposed) return;
-    _textController.forward();
-
-    // Start pulse animation
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (!mounted || _isDisposed) return;
-    _pulseController.repeat(reverse: true);
-
-    // Wait and then complete
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // Complete quickly
+    await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted || _isDisposed) return;
     widget.onComplete();
   }
@@ -103,9 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _isDisposed = true;
-    _logoController.dispose();
-    _textController.dispose();
-    _pulseController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -116,69 +89,47 @@ class _SplashScreenState extends State<SplashScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          // Subtle gradient overlay - light and clean
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white,
-              Color(0xFFFFF7ED), // Very light orange tint
-              Color(0xFFFFF7ED), // Very light orange tint
-              Colors.white,
-            ],
-            stops: [0.0, 0.4, 0.6, 1.0],
-          ),
-        ),
+        color: Colors.white,
         child: SafeArea(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-              // Animated Logo
+              // Logo - always visible, shadow animates in
               AnimatedBuilder(
-                animation: Listenable.merge([
-                  _logoController,
-                  _pulseController,
-                ]),
+                animation: _controller,
                 builder: (context, child) {
-                  return Transform.scale(
-                    scale: _logoScale.value * _pulseAnimation.value,
-                    child: Opacity(opacity: _logoOpacity.value, child: child),
+                  return Container(
+                    width: 130,
+                    height: 130,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFFF97316,
+                          ).withValues(alpha: 0.25 * _shadowOpacity.value),
+                          blurRadius: 25 * _shadowOpacity.value,
+                          offset: Offset(0, 10 * _shadowOpacity.value),
+                        ),
+                      ],
+                    ),
+                    child: child,
                   );
                 },
-                child: Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFF97316), Color(0xFFEA580C)],
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFF97316).withValues(alpha: 0.3),
-                        blurRadius: 30,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.receipt_long_rounded,
-                      size: 60,
-                      color: Colors.white,
-                    ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/billminder_logo.png',
+                    width: 130,
+                    height: 130,
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
-              // Animated Text
+              const SizedBox(height: 28),
+              // Text slides up smoothly
               AnimatedBuilder(
-                animation: _textController,
+                animation: _controller,
                 builder: (context, child) {
                   return SlideTransition(
                     position: _textSlide,
@@ -190,20 +141,19 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(
                       'BillMinder',
                       style: GoogleFonts.poppins(
-                        fontSize: 38,
+                        fontSize: 36,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF1F2937),
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       'Never miss a bill again',
                       style: GoogleFonts.poppins(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w400,
                         color: Colors.grey.shade500,
-                        letterSpacing: 0.3,
                       ),
                     ),
                   ],
@@ -212,35 +162,22 @@ class _SplashScreenState extends State<SplashScreen>
               const Spacer(flex: 3),
               // Loading indicator
               AnimatedBuilder(
-                animation: _textController,
+                animation: _controller,
                 builder: (context, child) {
-                  return Opacity(opacity: _textOpacity.value, child: child);
+                  return Opacity(opacity: _loaderOpacity.value, child: child);
                 },
-                child: Column(
-                  children: [
-                    const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFFF97316),
-                        ),
-                      ),
+                child: const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFFF97316),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Loading...',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade400,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 50),
+              const SizedBox(height: 60),
             ],
           ),
         ),

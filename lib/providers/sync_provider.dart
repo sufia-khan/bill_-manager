@@ -1,27 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import '../services/firebase_sync_service.dart';
-import '../services/local_database_service.dart';
+import '../services/sync_service.dart';
+import '../services/hive_service.dart';
 import '../models/sync_status.dart';
 
 /// Provider for managing sync state across the app
 /// Tracks online/offline status, pending changes, and sync progress
+/// OPTIMIZED: Uses SyncService which only pushes changes (no reads)
 class SyncProvider with ChangeNotifier {
-  final FirebaseSyncService _syncService = FirebaseSyncService();
-  final LocalDatabaseService _localDb = LocalDatabaseService();
-
   bool _isOnline = true;
   bool _isSyncing = false;
   int _pendingChanges = 0;
   DateTime? _lastSyncTime;
-  int _totalReads = 0;
   int _totalWrites = 0;
 
   bool get isOnline => _isOnline;
   bool get isSyncing => _isSyncing;
   int get pendingChanges => _pendingChanges;
   DateTime? get lastSyncTime => _lastSyncTime;
-  int get totalReads => _totalReads;
+  int get totalReads => 0; // We don't track reads anymore (minimized)
   int get totalWrites => _totalWrites;
 
   SyncProvider() {
@@ -33,15 +30,13 @@ class SyncProvider with ChangeNotifier {
     final connectivityResult = await Connectivity().checkConnectivity();
     _isOnline = !connectivityResult.contains(ConnectivityResult.none);
 
-    // Listen to connectivity changes
+    // Listen to connectivity changes (SyncService handles reconnection sync)
     Connectivity().onConnectivityChanged.listen((result) {
       final wasOnline = _isOnline;
       _isOnline = !result.contains(ConnectivityResult.none);
 
       if (!wasOnline && _isOnline) {
-        // Just came online - trigger sync
         print('📡 Network reconnected');
-        triggerSync();
       } else if (wasOnline && !_isOnline) {
         print('📵 Network disconnected');
       }
@@ -64,7 +59,7 @@ class SyncProvider with ChangeNotifier {
     }
 
     try {
-      final bill = _localDb.getBill(billId);
+      final bill = HiveService.getBillById(billId);
       if (bill == null) {
         return SyncStatus.synced;
       }
@@ -75,12 +70,11 @@ class SyncProvider with ChangeNotifier {
 
       return SyncStatus.synced;
     } catch (e) {
-      // If database is not initialized yet, return synced status
       return SyncStatus.synced;
     }
   }
 
-  /// Trigger a sync
+  /// Trigger a sync (PUSH ONLY - no Firestore reads)
   Future<void> triggerSync() async {
     if (_isSyncing || !_isOnline) return;
 
@@ -88,9 +82,9 @@ class SyncProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _syncService.syncWithFirestore();
-      _updateSyncStats();
+      await SyncService.syncBills();
       _updatePendingChanges();
+      _updateSyncStats();
     } catch (e) {
       print('Sync error: $e');
     } finally {
@@ -99,7 +93,7 @@ class SyncProvider with ChangeNotifier {
     }
   }
 
-  /// Force a full sync
+  /// Force a full sync (USE SPARINGLY - reads from Firestore)
   Future<void> fullSync() async {
     if (_isSyncing || !_isOnline) return;
 
@@ -107,9 +101,9 @@ class SyncProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _syncService.fullSync();
-      _updateSyncStats();
+      await SyncService.forceFullSync();
       _updatePendingChanges();
+      _updateSyncStats();
     } catch (e) {
       print('Full sync error: $e');
     } finally {
@@ -120,18 +114,18 @@ class SyncProvider with ChangeNotifier {
 
   /// Update pending changes count
   void _updatePendingChanges() {
-    _pendingChanges = _syncService.getPendingChangesCount();
+    _pendingChanges = HiveService.getBillsNeedingSync().length;
     notifyListeners();
   }
 
   /// Update sync statistics
   void _updateSyncStats() {
-    final stats = _syncService.getSyncStats();
-    _totalReads = stats['totalReads'] as int;
-    _totalWrites = stats['totalWrites'] as int;
-    _lastSyncTime = stats['lastSyncTime'] != null
-        ? DateTime.parse(stats['lastSyncTime'] as String)
+    final lastSyncString =
+        HiveService.getUserData(SyncService.lastSyncKey) as String?;
+    _lastSyncTime = lastSyncString != null
+        ? DateTime.tryParse(lastSyncString)
         : null;
+    _totalWrites = _pendingChanges;
   }
 
   /// Mark that a change was made (to update pending count)

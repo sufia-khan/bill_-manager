@@ -1,7 +1,9 @@
 import '../models/bill_hive.dart';
 import '../utils/logger.dart';
 import '../services/hive_service.dart';
+import '../services/user_preferences_service.dart';
 import 'archive_management_service.dart';
+import 'trial_service.dart';
 
 /// Service for managing automatic archival of paid bills immediately
 class BillArchivalService {
@@ -106,8 +108,23 @@ class BillArchivalService {
   /// Process all paid bills and archive those eligible for archival
   /// Returns the count of bills that were archived
   /// Optimized with batch processing and early filtering
+  /// PRO FEATURE: Auto-archival only works for Pro/Trial users
   static Future<int> processArchival() async {
     try {
+      // Check if user has Pro access for auto-archival
+      if (!TrialService.canArchiveBills()) {
+        Logger.info('Auto-archival skipped - Pro feature only', _tag);
+        return 0;
+      }
+
+      // Check if auto-archive is enabled in user preferences
+      final autoArchiveEnabled =
+          UserPreferencesService.getAutoArchivePaidBills();
+      if (!autoArchiveEnabled) {
+        Logger.info('Auto-archival disabled by user preference', _tag);
+        return 0;
+      }
+
       final now = DateTime.now();
 
       // Get all paid bills that are not archived - use cached version

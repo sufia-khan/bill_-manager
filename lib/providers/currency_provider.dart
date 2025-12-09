@@ -14,57 +14,10 @@ class CurrencyProvider with ChangeNotifier {
   bool get convertAmounts => _convertAmounts;
   double get conversionRate => _conversionRate;
 
-  // Load saved currency on init
+  // Load saved currency on init - LOCAL FIRST (no Firebase reads)
   Future<void> loadSavedCurrency() async {
     try {
-      // First, try to load from Firebase if user is authenticated
-      final userId = FirebaseService.currentUserId;
-      if (userId != null) {
-        try {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userId)
-              .collection('settings')
-              .doc('currency')
-              .get();
-
-          if (doc.exists) {
-            final data = doc.data()!;
-            final savedCode = data['currency_code'] as String?;
-            final savedConvert = data['currency_convert'] as bool?;
-            final savedRate = (data['currency_rate'] as num?)?.toDouble();
-
-            if (savedCode != null) {
-              final currency = Currency.currencies.firstWhere(
-                (c) => c.code == savedCode,
-                orElse: () => Currency.currencies[0],
-              );
-              _selectedCurrency = currency;
-              _convertAmounts = savedConvert ?? false;
-              _conversionRate = savedRate ?? 1.0;
-
-              // Save to local storage for offline access
-              await HiveService.saveUserData('currency_code', currency.code);
-              await HiveService.saveUserData(
-                'currency_convert',
-                _convertAmounts,
-              );
-              await HiveService.saveUserData('currency_rate', _conversionRate);
-
-              // Update global currency symbol
-              setGlobalCurrencySymbol(currency.symbol);
-
-              notifyListeners();
-              return;
-            }
-          }
-        } catch (e) {
-          print('Error loading currency from Firebase: $e');
-          // Fall back to local storage
-        }
-      }
-
-      // Fall back to local storage if Firebase fails or user not authenticated
+      // Always load from local storage first (instant, no network)
       final savedCode = HiveService.getUserData('currency_code');
       final savedConvert = HiveService.getUserData('currency_convert');
       final savedRate = HiveService.getUserData('currency_rate');
@@ -77,18 +30,56 @@ class CurrencyProvider with ChangeNotifier {
         _selectedCurrency = currency;
         _convertAmounts = savedConvert ?? false;
         _conversionRate = savedRate ?? 1.0;
-
-        // Update global currency symbol
         setGlobalCurrencySymbol(currency.symbol);
-
         notifyListeners();
       } else {
-        // Set default currency symbol
         setGlobalCurrencySymbol(_selectedCurrency.symbol);
       }
     } catch (e) {
       print('Error loading saved currency: $e');
       setGlobalCurrencySymbol(_selectedCurrency.symbol);
+    }
+  }
+
+  // Sync currency from Firebase (call only on login, not every load)
+  Future<void> syncCurrencyFromFirebase() async {
+    final userId = FirebaseService.currentUserId;
+    if (userId == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('settings')
+          .doc('currency')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        final savedCode = data['currency_code'] as String?;
+        final savedConvert = data['currency_convert'] as bool?;
+        final savedRate = (data['currency_rate'] as num?)?.toDouble();
+
+        if (savedCode != null) {
+          final currency = Currency.currencies.firstWhere(
+            (c) => c.code == savedCode,
+            orElse: () => Currency.currencies[0],
+          );
+          _selectedCurrency = currency;
+          _convertAmounts = savedConvert ?? false;
+          _conversionRate = savedRate ?? 1.0;
+
+          // Save to local storage
+          await HiveService.saveUserData('currency_code', currency.code);
+          await HiveService.saveUserData('currency_convert', _convertAmounts);
+          await HiveService.saveUserData('currency_rate', _conversionRate);
+
+          setGlobalCurrencySymbol(currency.symbol);
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      print('Error syncing currency from Firebase: $e');
     }
   }
 

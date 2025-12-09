@@ -12,6 +12,7 @@ import '../services/sync_service.dart';
 import '../services/hive_service.dart';
 import '../services/firebase_service.dart';
 import '../services/user_preferences_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
@@ -20,6 +21,7 @@ import 'onboarding_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'subscription_screen.dart';
+import 'splash_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -437,6 +439,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 // Close the currency selector sheet first
                                 Navigator.of(sheetContext).pop();
 
+                                // Small delay for smooth transition
+                                await Future.delayed(
+                                  const Duration(milliseconds: 300),
+                                );
+
                                 // Show loading dialog for better UX
                                 showDialog(
                                   context: settingsContext,
@@ -500,6 +507,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   if (mounted) {
                                     // Close loading dialog
                                     Navigator.of(settingsContext).pop();
+
+                                    // Small delay before navigating back
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 200),
+                                    );
 
                                     // Navigate back to home screen
                                     Navigator.of(settingsContext).pop();
@@ -569,6 +581,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
+            const SizedBox(height: 12),
+
+            // Auto-Archive Paid Bills (Pro Feature)
+            _buildSettingsOption(
+              icon: Icons.archive_outlined,
+              title: 'Auto-Archive',
+              subtitle: 'Archive paid bills after 30 days',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!TrialService.canArchiveBills())
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4AF37),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'PRO',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  Switch(
+                    value:
+                        TrialService.canArchiveBills() &&
+                        UserPreferencesService.getAutoArchivePaidBills(),
+                    onChanged: !TrialService.canArchiveBills()
+                        ? null
+                        : (value) async {
+                            // Show confirmation dialog
+                            final confirmed =
+                                await _showAutoArchiveConfirmation(value);
+                            if (confirmed == true) {
+                              await UserPreferencesService.setAutoArchivePaidBills(
+                                value,
+                              );
+                              setState(() {});
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Auto-archive ${value ? 'enabled' : 'disabled'}',
+                                    ),
+                                    backgroundColor: const Color(0xFFF97316),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    activeColor: const Color(0xFFF97316),
+                    activeTrackColor: const Color(
+                      0xFFF97316,
+                    ).withValues(alpha: 0.5),
+                  ),
+                ],
+              ),
+              onTap: () {
+                if (!TrialService.canArchiveBills()) {
+                  _showProFeatureDialogSettings('Auto-Archive');
+                }
+              },
+            ),
 
             const SizedBox(height: 24),
 
@@ -582,6 +666,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Privacy & Security',
               onTap: () {
                 _showPrivacySecurityScreen(context, authProvider);
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Splash Screen Preview
+            _buildSettingsOption(
+              icon: Icons.play_circle_outline,
+              title: 'Splash Screen',
+              subtitle: 'Preview app launch screen',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SplashScreen(
+                      onComplete: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                );
               },
             ),
             const SizedBox(height: 12),
@@ -865,6 +969,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (logoutChoice == 'logout_only') {
                   // Logout without syncing - just clear and sign out
                   try {
+                    // Cancel all notifications for this user
+                    await NotificationService().cancelAllNotifications();
                     // Stop sync
                     SyncService.stopPeriodicSync();
                     // Clear local data
@@ -1006,6 +1112,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
 
                   try {
+                    // Cancel all notifications for this user
+                    await NotificationService().cancelAllNotifications();
                     await authProvider.signOut();
 
                     if (mounted) {
@@ -1042,6 +1150,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
+            const SizedBox(height: 12),
+
+            // Delete Account
+            _buildSettingsOption(
+              icon: Icons.delete_forever_outlined,
+              title: 'Delete Account',
+              titleColor: Colors.red.shade700,
+              onTap: () async {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => _DeleteAccountBottomSheet(
+                    authProvider: authProvider,
+                    onDeleted: () {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
 
             const SizedBox(height: 80),
 
@@ -1053,6 +1187,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<bool?> _showAutoArchiveConfirmation(bool enabling) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: Icon(
+          enabling ? Icons.archive_outlined : Icons.unarchive_outlined,
+          color: const Color(0xFFF97316),
+          size: 48,
+        ),
+        title: Text(
+          enabling ? 'Enable Auto-Archive?' : 'Disable Auto-Archive?',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1F2937),
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              enabling
+                  ? 'Paid bills will be automatically archived after 30 days.'
+                  : 'Paid bills will no longer be automatically archived.',
+              style: const TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF5E6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFF97316).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    enabling ? Icons.info_outline : Icons.warning_amber,
+                    color: const Color(0xFFF97316),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      enabling
+                          ? 'You can always view archived bills in the Archived Bills section.'
+                          : 'You will need to manually archive paid bills.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF97316),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(enabling ? 'Enable' : 'Disable'),
+          ),
+        ],
       ),
     );
   }
@@ -1310,29 +1535,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   description:
                       'Your data is automatically backed up to prevent any loss of information.',
                 ),
-
-                const SizedBox(height: 32),
-
-                // Danger Zone
-                const Text(
-                  'Danger Zone',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.red,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildActionCard(
-                  icon: Icons.delete_forever_outlined,
-                  title: 'Delete Account',
-                  description: 'Permanently delete your account and all data',
-                  titleColor: Colors.red,
-                  iconColor: Colors.red,
-                  onTap: () {
-                    _showDeleteAccountConfirmation(context, authProvider);
-                  },
-                ),
               ],
             ),
           ),
@@ -1461,224 +1663,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showDeleteAccountConfirmation(
-    BuildContext context,
-    AuthProvider authProvider,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(
-          Icons.warning_amber_rounded,
-          color: Colors.red,
-          size: 48,
-        ),
-        title: const Text(
-          'Delete Account?',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.red,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'This action is permanent and cannot be undone!',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1F2937),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'You will lose:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.close, size: 16, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: const Text(
-                          'All bills and payment history',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.close, size: 16, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: const Text(
-                          'Analytics and spending data',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.close, size: 16, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: const Text(
-                          'Account settings',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF6B7280),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: const BorderSide(color: Color(0xFFE5E7EB)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-
-                    // Show loading dialog
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => PopScope(
-                        canPop: false,
-                        child: const AlertDialog(
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircularProgressIndicator(color: Colors.red),
-                              SizedBox(height: 16),
-                              Text('Deleting account...'),
-                              SizedBox(height: 8),
-                              Text(
-                                'Please wait',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-
-                    // Delete account in background (fire-and-forget)
-                    authProvider.deleteAccount();
-
-                    // Show loading for exactly 2 seconds
-                    await Future.delayed(const Duration(seconds: 2));
-
-                    if (context.mounted) {
-                      // Close loading dialog
-                      Navigator.pop(context);
-
-                      // Navigate to login screen
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (context) => const LoginScreen(),
-                        ),
-                        (route) => false,
-                      );
-
-                      // Show success message
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text('Account deleted successfully'),
-                            ],
-                          ),
-                          backgroundColor: Colors.red,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Delete',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -1967,11 +1951,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 4),
+            Consumer<BillProvider>(
+              builder: (context, billProvider, child) {
+                final remainingBills = billProvider.getRemainingFreeTierBills();
+                return Text(
+                  'You can add $remainingBills more bill${remainingBills != 1 ? 's' : ''} (${TrialService.freeMaxBills} max)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.95),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 2),
             Text(
-              'Upgrade to Pro for unlimited access',
+              'Upgrade to Pro for unlimited bills',
               style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
           ],
@@ -2183,6 +2181,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           TrialService.testMode = mode;
         });
+
+        // Notify BillProvider to refresh so home screen shows correct value
+        final billProvider = Provider.of<BillProvider>(context, listen: false);
+        billProvider.refreshUI();
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Test mode: ${mode ?? "Real Mode"}'),
@@ -2610,5 +2613,526 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+}
+
+// Modern Delete Account Bottom Sheet with Full-Screen Loading Overlay
+class _DeleteAccountBottomSheet extends StatefulWidget {
+  final AuthProvider authProvider;
+  final VoidCallback onDeleted;
+
+  const _DeleteAccountBottomSheet({
+    required this.authProvider,
+    required this.onDeleted,
+  });
+
+  @override
+  State<_DeleteAccountBottomSheet> createState() =>
+      _DeleteAccountBottomSheetState();
+}
+
+class _DeleteAccountBottomSheetState extends State<_DeleteAccountBottomSheet> {
+  bool _confirmChecked = false;
+
+  void _showDeleteConfirmation() {
+    if (!_confirmChecked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Please check the confirmation box first',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Directly perform deletion - no extra confirmation needed
+    _performDeletion();
+  }
+
+  Future<void> _performDeletion() async {
+    // Close the bottom sheet first
+    Navigator.of(context).pop();
+
+    // Small delay for smooth transition
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Show the full-screen blurred loading overlay
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        builder: (dialogContext) => _DeletingAccountOverlay(
+          authProvider: widget.authProvider,
+          onDeleted: widget.onDeleted,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.authProvider.user;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Warning Icon
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: 40,
+                  color: Colors.red.shade600,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              const Text(
+                'Delete Account?',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // User info
+              Text(
+                user?.email ?? 'Your account',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 20),
+
+              // Warning message
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade100),
+                ),
+                child: Column(
+                  children: [
+                    _buildWarningItem(
+                      Icons.delete_forever,
+                      'All your bills will be permanently deleted',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildWarningItem(
+                      Icons.cloud_off,
+                      'Data removed from all devices',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildWarningItem(
+                      Icons.history,
+                      'This action cannot be undone',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Confirmation checkbox
+              InkWell(
+                onTap: () => setState(() => _confirmChecked = !_confirmChecked),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Checkbox(
+                          value: _confirmChecked,
+                          onChanged: (v) =>
+                              setState(() => _confirmChecked = v ?? false),
+                          activeColor: Colors.red,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'I understand this will permanently delete my account and all data',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF4B5563),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  // Cancel button
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Color(0xFFE5E7EB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Delete button
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _showDeleteConfirmation,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _confirmChecked
+                            ? Colors.red
+                            : Colors.red.shade200,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Delete Account',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWarningItem(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.red.shade600),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 14, color: Colors.red.shade700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Full-screen blurred loading overlay for account deletion
+class _DeletingAccountOverlay extends StatefulWidget {
+  final AuthProvider authProvider;
+  final VoidCallback onDeleted;
+
+  const _DeletingAccountOverlay({
+    required this.authProvider,
+    required this.onDeleted,
+  });
+
+  @override
+  State<_DeletingAccountOverlay> createState() =>
+      _DeletingAccountOverlayState();
+}
+
+class _DeletingAccountOverlayState extends State<_DeletingAccountOverlay>
+    with SingleTickerProviderStateMixin {
+  String _status = 'Preparing deletion...';
+  bool _isComplete = false;
+  bool _hasError = false;
+  String _errorMessage = '';
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1), // Instant
+    );
+    _fadeAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.0,
+    ).animate(_animationController);
+    _animationController.forward();
+    _performDeletion();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _performDeletion() async {
+    try {
+      // Show deleting status immediately
+      if (mounted) setState(() => _status = 'Deleting account...');
+
+      // Perform the actual deletion (runs in parallel for speed)
+      await widget.authProvider.deleteAccount();
+
+      // Close immediately and navigate - no delay
+      if (mounted) {
+        Navigator.of(context).pop(); // Close overlay
+        widget.onDeleted();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.toString();
+          _status = 'Failed to delete account';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Material(
+        color: Colors.transparent,
+        child: Stack(
+          children: [
+            // Blurred background
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.5),
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            ),
+            // Content
+            Center(
+              child: Container(
+                margin: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Icon or loading indicator
+                    if (_hasError)
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red.shade600,
+                        ),
+                      )
+                    else if (_isComplete)
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 48,
+                          color: Colors.green.shade600,
+                        ),
+                      )
+                    else
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.red,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+
+                    // Status text
+                    Text(
+                      _hasError
+                          ? 'Deletion Failed'
+                          : (_isComplete ? 'Done!' : 'Deleting Account'),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _hasError
+                            ? Colors.red.shade700
+                            : const Color(0xFF1F2937),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Detailed status
+                    Text(
+                      _hasError ? _errorMessage : _status,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _hasError
+                            ? Colors.red.shade600
+                            : Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+
+                    // Retry/Close button for error case
+                    if (_hasError) ...[
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Close',
+                              style: TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _hasError = false;
+                                _status = 'Retrying...';
+                              });
+                              _performDeletion();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Retry',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

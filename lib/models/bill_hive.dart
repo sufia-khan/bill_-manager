@@ -70,6 +70,12 @@ class BillHive extends HiveObject {
   @HiveField(21)
   bool isPinned; // Exclude from auto-delete when archived
 
+  @HiveField(22)
+  DateTime? createdAt; // Timestamp when bill was first created
+
+  @HiveField(23)
+  bool? createdDuringProTrial; // True if created while user had Pro/Trial access
+
   BillHive({
     required this.id,
     required this.title,
@@ -93,6 +99,8 @@ class BillHive extends HiveObject {
     this.reminderTiming,
     this.notificationTime,
     this.isPinned = false,
+    this.createdAt,
+    this.createdDuringProTrial,
   });
 
   // Convert to Firestore format
@@ -119,6 +127,8 @@ class BillHive extends HiveObject {
       'reminderTiming': reminderTiming,
       'notificationTime': notificationTime,
       'isPinned': isPinned,
+      'createdAt': createdAt?.toIso8601String(),
+      'createdDuringProTrial': createdDuringProTrial,
     };
   }
 
@@ -151,6 +161,10 @@ class BillHive extends HiveObject {
       reminderTiming: data['reminderTiming'] as String?,
       notificationTime: data['notificationTime'] as String?,
       isPinned: data['isPinned'] as bool? ?? false,
+      createdAt: data['createdAt'] != null
+          ? DateTime.parse(data['createdAt'] as String)
+          : null,
+      createdDuringProTrial: data['createdDuringProTrial'] as bool?,
     );
   }
 
@@ -223,6 +237,8 @@ class BillHive extends HiveObject {
     String? reminderTiming,
     String? notificationTime,
     bool? isPinned,
+    DateTime? createdAt,
+    bool? createdDuringProTrial,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -247,6 +263,9 @@ class BillHive extends HiveObject {
       reminderTiming: reminderTiming ?? this.reminderTiming,
       notificationTime: notificationTime ?? this.notificationTime,
       isPinned: isPinned ?? this.isPinned,
+      createdAt: createdAt ?? this.createdAt,
+      createdDuringProTrial:
+          createdDuringProTrial ?? this.createdDuringProTrial,
     );
   }
 }

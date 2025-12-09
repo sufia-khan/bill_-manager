@@ -20,54 +20,153 @@ class NotificationHistoryService {
   }
 
   // Add a notification to history
-  static Future<void> addNotification({
+  // Automatically checks for duplicates before adding
+  static Future<bool> addNotification({
     required String title,
     required String body,
     String? billId,
     String? billTitle,
+    String? userId, // Add userId parameter
   }) async {
     try {
       await init();
-      if (_box == null) return;
+      if (_box == null) return false;
+
+      final now = DateTime.now();
+
+      // Check for duplicates - same billId within same day OR same title+body within 5 minutes
+      final existingNotifications = getAllNotifications(userId: userId);
+      final alreadyExists = existingNotifications.any((n) {
+        // Check 1: Same billId on same day (prevents duplicate for same bill)
+        if (billId != null && billId.isNotEmpty && n.billId == billId) {
+          final sameDay =
+              n.sentAt.year == now.year &&
+              n.sentAt.month == now.month &&
+              n.sentAt.day == now.day;
+          if (sameDay) return true;
+        }
+
+        // Check 2: Same title and body within 5 minutes (catches exact duplicates)
+        final sameTitle = n.title == title;
+        final sameBody = n.body == body;
+        final withinTimeWindow = n.sentAt.difference(now).inMinutes.abs() < 5;
+        return sameTitle && sameBody && withinTimeWindow;
+      });
+
+      if (alreadyExists) {
+        print('⏭️ Duplicate notification skipped: $title - $body');
+        return false;
+      }
 
       final notification = NotificationHistory(
         id: const Uuid().v4(),
         title: title,
         body: body,
-        sentAt: DateTime.now(),
+        sentAt: now,
+        billId: billId,
+        billTitle: billTitle,
+        isRead: false,
+        createdAt: now,
+        userId: userId, // Store userId
+      );
+
+      await _box!.put(notification.id, notification);
+      return true;
+    } catch (e) {
+      print('Error adding notification to history: $e');
+      return false;
+    }
+  }
+
+  // Add a notification to history with specific timestamp
+  // Used for notifications that were triggered while app was closed
+  // Automatically checks for duplicates before adding
+  static Future<bool> addNotificationWithTime({
+    required String title,
+    required String body,
+    required DateTime sentAt,
+    String? billId,
+    String? billTitle,
+    String? userId,
+  }) async {
+    try {
+      await init();
+      if (_box == null) return false;
+
+      // Check for duplicates - same billId on same day OR same title+body within 5 minutes
+      final existingNotifications = getAllNotifications(userId: userId);
+      final alreadyExists = existingNotifications.any((n) {
+        // Check 1: Same billId on same day (prevents duplicate for same bill)
+        if (billId != null && billId.isNotEmpty && n.billId == billId) {
+          final sameDay =
+              n.sentAt.year == sentAt.year &&
+              n.sentAt.month == sentAt.month &&
+              n.sentAt.day == sentAt.day;
+          if (sameDay) return true;
+        }
+
+        // Check 2: Same title and body within 5 minutes (catches exact duplicates)
+        final sameTitle = n.title == title;
+        final sameBody = n.body == body;
+        final withinTimeWindow =
+            n.sentAt.difference(sentAt).inMinutes.abs() < 5;
+        return sameTitle && sameBody && withinTimeWindow;
+      });
+
+      if (alreadyExists) {
+        print('⏭️ Duplicate notification skipped: $title - $billId at $sentAt');
+        return false;
+      }
+
+      final notification = NotificationHistory(
+        id: const Uuid().v4(),
+        title: title,
+        body: body,
+        sentAt: sentAt, // Use the actual trigger time
         billId: billId,
         billTitle: billTitle,
         isRead: false,
         createdAt: DateTime.now(),
+        userId: userId,
       );
 
       await _box!.put(notification.id, notification);
+      print('📝 Added notification with timestamp: $title at $sentAt');
+      return true;
     } catch (e) {
-      print('Error adding notification to history: $e');
+      print('Error adding notification with time: $e');
+      return false;
     }
   }
 
-  // Get all notifications (sorted by sentAt descending)
-  static List<NotificationHistory> getAllNotifications() {
+  // Get all notifications for current user (sorted by sentAt descending)
+  static List<NotificationHistory> getAllNotifications({String? userId}) {
     try {
       if (_box == null || !_box!.isOpen) return [];
 
       final notifications = _box!.values.toList();
-      notifications.sort((a, b) => b.sentAt.compareTo(a.sentAt));
-      return notifications;
+
+      // Filter by userId if provided
+      final filteredNotifications = userId != null
+          ? notifications.where((n) => n.userId == userId).toList()
+          : notifications;
+
+      filteredNotifications.sort((a, b) => b.sentAt.compareTo(a.sentAt));
+      return filteredNotifications;
     } catch (e) {
       print('Error getting all notifications: $e');
       return [];
     }
   }
 
-  // Get paginated notifications
+  // Get paginated notifications for current user
   static List<NotificationHistory> getNotifications({
     int offset = 0,
     int limit = 10,
+    String? userId, // Add userId parameter
   }) {
     try {
-      final allNotifications = getAllNotifications();
+      final allNotifications = getAllNotifications(userId: userId);
       final endIndex = (offset + limit).clamp(0, allNotifications.length);
       return allNotifications.sublist(
         offset.clamp(0, allNotifications.length),
@@ -79,22 +178,26 @@ class NotificationHistoryService {
     }
   }
 
-  // Get total count
-  static int getTotalCount() {
+  // Get total count for current user
+  static int getTotalCount({String? userId}) {
     try {
       if (_box == null || !_box!.isOpen) return 0;
-      return _box!.length;
+      if (userId == null) return _box!.length;
+      return _box!.values.where((n) => n.userId == userId).length;
     } catch (e) {
       print('Error getting notification count: $e');
       return 0;
     }
   }
 
-  // Get unread count
-  static int getUnreadCount() {
+  // Get unread count for current user
+  static int getUnreadCount({String? userId}) {
     try {
       if (_box == null || !_box!.isOpen) return 0;
-      return _box!.values.where((n) => !n.isRead).length;
+      if (userId == null) {
+        return _box!.values.where((n) => !n.isRead).length;
+      }
+      return _box!.values.where((n) => n.userId == userId && !n.isRead).length;
     } catch (e) {
       print('Error getting unread count: $e');
       return 0;
@@ -117,6 +220,57 @@ class NotificationHistoryService {
     }
   }
 
+  // Highlight a notification temporarily (for tap navigation)
+  static Future<void> highlightNotification(String notificationId) async {
+    try {
+      await init();
+      if (_box == null) return;
+
+      final notification = _box!.get(notificationId);
+      if (notification != null) {
+        final updated = notification.copyWith(isHighlighted: true);
+        await _box!.put(notificationId, updated);
+      }
+    } catch (e) {
+      print('Error highlighting notification: $e');
+    }
+  }
+
+  // Clear highlight from notification
+  static Future<void> clearHighlight(String notificationId) async {
+    try {
+      await init();
+      if (_box == null) return;
+
+      final notification = _box!.get(notificationId);
+      if (notification != null) {
+        final updated = notification.copyWith(isHighlighted: false);
+        await _box!.put(notificationId, updated);
+      }
+    } catch (e) {
+      print('Error clearing highlight: $e');
+    }
+  }
+
+  // Find notification by billId (for tap navigation)
+  static NotificationHistory? findByBillId(String billId, {String? userId}) {
+    try {
+      if (_box == null || !_box!.isOpen) return null;
+
+      final notifications = getAllNotifications(userId: userId);
+      // Return the most recent notification for this bill
+      for (final n in notifications) {
+        if (n.billId == billId) {
+          return n;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error finding notification by billId: $e');
+      return null;
+    }
+  }
+
   // Mark all as read
   static Future<void> markAllAsRead() async {
     try {
@@ -132,6 +286,73 @@ class NotificationHistoryService {
       }
     } catch (e) {
       print('Error marking all notifications as read: $e');
+    }
+  }
+
+  // Remove duplicate notifications from history
+  // Keeps the oldest notification and removes newer duplicates
+  static Future<int> removeDuplicates() async {
+    try {
+      await init();
+      if (_box == null) return 0;
+
+      final notifications = _box!.values.toList();
+      // Sort by sentAt ascending (oldest first)
+      notifications.sort((a, b) => a.sentAt.compareTo(b.sentAt));
+
+      final seenByBillAndDay = <String, NotificationHistory>{};
+      final seenByContent = <String, NotificationHistory>{};
+      final toDelete = <String>[];
+
+      for (final notification in notifications) {
+        bool isDuplicate = false;
+
+        // Check 1: Same billId on same day
+        if (notification.billId != null && notification.billId!.isNotEmpty) {
+          final dayKey =
+              '${notification.billId}_${notification.sentAt.year}_${notification.sentAt.month}_${notification.sentAt.day}_${notification.userId}';
+          if (seenByBillAndDay.containsKey(dayKey)) {
+            isDuplicate = true;
+          } else {
+            seenByBillAndDay[dayKey] = notification;
+          }
+        }
+
+        // Check 2: Same title+body within 5 minute window
+        if (!isDuplicate) {
+          final timeKey =
+              notification.sentAt.millisecondsSinceEpoch ~/
+              300000; // 5 min buckets
+          final contentKey =
+              '${notification.title}_${notification.body}_${notification.userId}_$timeKey';
+          if (seenByContent.containsKey(contentKey)) {
+            isDuplicate = true;
+          } else {
+            seenByContent[contentKey] = notification;
+          }
+        }
+
+        if (isDuplicate) {
+          print(
+            '🔍 Found duplicate: ${notification.title} - ${notification.body}',
+          );
+          toDelete.add(notification.id);
+        }
+      }
+
+      // Delete duplicates
+      for (final id in toDelete) {
+        await _box!.delete(id);
+      }
+
+      if (toDelete.isNotEmpty) {
+        print('🧹 Removed ${toDelete.length} duplicate notifications');
+      }
+
+      return toDelete.length;
+    } catch (e) {
+      print('Error removing duplicates: $e');
+      return 0;
     }
   }
 
@@ -184,17 +405,38 @@ class NotificationHistoryService {
     required String title,
     required String body,
     required DateTime scheduledFor,
+    String? userId, // Add userId parameter
   }) async {
     try {
       // Store in a separate box for tracking
       final trackingBox = await Hive.openBox('scheduledNotifications');
-      await trackingBox.put(billId, {
+
+      // Store with billId as primary key for easy lookup
+      // This allows checking if a notification is already scheduled
+      final primaryKey = 'scheduled_$billId';
+      await trackingBox.put(primaryKey, {
+        'billId': billId,
+        'billTitle': billTitle,
+        'title': title,
+        'body': body,
+        'scheduledFor': scheduledFor
+            .millisecondsSinceEpoch, // Store as milliseconds for comparison
+        'scheduledForIso': scheduledFor
+            .toIso8601String(), // Keep ISO for readability
+        'tracked': false,
+        'userId': userId, // Store userId
+      });
+
+      // Also store with timestamp key for recurring bills history
+      final uniqueKey = '${billId}_${scheduledFor.millisecondsSinceEpoch}';
+      await trackingBox.put(uniqueKey, {
         'billId': billId,
         'billTitle': billTitle,
         'title': title,
         'body': body,
         'scheduledFor': scheduledFor.toIso8601String(),
         'tracked': false,
+        'userId': userId,
       });
     } catch (e) {
       print('Error tracking scheduled notification: $e');
@@ -202,7 +444,11 @@ class NotificationHistoryService {
   }
 
   // Check for triggered notifications and add them to history
-  static Future<void> checkAndAddTriggeredNotifications() async {
+  // This processes ALL triggered notifications regardless of user
+  // The notification screen will filter by current user when displaying
+  static Future<void> checkAndAddTriggeredNotifications({
+    String? currentUserId,
+  }) async {
     try {
       final trackingBox = await Hive.openBox('scheduledNotifications');
       final now = DateTime.now();
@@ -214,22 +460,42 @@ class NotificationHistoryService {
 
         final scheduledFor = DateTime.parse(data['scheduledFor'] as String);
         final tracked = data['tracked'] as bool? ?? false;
+        final userId = data['userId'] as String?;
+
+        // Process ALL notifications whose time has passed (not just current user)
+        // This ensures notifications are added to history for when user logs in
 
         // If the scheduled time has passed and we haven't tracked it yet
         if (scheduledFor.isBefore(now) && !tracked) {
-          // Add to notification history
-          await addNotification(
-            title: data['title'] as String,
-            body: data['body'] as String,
-            billId: data['billId'] as String,
-            billTitle: data['billTitle'] as String,
+          // Check if this notification already exists in history (avoid duplicates)
+          // Check across ALL notifications, not just current user
+          final existingNotifications = getAllNotifications(userId: userId);
+          final alreadyExists = existingNotifications.any(
+            (n) =>
+                n.billId == data['billId'] &&
+                n.title == data['title'] &&
+                n.sentAt.difference(scheduledFor).inMinutes.abs() <
+                    5, // Within 5 minutes
           );
+
+          if (!alreadyExists) {
+            // Add to notification history with the scheduled time
+            await addNotificationWithTime(
+              title: data['title'] as String,
+              body: data['body'] as String,
+              billId: data['billId'] as String,
+              billTitle: data['billTitle'] as String,
+              userId: userId, // Keep the original userId
+              sentAt: scheduledFor, // Use the scheduled time
+            );
+            print(
+              '✅ Added triggered notification to history: ${data['title']} for user: $userId at $scheduledFor',
+            );
+          }
 
           // Mark as tracked
           data['tracked'] = true;
           await trackingBox.put(key, data);
-
-          print('✅ Added triggered notification to history: ${data['title']}');
         }
       }
 
@@ -252,12 +518,146 @@ class NotificationHistoryService {
   }
 
   // Remove tracking for a cancelled notification
+  // Removes all tracking entries for a given billId (including recurring occurrences)
   static Future<void> removeScheduledTracking(String billId) async {
     try {
       final trackingBox = await Hive.openBox('scheduledNotifications');
-      await trackingBox.delete(billId);
+      // Find and delete all entries that match this billId
+      final keysToDelete = trackingBox.keys
+          .where(
+            (key) =>
+                key.toString().startsWith('${billId}_') ||
+                key == billId ||
+                key == 'scheduled_$billId',
+          )
+          .toList();
+      for (final key in keysToDelete) {
+        await trackingBox.delete(key);
+      }
     } catch (e) {
       print('Error removing scheduled tracking: $e');
+    }
+  }
+
+  // Check all bills and add notifications for any whose notification time has passed
+  // This is called when user logs in to show missed notifications
+  static Future<void> checkMissedNotificationsForUser({
+    required String userId,
+    required List<dynamic> bills, // List of BillHive objects
+  }) async {
+    try {
+      print('\n🔍 Checking missed notifications for user: $userId');
+      print('📋 Total bills to check: ${bills.length}');
+
+      await init();
+      if (_box == null) {
+        print('❌ Notification history box is null');
+        return;
+      }
+
+      final now = DateTime.now();
+      final existingNotifications = getAllNotifications(userId: userId);
+      print('📬 Existing notifications: ${existingNotifications.length}');
+
+      int addedCount = 0;
+
+      for (final bill in bills) {
+        // Skip if bill is paid, deleted, or archived
+        if (bill.isPaid || bill.isDeleted || bill.isArchived) continue;
+
+        print('📌 Checking bill: ${bill.title} (Due: ${bill.dueAt})');
+
+        // Get notification settings for this bill
+        final reminderTiming = bill.reminderTiming ?? '1 Day Before';
+        final notificationTime = bill.notificationTime ?? '09:00';
+
+        // Calculate when notification should have fired
+        int daysOffset;
+        switch (reminderTiming) {
+          case 'Same Day':
+            daysOffset = 0;
+            break;
+          case '1 Day Before':
+            daysOffset = 1;
+            break;
+          case '2 Days Before':
+            daysOffset = 2;
+            break;
+          case '1 Week Before':
+            daysOffset = 7;
+            break;
+          default:
+            daysOffset = 1;
+        }
+
+        final notificationDate = bill.dueAt.subtract(
+          Duration(days: daysOffset),
+        );
+        final timeParts = notificationTime.split(':');
+        final notificationHour = int.parse(timeParts[0]);
+        final notificationMinute = int.parse(timeParts[1]);
+
+        final scheduledTime = DateTime(
+          notificationDate.year,
+          notificationDate.month,
+          notificationDate.day,
+          notificationHour,
+          notificationMinute,
+        );
+
+        // Check if notification time has passed
+        if (scheduledTime.isBefore(now)) {
+          // Check if notification already exists (avoid duplicates)
+          final alreadyExists = existingNotifications.any(
+            (n) =>
+                n.billId == bill.id &&
+                n.sentAt.difference(scheduledTime).inMinutes.abs() < 5,
+          );
+
+          if (!alreadyExists) {
+            // Determine notification title
+            String title;
+            if (daysOffset == 0) {
+              title = 'Bill Due Today';
+            } else if (daysOffset == 1) {
+              title = 'Bill Due Tomorrow';
+            } else if (daysOffset == 7) {
+              title = 'Bill Due in 1 Week';
+            } else {
+              title = 'Bill Due in $daysOffset Days';
+            }
+
+            final body =
+                '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
+
+            // Add to notification history with the actual scheduled time
+            await addNotificationWithTime(
+              title: title,
+              body: body,
+              billId: bill.id,
+              billTitle: bill.title,
+              userId: userId,
+              sentAt: scheduledTime, // Use the scheduled time, not current time
+            );
+
+            addedCount++;
+            print(
+              '✅ Added missed notification for bill: ${bill.title} at $scheduledTime',
+            );
+          } else {
+            print('⏭️ Skipped ${bill.title} (already exists)');
+          }
+        } else {
+          print('⏭️ Skipped ${bill.title} (notification time not yet passed)');
+        }
+      }
+
+      print(
+        '✅ Missed notification check complete: Added $addedCount notifications\n',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Error checking missed notifications: $e');
+      print('Stack trace: $stackTrace');
     }
   }
 }

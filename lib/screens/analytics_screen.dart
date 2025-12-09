@@ -309,6 +309,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 vendor: billHive.vendor,
                 amount: billHive.amount,
                 due: billHive.dueAt.toIso8601String().split('T')[0],
+                dueAt: billHive.dueAt,
                 repeat: billHive.repeat,
                 category: billHive.category,
                 status: billHive.isPaid
@@ -713,7 +714,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );

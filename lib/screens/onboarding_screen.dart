@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/user_preferences_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final String? userId;
+  final VoidCallback? onComplete;
 
-  const OnboardingScreen({super.key, this.userId});
+  const OnboardingScreen({super.key, this.userId, this.onComplete});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -48,8 +50,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     OnboardingPage(
       emoji: '🎁',
-      title: '3 Months Free Trial',
-      description: 'Enjoy all Pro features free for 90 days!',
+      title: '1 Month Free Trial',
+      description: 'Enjoy all Pro features free for 30 days!',
       features: [
         '✨ Full access to all features',
         '☁️ Cloud backup & sync',
@@ -95,7 +97,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await UserPreferencesService.setOnboardingSeen(userId: widget.userId);
 
     if (mounted) {
-      Navigator.of(context).pop();
+      // If onComplete callback is provided, call it instead of popping
+      if (widget.onComplete != null) {
+        widget.onComplete!();
+      } else {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -235,7 +242,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Spacer(flex: 1),
-          // Emoji in circle
+          // Icon/Logo in circle
           Container(
             width: 120,
             height: 120,
@@ -244,7 +251,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               shape: BoxShape.circle,
             ),
             child: Center(
-              child: Text(page.emoji, style: const TextStyle(fontSize: 56)),
+              child: page.emoji == '📋'
+                  ? ClipOval(
+                      child: SvgPicture.asset(
+                        'assets/images/billminder_logo.svg',
+                        width: 80,
+                        height: 80,
+                      ),
+                    )
+                  : Text(page.emoji, style: const TextStyle(fontSize: 56)),
             ),
           ),
           const SizedBox(height: 40),

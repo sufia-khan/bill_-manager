@@ -1,15 +1,18 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firebase_service.dart';
 import '../services/hive_service.dart';
 import '../services/sync_service.dart';
 import '../services/user_preferences_service.dart';
 import '../services/notification_service.dart';
+import '../services/pending_notification_service.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
-  bool _isLoading = false;
+  bool _isLoading = true; // Start as loading until we get first auth state
   String? _error;
+  bool _initialAuthCheckDone = false;
 
   User? get user => _user;
   bool get isLoading => _isLoading;
@@ -18,8 +21,28 @@ class AuthProvider with ChangeNotifier {
 
   AuthProvider() {
     // Listen to auth state changes
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+    FirebaseAuth.instance.authStateChanges().listen((User? user) async {
       _user = user;
+
+      // CRITICAL: Save to SharedPreferences for native notifications
+      // This is required because native code reads from FlutterSharedPreferences
+      if (user != null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('currentUserId', user.uid);
+          print(
+            '✅ AuthProvider: Saved currentUserId to SharedPreferences for native notifications',
+          );
+        } catch (e) {
+          print('❌ AuthProvider: Failed to save currentUserId: $e');
+        }
+      }
+
+      // First auth state received - stop loading
+      if (!_initialAuthCheckDone) {
+        _initialAuthCheckDone = true;
+        _isLoading = false;
+      }
       notifyListeners();
     });
   }
@@ -47,6 +70,14 @@ class AuthProvider with ChangeNotifier {
       if (currentUserId != null) {
         await HiveService.saveUserData('currentUserId', currentUserId);
 
+        // CRITICAL: Also save to SharedPreferences for native Android code
+        // The native AlarmReceiver reads from FlutterSharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('currentUserId', currentUserId);
+        print(
+          '✅ Saved currentUserId to SharedPreferences for native notifications',
+        );
+
         // Check if this is a new user (first time sign-in)
         final registrationKey = 'registrationDate_$currentUserId';
         final existingRegDate = HiveService.getUserData(registrationKey);
@@ -61,6 +92,15 @@ class AuthProvider with ChangeNotifier {
 
       // Start periodic sync
       SyncService.startPeriodicSync();
+
+      // Process any pending notifications that were triggered while logged out
+      // This ensures notifications from this user are added to history
+      try {
+        await PendingNotificationService.processPendingNotifications();
+        print('✅ Processed pending notifications on login');
+      } catch (e) {
+        print('⚠️ Failed to process pending notifications: $e');
+      }
 
       _isLoading = false;
       notifyListeners();
@@ -132,6 +172,12 @@ class AuthProvider with ChangeNotifier {
         // Continue with logout even if notification cancellation fails
       }
 
+      // CRITICAL: Clear currentUserId from SharedPreferences
+      // This prevents notifications from other accounts showing on device
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('currentUserId');
+      print('✅ Cleared currentUserId from SharedPreferences');
+
       // Clear local data
       print('🧹 Clearing local data...');
       await HiveService.clearAllData();
@@ -160,12 +206,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Clear error
-  void clearError() {
-    _error = null;
-    notifyListeners();
-  }
-
   // Refresh user data
   Future<void> refreshUser() async {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -176,63 +216,32 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Delete account permanently (ULTRA-FAST)
+  // Delete account permanently - ULTRA FAST deletion
   Future<void> deleteAccount() async {
-    try {
-      print('\n🗑️ ========== ULTRA-FAST ACCOUNT DELETION ==========');
+    final userId = FirebaseService.currentUserId;
+    final authUser = FirebaseAuth.instance.currentUser;
 
-      // Stop sync service immediately
-      SyncService.stopPeriodicSync();
+    if (userId == null) throw Exception('No user logged in');
 
-      // Cancel all scheduled notifications
-      print('🔕 Cancelling all scheduled notifications...');
-      try {
-        await NotificationService().cancelAllNotifications();
-        print('✅ All notifications cancelled');
-      } catch (e) {
-        print('⚠️ Failed to cancel notifications: $e');
-        // Continue with account deletion even if notification cancellation fails
-      }
+    SyncService.stopPeriodicSync();
 
-      // Update state immediately so UI can proceed (don't wait for anything)
-      _user = null;
-      _error = null;
-      _isLoading = false;
-      notifyListeners();
+    // Run ALL deletions in parallel for maximum speed
+    await Future.wait([
+      // Cloud deletion (fire and forget for auth)
+      FirebaseService.deleteUserDataOnly(userId),
+      // Local deletion
+      HiveService.clearAllData(),
+      UserPreferencesService.clearAll(),
+      SharedPreferences.getInstance().then((p) => p.remove('currentUserId')),
+      NotificationService().cancelAllNotifications(),
+    ]);
 
-      // Delete from Firestore and Firebase Auth in background
-      print('🔥 Deleting cloud data in background...');
-      FirebaseService.deleteUserAccount()
-          .then((_) {
-            print('✅ Cloud data deleted');
-          })
-          .catchError((e) {
-            print('⚠️ Cloud deletion error (non-critical): $e');
-          });
+    // Sign out and delete auth account in background (don't wait)
+    FirebaseService.signOutAndDeleteAuth(authUser);
 
-      // Clear local data in background (don't wait for this)
-      print('🧹 Clearing local data in background...');
-      Future.wait([
-            HiveService.clearAllData(),
-            UserPreferencesService.clearAll(),
-          ])
-          .then((_) {
-            print('✅ Local data cleared');
-            print('🎉 Account deleted!');
-            print('========================================\n');
-          })
-          .catchError((e) {
-            print('⚠️ Local cleanup error (non-critical): $e');
-            print('========================================\n');
-          });
-    } catch (e, stackTrace) {
-      _error = 'Account deletion failed: $e';
-      print('❌ Failed: $e');
-      print('Stack: $stackTrace');
-      print('========================================\n');
-      _isLoading = false;
-      notifyListeners();
-      rethrow;
-    }
+    _user = null;
+    _error = null;
+    _isLoading = false;
+    notifyListeners();
   }
 }

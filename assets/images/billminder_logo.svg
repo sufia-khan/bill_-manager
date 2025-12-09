@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#F97316"/>
+  
+  <!-- Document/Bill shape -->
+  <path d="M160 96 L320 96 L352 128 L352 416 L160 416 Z" fill="white"/>
+  
+  <!-- Document fold corner -->
+  <path d="M320 96 L320 128 L352 128 Z" fill="#1F2937" opacity="0.2"/>
+  
+  <!-- Bill lines (text representation) -->
+  <rect x="192" y="160" width="128" height="16" rx="4" fill="#1F2937" opacity="0.6"/>
+  <rect x="192" y="200" width="96" height="12" rx="3" fill="#1F2937" opacity="0.4"/>
+  <rect x="192" y="232" width="112" height="12" rx="3" fill="#1F2937" opacity="0.4"/>
+  <rect x="192" y="264" width="80" height="12" rx="3" fill="#1F2937" opacity="0.4"/>
+  
+  <!-- Dollar sign circle -->
+  <circle cx="256" cy="340" r="40" fill="#F97316"/>
+  <text x="256" y="358" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">$</text>
+  
+  <!-- Clock/reminder indicator (top right) -->
+  <circle cx="360" cy="152" r="56" fill="#1F2937"/>
+  <circle cx="360" cy="152" r="48" fill="white"/>
+  
+  <!-- Clock hands -->
+  <line x1="360" y1="152" x2="360" y2="120" stroke="#1F2937" stroke-width="6" stroke-linecap="round"/>
+  <line x1="360" y1="152" x2="384" y2="152" stroke="#F97316" stroke-width="6" stroke-linecap="round"/>
+  
+  <!-- Clock center dot -->
+  <circle cx="360" cy="152" r="6" fill="#1F2937"/>
+  
+  <!-- Bell notification dot -->
+  <circle cx="396" cy="108" r="16" fill="#F97316"/>
+</svg>

@@ -229,7 +229,10 @@ class FirebaseSyncService {
 
           // Schedule notification if not paid and not deleted
           if (!remoteBill.isPaid && !remoteBill.isDeleted) {
-            await _notificationService.scheduleBillNotification(remoteBill);
+            await _notificationService.scheduleBillNotification(
+              remoteBill,
+              userId: _userId, // Pass userId
+            );
           }
         } else {
           // Conflict resolution: last-write-wins
@@ -242,7 +245,10 @@ class FirebaseSyncService {
             if (remoteBill.isDeleted || remoteBill.isPaid) {
               await _notificationService.cancelBillNotification(remoteBill.id);
             } else {
-              await _notificationService.scheduleBillNotification(remoteBill);
+              await _notificationService.scheduleBillNotification(
+                remoteBill,
+                userId: _userId, // Pass userId
+              );
             }
           } else if (localBill.needsSync) {
             // Local is newer and needs sync - will be pushed in next cycle

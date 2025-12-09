@@ -19,7 +19,7 @@ class ArchivedBillsScreen extends StatefulWidget {
 
 class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
   String selectedCategory = 'All';
-  bool _compactAmounts = true;
+  final bool _compactAmounts = true;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +38,7 @@ class _ArchivedBillsScreenState extends State<ArchivedBillsScreen> {
               vendor: billHive.vendor,
               amount: billHive.amount,
               due: billHive.dueAt.toIso8601String().split('T')[0],
+              dueAt: billHive.dueAt,
               repeat: billHive.repeat,
               category: billHive.category,
               status: 'paid',

@@ -2,13 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'hive_service.dart';
 
 class TrialService {
-  static const int trialDurationDays = 90; // 3 months
+  static const int trialDurationDays = 30; // 1 month
 
   // ============ TEST MODE ============
   // Change this to test different states:
   // null = real mode (uses actual registration date)
-  // 'trial_start' = Just started (90 days left)
-  // 'trial_middle' = Middle of trial (45 days left)
+  // 'trial_start' = Just started (30 days left)
+  // 'trial_middle' = Middle of trial (15 days left)
   // 'trial_ending' = Trial ending soon (7 days left)
   // 'trial_expired' = Trial expired
   // 'pro' = Pro member
@@ -23,15 +23,15 @@ class TrialService {
         case 'trial_start':
           return DateTime.now(); // Just registered
         case 'trial_middle':
-          return DateTime.now().subtract(const Duration(days: 45));
+          return DateTime.now().subtract(const Duration(days: 15));
         case 'trial_ending':
           return DateTime.now().subtract(
-            const Duration(days: 83),
+            const Duration(days: 23),
           ); // 7 days left
         case 'trial_expired':
-          return DateTime.now().subtract(const Duration(days: 100)); // Expired
+          return DateTime.now().subtract(const Duration(days: 40)); // Expired
         case 'pro':
-          return DateTime.now().subtract(const Duration(days: 120));
+          return DateTime.now().subtract(const Duration(days: 60));
       }
     }
 
@@ -269,15 +269,68 @@ class TrialService {
   }
 
   /// Check if user has reached bill limit
+  /// For free users, only counts bills created AFTER trial expiration
+  /// Bills created during trial/pro period are grandfathered (don't count toward limit)
   static bool hasReachedBillLimit(int currentBillCount) {
     if (canAccessProFeatures()) return false;
     return currentBillCount >= freeMaxBills;
   }
 
   /// Get remaining bills count for free users
+  /// For free users, only counts bills created AFTER trial expiration
+  /// Returns -1 for unlimited (Pro/Trial users)
   static int getRemainingBills(int currentBillCount) {
     if (canAccessProFeatures()) return -1; // Unlimited
     return (freeMaxBills - currentBillCount).clamp(0, freeMaxBills);
+  }
+
+  /// Count bills created after trial expiration (for free tier limit)
+  /// Counts ACTIVE UPCOMING bills for free tier limit
+  /// Only counts bills that are:
+  /// - Not archived, not deleted, not paid, not overdue
+  /// - Not grandfathered (created during trial/pro)
+  ///
+  /// This allows users to:
+  /// - Delete upcoming bills to free up slots
+  /// - Have paid/overdue bills without blocking new additions
+  static int countFreeTierBills(List<dynamic> allBills) {
+    if (canAccessProFeatures()) return 0; // Not applicable for Pro/Trial users
+
+    // Count only ACTIVE UPCOMING bills (not paid, not overdue, not deleted, not archived)
+    int count = 0;
+    final now = DateTime.now();
+
+    for (var bill in allBills) {
+      // Skip archived bills
+      if (bill.isArchived) continue;
+
+      // Skip deleted bills - deleting frees up the slot
+      if (bill.isDeleted) continue;
+
+      // Skip paid bills - they're done, don't block new bills
+      if (bill.isPaid || bill.paidAt != null) continue;
+
+      // Skip overdue bills - they're past due, don't block new bills
+      if (bill.dueAt.isBefore(now)) continue;
+
+      // This is an ACTIVE UPCOMING bill
+      // Check if it's grandfathered (created during trial/pro)
+      if (bill.createdDuringProTrial == true) continue;
+
+      // Count this bill toward the limit
+      count++;
+    }
+
+    return count;
+  }
+
+  /// Get remaining bills for free users (considering grandfathered bills)
+  /// Shows how many more bills a free user can add
+  static int getRemainingFreeTierBills(List<dynamic> allBills) {
+    if (canAccessProFeatures()) return -1; // Unlimited
+
+    final freeTierBillCount = countFreeTierBills(allBills);
+    return (freeMaxBills - freeTierBillCount).clamp(0, freeMaxBills);
   }
 
   /// Check if existing bill should keep its Pro features (grandfathering)

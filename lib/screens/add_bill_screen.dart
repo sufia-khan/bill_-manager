@@ -25,7 +25,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
   String _selectedCategory = 'Subscriptions';
   String _selectedRepeat = 'None';
   DateTime? _selectedDueDate;
-  int? _repeatCount; // null = unlimited
+  int _repeatCount = 12; // Default to 12 times
   String? _reminderTiming; // Will be set from provider default
   TimeOfDay? _notificationTime; // Will be set from provider default
 
@@ -99,8 +99,15 @@ class _AddBillScreenState extends State<AddBillScreen> {
       });
 
       // Set default due date to 30 days from now for new bills
-      _selectedDueDate = DateTime.now().add(const Duration(days: 30));
+      final defaultDate = DateTime.now().add(const Duration(days: 30));
+      _selectedDueDate = DateTime(
+        defaultDate.year,
+        defaultDate.month,
+        defaultDate.day,
+      );
       _dueController.text = _formatDate(_selectedDueDate!);
+      debugPrint('📅 initState: Set default due date to $_selectedDueDate');
+      debugPrint('📅 initState: _dueController.text = ${_dueController.text}');
     }
   }
 
@@ -110,7 +117,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
     _amountController.text = bill.amount.toString();
     _selectedCategory = bill.category;
     _selectedRepeat = _capitalizeFirst(bill.repeat);
-    _selectedDueDate = DateTime.parse('${bill.due}T00:00:00');
+    final parsedDate = DateTime.parse('${bill.due}T00:00:00');
+    _selectedDueDate = DateTime(
+      parsedDate.year,
+      parsedDate.month,
+      parsedDate.day,
+    );
     _dueController.text = _formatDate(_selectedDueDate!);
 
     // Get notes and notification settings from BillHive
@@ -145,7 +157,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
         setState(() {
           _notesController.text = billHive.notes ?? '';
-          _repeatCount = billHive.repeatCount;
+          _repeatCount =
+              billHive.repeatCount ?? 12; // Default to 12 if was unlimited
           // Load reminder timing from bill or use defaults
           _reminderTiming =
               billHive.reminderTiming ?? notificationProvider.reminderTiming;
@@ -209,10 +222,18 @@ class _AddBillScreenState extends State<AddBillScreen> {
       final billProvider = context.read<BillProvider>();
 
       // Check bill limit for new bills (free users)
-      if (widget.billToEdit == null) {
-        final currentBillCount = billProvider.bills.length;
-        if (TrialService.hasReachedBillLimit(currentBillCount)) {
-          _showProFeatureDialog('Unlimited Bills');
+      // Only counts bills created AFTER trial expiration (grandfathering)
+      // Check bill limit for new bills (free users)
+      // Only counts bills created AFTER trial expiration (grandfathering)
+      if (widget.billToEdit == null && !TrialService.canAccessProFeatures()) {
+        final freeTierBillCount = billProvider.getFreeTierUsedCount();
+        if (freeTierBillCount >= TrialService.freeMaxBills) {
+          final remainingBills = billProvider.getRemainingFreeTierBills();
+          _showProFeatureDialog(
+            'Unlimited Bills',
+            customMessage:
+                'You can add up to ${TrialService.freeMaxBills} bills on the free plan. You have $remainingBills remaining. Upgrade to Pro for unlimited bills.',
+          );
           return;
         }
       }
@@ -239,8 +260,12 @@ class _AddBillScreenState extends State<AddBillScreen> {
           needsSync: true,
           reminderTiming: _reminderTiming,
           notificationTime: _notificationTime != null
-              ? '${_notificationTime!.hour}:${_notificationTime!.minute}'
+              ? '${_notificationTime!.hour.toString().padLeft(2, '0')}:${_notificationTime!.minute.toString().padLeft(2, '0')}'
               : null,
+        );
+
+        print(
+          '📝 Updating bill: ${updatedBill.title}, Due: ${updatedBill.dueAt}, Notif: ${updatedBill.notificationTime}',
         );
 
         await billProvider.updateBill(updatedBill);
@@ -257,21 +282,78 @@ class _AddBillScreenState extends State<AddBillScreen> {
         }
       } else {
         // Add mode - create new bill
+        // For 1-minute testing, set dueAt to include the notification time
+
+        // CRITICAL: Check if _selectedDueDate is null
+        if (_selectedDueDate == null) {
+          debugPrint(
+            '⚠️ WARNING: _selectedDueDate is NULL! This should not happen.',
+          );
+          debugPrint('   _dueController.text = ${_dueController.text}');
+        }
+
+        DateTime dueAt =
+            _selectedDueDate ?? DateTime.now().add(const Duration(days: 30));
+
+        print('🔍 _saveBill: _selectedDueDate = $_selectedDueDate');
+        print('🔍 _saveBill: initial dueAt = $dueAt');
+        print('🔍 _saveBill: _selectedRepeat = $_selectedRepeat');
+
+        // For testing mode, keep the selected date but add notification time if provided
+        if (_selectedRepeat.toLowerCase() == '1 minute (testing)' &&
+            _notificationTime != null) {
+          // Keep the selected date, just add the notification time
+          dueAt = DateTime(
+            dueAt.year,
+            dueAt.month,
+            dueAt.day,
+            _notificationTime!.hour,
+            _notificationTime!.minute,
+          );
+        }
+
+        // Only pass repeatCount if it's a recurring bill
+        final int? repeatCountToSave = _selectedRepeat.toLowerCase() != 'none'
+            ? _repeatCount
+            : null;
+
+        debugPrint('📝 Saving bill with repeatCount: $repeatCountToSave');
+        debugPrint('   _repeatCount state: $_repeatCount');
+        debugPrint('   _selectedRepeat: $_selectedRepeat');
+        debugPrint('📅 Due date being saved: $dueAt');
+        debugPrint('   _selectedDueDate: $_selectedDueDate');
+        debugPrint('   _dueController.text: ${_dueController.text}');
+        debugPrint('   dueAt ISO: ${dueAt.toIso8601String()}');
+        debugPrint(
+          '   dueAt date only: ${dueAt.toIso8601String().split('T')[0]}',
+        );
+        debugPrint('⏰ Notification time: $_notificationTime');
+        debugPrint('   Reminder timing: $_reminderTiming');
+
+        debugPrint('\n🚀 CALLING billProvider.addBill with:');
+        debugPrint('   title: ${_titleController.text.trim()}');
+        debugPrint('   dueAt: $dueAt');
+        debugPrint('   dueAt ISO: ${dueAt.toIso8601String()}');
+        debugPrint('   repeat: ${_selectedRepeat.toLowerCase()}');
+        debugPrint('   reminderTiming: $_reminderTiming');
+        debugPrint(
+          '   notificationTime: ${_notificationTime != null ? '${_notificationTime!.hour.toString().padLeft(2, '0')}:${_notificationTime!.minute.toString().padLeft(2, '0')}' : null}\n',
+        );
+
         await billProvider.addBill(
           title: _titleController.text.trim(),
           vendor: _titleController.text.trim(), // Use title as vendor
           amount: double.parse(_amountController.text),
-          dueAt:
-              _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
+          dueAt: dueAt,
           notes: _notesController.text.trim().isEmpty
               ? null
               : _notesController.text.trim(),
           category: _selectedCategory,
           repeat: _selectedRepeat.toLowerCase(),
-          repeatCount: _repeatCount,
+          repeatCount: repeatCountToSave,
           reminderTiming: _reminderTiming,
           notificationTime: _notificationTime != null
-              ? '${_notificationTime!.hour}:${_notificationTime!.minute}'
+              ? '${_notificationTime!.hour.toString().padLeft(2, '0')}:${_notificationTime!.minute.toString().padLeft(2, '0')}'
               : null,
         );
 
@@ -363,6 +445,10 @@ class _AddBillScreenState extends State<AddBillScreen> {
   }
 
   void _selectDueDate() async {
+    debugPrint('\n📅 ========== DATE PICKER CALLED ==========');
+    debugPrint('📅 Current _selectedDueDate: $_selectedDueDate');
+    debugPrint('📅 Current _dueController.text: ${_dueController.text}');
+
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDueDate ?? DateTime.now(),
@@ -370,11 +456,21 @@ class _AddBillScreenState extends State<AddBillScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
 
+    debugPrint('📅 Date picker returned: $picked');
     if (picked != null) {
       setState(() {
-        _selectedDueDate = picked;
-        _dueController.text = _formatDate(picked);
+        // Normalize the date to midnight to avoid time zone issues
+        _selectedDueDate = DateTime(picked.year, picked.month, picked.day);
+        _dueController.text = _formatDate(_selectedDueDate!);
+        debugPrint('📅 ✅ Updated _selectedDueDate to: $_selectedDueDate');
+        debugPrint(
+          '📅 ✅ Updated _dueController.text to: ${_dueController.text}',
+        );
+        debugPrint('📅 ========================================\n');
       });
+    } else {
+      debugPrint('📅 ❌ User cancelled date picker');
+      debugPrint('📅 ========================================\n');
     }
   }
 
@@ -890,7 +986,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
     );
   }
 
-  void _showProFeatureDialog(String featureName) {
+  void _showProFeatureDialog(String featureName, {String? customMessage}) {
     // Get feature details
     final featureDetails = _getFeatureDetails(featureName);
 
@@ -962,7 +1058,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      featureDetails['description'] as String,
+                      customMessage ??
+                          (featureDetails['description'] as String),
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0xFF6B7280),
@@ -1474,7 +1571,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                             ),
                           ),
                         );
-                      }).toList(),
+                      }),
                     ],
                   ),
                 ),
@@ -1485,6 +1582,72 @@ class _AddBillScreenState extends State<AddBillScreen> {
         );
       },
     );
+  }
+
+  // Calculate the end date based on repeat type and count
+  String _getRecurringPreviewText() {
+    if (_selectedDueDate == null) return '';
+
+    final startDate = _selectedDueDate!;
+    DateTime endDate;
+    String frequencyText;
+
+    switch (_selectedRepeat.toLowerCase()) {
+      case 'weekly':
+        endDate = startDate.add(Duration(days: 7 * (_repeatCount - 1)));
+        frequencyText = 'weekly';
+        break;
+      case 'monthly':
+        endDate = DateTime(
+          startDate.year,
+          startDate.month + (_repeatCount - 1),
+          startDate.day,
+        );
+        frequencyText = 'monthly';
+        break;
+      case 'quarterly':
+        endDate = DateTime(
+          startDate.year,
+          startDate.month + (3 * (_repeatCount - 1)),
+          startDate.day,
+        );
+        frequencyText = 'quarterly';
+        break;
+      case 'yearly':
+        endDate = DateTime(
+          startDate.year + (_repeatCount - 1),
+          startDate.month,
+          startDate.day,
+        );
+        frequencyText = 'yearly';
+        break;
+      case '1 minute (testing)':
+        endDate = startDate.add(Duration(minutes: _repeatCount - 1));
+        frequencyText = 'every minute';
+        break;
+      default:
+        return '';
+    }
+
+    // Format the end date nicely
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final endDateStr =
+        '${months[endDate.month - 1]} ${endDate.day}, ${endDate.year}';
+
+    return 'This bill will repeat $_repeatCount times $frequencyText, ending on $endDateStr';
   }
 
   Widget _buildRepeatCountSelector() {
@@ -1532,9 +1695,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
                       ),
                     ),
                     Text(
-                      _repeatCount == null
-                          ? 'Repeats forever ♾️'
-                          : 'Repeats $_repeatCount ${_repeatCount == 1 ? 'time' : 'times'} 🔄',
+                      'Number of bills to create',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade600,
@@ -1550,28 +1711,57 @@ class _AddBillScreenState extends State<AddBillScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildRepeatChip('Forever', null, '♾️'),
               _buildRepeatChip('2 times', 2, '2️⃣'),
               _buildRepeatChip('3 times', 3, '3️⃣'),
               _buildRepeatChip('5 times', 5, '5️⃣'),
               _buildRepeatChip('10 times', 10, '🔟'),
-              _buildRepeatChip('Custom', -1, '✏️'),
+              _buildRepeatChip('12 times', 12, '📅'),
             ],
           ),
+          // Dynamic preview sentence
+          if (_selectedDueDate != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline_rounded,
+                    color: Color(0xFF10B981),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _getRecurringPreviewText(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF065F46),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildRepeatChip(String label, int? count, String emoji) {
+  Widget _buildRepeatChip(String label, int count, String emoji) {
     final isSelected = _repeatCount == count;
     return InkWell(
       onTap: () {
-        if (count == -1) {
-          _showCustomRepeatDialog();
-        } else {
-          setState(() => _repeatCount = count);
-        }
+        setState(() => _repeatCount = count);
       },
       borderRadius: BorderRadius.circular(20),
       child: Container(
@@ -1599,79 +1789,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showCustomRepeatDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Text('✏️'),
-            SizedBox(width: 8),
-            Text(
-              'Custom Repeat Count',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('How many times should this bill repeat?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Number of times',
-                hintText: 'e.g., 12',
-                prefixIcon: const Icon(Icons.repeat, color: Color(0xFFF97316)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFF97316),
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final value = int.tryParse(controller.text);
-              if (value != null && value > 0) {
-                setState(() => _repeatCount = value);
-                Navigator.pop(context);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please enter a valid number'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF97316),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Set'),
-          ),
-        ],
       ),
     );
   }

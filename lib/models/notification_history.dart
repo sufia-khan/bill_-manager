@@ -28,6 +28,12 @@ class NotificationHistory extends HiveObject {
   @HiveField(7)
   final DateTime createdAt;
 
+  @HiveField(8)
+  final String? userId; // Track which user this notification belongs to
+
+  @HiveField(9)
+  final bool isHighlighted; // For highlighting when notification is tapped
+
   NotificationHistory({
     required this.id,
     required this.title,
@@ -37,6 +43,8 @@ class NotificationHistory extends HiveObject {
     this.billTitle,
     this.isRead = false,
     required this.createdAt,
+    this.userId, // Add userId parameter
+    this.isHighlighted = false,
   });
 
   NotificationHistory copyWith({
@@ -48,6 +56,8 @@ class NotificationHistory extends HiveObject {
     String? billTitle,
     bool? isRead,
     DateTime? createdAt,
+    String? userId,
+    bool? isHighlighted,
   }) {
     return NotificationHistory(
       id: id ?? this.id,
@@ -58,6 +68,8 @@ class NotificationHistory extends HiveObject {
       billTitle: billTitle ?? this.billTitle,
       isRead: isRead ?? this.isRead,
       createdAt: createdAt ?? this.createdAt,
+      userId: userId ?? this.userId,
+      isHighlighted: isHighlighted ?? this.isHighlighted,
     );
   }
 
@@ -71,6 +83,8 @@ class NotificationHistory extends HiveObject {
       'billTitle': billTitle,
       'isRead': isRead,
       'createdAt': createdAt.toIso8601String(),
+      'userId': userId,
+      'isHighlighted': isHighlighted,
     };
   }
 
@@ -84,6 +98,8 @@ class NotificationHistory extends HiveObject {
       billTitle: json['billTitle'] as String?,
       isRead: json['isRead'] as bool? ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      userId: json['userId'] as String?,
+      isHighlighted: json['isHighlighted'] as bool? ?? false,
     );
   }
 }

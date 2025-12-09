@@ -8,14 +8,15 @@ import 'screens/analytics_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/splash_screen.dart';
 import 'screens/archived_bills_screen.dart';
+import 'screens/splash_screen.dart';
 // import 'screens/past_bills_screen.dart'; // Removed - paid bills now shown in Paid tab
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
-import 'services/notification_history_service.dart';
 import 'services/pending_notification_service.dart';
+import 'services/pending_recurring_service.dart';
+import 'services/notification_history_service.dart';
 import 'services/user_preferences_service.dart';
 import 'services/archive_management_service.dart';
 import 'providers/bill_provider.dart';
@@ -24,6 +25,7 @@ import 'providers/currency_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/notification_settings_provider.dart';
+import 'providers/notification_badge_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +51,9 @@ void main() async {
   // Process any pending notifications that triggered while app was closed
   await PendingNotificationService.processPendingNotifications();
 
+  // Process any pending recurring bills created by native AlarmReceiver
+  await PendingRecurringService.processPendingRecurringBills();
+
   // Perform auto-cleanup of old archived bills (respects user preferences)
   try {
     final deletedCount = await ArchiveManagementService.performAutoCleanup();
@@ -60,12 +65,17 @@ void main() async {
   }
 
   // Set up notification tap handler
-  NotificationService.onNotificationTapped = (String? billId) {
-    if (billId != null) {
-      // Navigate to bill details when notification is tapped
-      MyApp.navigatorKey.currentState?.pushNamed(
-        '/bill-details',
-        arguments: billId,
+  NotificationService.onNotificationTapped = (String? billId) async {
+    if (billId != null && billId.isNotEmpty && billId != 'test_notification') {
+      // Navigate to BillManagerScreen with overdue tab and highlight the bill
+      MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => BillManagerScreen(
+            initialStatus: 'overdue',
+            highlightBillId: billId,
+          ),
+        ),
+        (route) => false, // Remove all previous routes
       );
     }
   };
@@ -96,6 +106,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => NotificationSettingsProvider()..initialize(),
         ),
+        ChangeNotifierProvider(create: (_) => NotificationBadgeProvider()),
         ChangeNotifierProxyProvider<NotificationSettingsProvider, BillProvider>(
           create: (_) => BillProvider(),
           update: (context, notificationSettings, previous) {
@@ -140,76 +151,23 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper>
-    with SingleTickerProviderStateMixin {
+class _AuthWrapperState extends State<AuthWrapper> {
   bool _hasShownPermissionDialog = false;
-  bool _hasShownOnboarding = false;
   bool _hasLoadedCurrency = false;
-  bool _isShowingOnboarding = false;
   bool _showSplash = true;
-  bool _splashFadeOut = false;
-
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    super.dispose();
-  }
-
-  void _onSplashComplete() async {
-    if (mounted) {
-      setState(() => _splashFadeOut = true);
-      _fadeController.forward();
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (mounted) {
-        setState(() => _showSplash = false);
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    // Show splash screen with fade transition
+    // Show custom splash screen first
     if (_showSplash) {
-      return Stack(
-        children: [
-          // Main content behind splash (preloaded)
-          if (_splashFadeOut)
-            Consumer<AuthProvider>(
-              builder: (context, authProvider, _) {
-                if (authProvider.isAuthenticated) {
-                  return const BillManagerScreen();
-                }
-                return const LoginScreen();
-              },
-            ),
-          // Splash screen fading out
-          if (!_splashFadeOut)
-            SplashScreen(onComplete: _onSplashComplete)
-          else
-            FadeTransition(
-              opacity: Tween<double>(
-                begin: 1.0,
-                end: 0.0,
-              ).animate(_fadeAnimation),
-              child: IgnorePointer(child: SplashScreen(onComplete: () {})),
-            ),
-        ],
+      return SplashScreen(
+        onComplete: () {
+          if (mounted) {
+            setState(() {
+              _showSplash = false;
+            });
+          }
+        },
       );
     }
 
@@ -224,84 +182,68 @@ class _AuthWrapperState extends State<AuthWrapper>
           );
         }
 
-        // If user is authenticated, show onboarding first (only once per user)
-        if (authProvider.isAuthenticated) {
-          final userId = authProvider.user?.uid;
-
-          // Load currency from Firebase after authentication (in background)
-          if (!_hasLoadedCurrency) {
-            _hasLoadedCurrency = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              // Load currency in background without blocking UI
-              if (mounted) {
-                context.read<CurrencyProvider>().loadSavedCurrency();
-              }
-            });
-          }
-
-          // Check if THIS specific user has seen onboarding
-          final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding(
-            userId: userId,
-          );
-
-          // Show onboarding screen only once per user account
-          // Use _isShowingOnboarding to prevent multiple navigations
-          if (!hasSeenOnboarding &&
-              !_hasShownOnboarding &&
-              !_isShowingOnboarding) {
-            _hasShownOnboarding = true;
-            _isShowingOnboarding = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              if (!mounted) return;
-
-              // Navigate to onboarding and wait for it to complete
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => OnboardingScreen(userId: userId),
-                ),
-              );
-
-              // After onboarding completes, show notification dialog
-              if (mounted && !_hasShownPermissionDialog) {
-                _hasShownPermissionDialog = true;
-                _showNotificationPermissionDialog(context);
-              }
-              if (mounted) {
-                setState(() {
-                  _isShowingOnboarding = false;
-                });
-              }
-            });
-
-            // Show loading while onboarding is being displayed
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(color: Color(0xFFF97316)),
-              ),
-            );
-          } else if (hasSeenOnboarding && !_hasShownPermissionDialog) {
-            // User has already seen onboarding, show notification dialog directly
-            _hasShownPermissionDialog = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                _showNotificationPermissionDialog(context);
-              }
-            });
-          }
-
-          return const BillManagerScreen();
-        }
-
-        // Reset flags when user logs out
+        // If not authenticated, reset flags and show login
         if (!authProvider.isAuthenticated) {
+          // Reset all flags when user logs out
           _hasLoadedCurrency = false;
           _hasShownPermissionDialog = false;
-          _hasShownOnboarding = false;
-          _isShowingOnboarding = false;
+          return const LoginScreen();
         }
 
-        // Otherwise, show login screen
-        return const LoginScreen();
+        // User is authenticated
+        final userId = authProvider.user?.uid;
+
+        // Load currency from Firebase after authentication (in background)
+        if (!_hasLoadedCurrency) {
+          _hasLoadedCurrency = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            // Load currency in background without blocking UI
+            if (mounted) {
+              context.read<CurrencyProvider>().loadSavedCurrency();
+            }
+          });
+        }
+
+        // Check if THIS specific user has seen onboarding
+        final hasSeenOnboarding = UserPreferencesService.hasSeenOnboarding(
+          userId: userId,
+        );
+
+        // Show onboarding screen only once per user account
+        if (!hasSeenOnboarding) {
+          // Return OnboardingScreen directly instead of navigating
+          // This prevents the flash of BillManagerScreen
+          return OnboardingScreen(
+            userId: userId,
+            onComplete: () {
+              if (mounted) {
+                // Force rebuild to show BillManagerScreen
+                setState(() {});
+                // Show notification dialog after onboarding
+                if (!_hasShownPermissionDialog) {
+                  _hasShownPermissionDialog = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _showNotificationPermissionDialog(context);
+                    }
+                  });
+                }
+              }
+            },
+          );
+        }
+
+        // Show notification dialog for users who have already seen onboarding
+        if (!_hasShownPermissionDialog) {
+          _hasShownPermissionDialog = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _showNotificationPermissionDialog(context);
+            }
+          });
+        }
+
+        return const BillManagerScreen();
       },
     );
   }

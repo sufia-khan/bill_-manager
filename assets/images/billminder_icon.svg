@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background rounded square (app icon style) -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="#F97316"/>
+  
+  <!-- Document/Bill shape - centered and bold -->
+  <path d="M144 80 L304 80 L368 144 L368 432 L144 432 Z" fill="white"/>
+  
+  <!-- Document fold corner -->
+  <path d="M304 80 L304 144 L368 144 Z" fill="#1F2937" opacity="0.15"/>
+  
+  <!-- Bill lines -->
+  <rect x="184" y="176" width="144" height="20" rx="6" fill="#1F2937" opacity="0.7"/>
+  <rect x="184" y="220" width="104" height="14" rx="4" fill="#1F2937" opacity="0.4"/>
+  <rect x="184" y="252" width="120" height="14" rx="4" fill="#1F2937" opacity="0.4"/>
+  
+  <!-- Clock overlay (bottom right of document) -->
+  <circle cx="320" cy="360" r="64" fill="#1F2937"/>
+  <circle cx="320" cy="360" r="52" fill="white"/>
+  
+  <!-- Clock hands -->
+  <line x1="320" y1="360" x2="320" y2="324" stroke="#1F2937" stroke-width="8" stroke-linecap="round"/>
+  <line x1="320" y1="360" x2="352" y2="360" stroke="#F97316" stroke-width="8" stroke-linecap="round"/>
+  
+  <!-- Clock center -->
+  <circle cx="320" cy="360" r="8" fill="#F97316"/>
+</svg>

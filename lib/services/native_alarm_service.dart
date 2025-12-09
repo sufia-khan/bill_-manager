@@ -12,17 +12,39 @@ class NativeAlarmService {
   /// [title] - Notification title
   /// [body] - Notification body
   /// [notificationId] - Unique ID for this notification
+  /// [userId] - User ID who owns this notification
+  /// [billId] - Actual bill ID for tracking
+  /// [isRecurring] - Whether this is a recurring bill
+  /// [recurringType] - Type of recurrence (weekly, monthly, etc.)
+  /// [billTitle] - Original bill title for recurring
+  /// [billAmount] - Bill amount for recurring
+  /// [billVendor] - Bill vendor for recurring
+  /// [currentSequence] - Current sequence number for recurring
+  /// [repeatCount] - Total repeat count limit (-1 for unlimited)
   static Future<bool> scheduleAlarm({
     required DateTime dateTime,
     required String title,
     required String body,
     required int notificationId,
+    String? userId,
+    String? billId,
+    bool isRecurring = false,
+    String? recurringType,
+    String? billTitle,
+    double? billAmount,
+    String? billVendor,
+    int currentSequence = 1,
+    int repeatCount = -1,
   }) async {
     try {
       debugPrint('📱 Scheduling native alarm:');
       debugPrint('   Time: $dateTime');
       debugPrint('   Title: $title');
       debugPrint('   ID: $notificationId');
+      debugPrint('   User ID: $userId');
+      debugPrint('   Bill ID: $billId');
+      debugPrint('   Is Recurring: $isRecurring');
+      debugPrint('   Recurring Type: $recurringType');
 
       final timeInMillis = dateTime.millisecondsSinceEpoch;
 
@@ -31,6 +53,15 @@ class NativeAlarmService {
         'title': title,
         'body': body,
         'notificationId': notificationId,
+        'userId': userId ?? '',
+        'billId': billId ?? '',
+        'isRecurring': isRecurring,
+        'recurringType': recurringType ?? '',
+        'billTitle': billTitle ?? '',
+        'billAmount': billAmount ?? 0.0,
+        'billVendor': billVendor ?? '',
+        'currentSequence': currentSequence,
+        'repeatCount': repeatCount,
       });
 
       debugPrint('✅ Native alarm scheduled successfully!');

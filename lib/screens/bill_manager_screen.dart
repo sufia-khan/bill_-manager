@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
+import '../models/bill_hive.dart';
 import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
-import '../services/notification_history_service.dart';
+import '../providers/notification_badge_provider.dart';
 import '../widgets/animated_subtitle.dart';
 import '../widgets/expandable_bill_card.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
@@ -17,13 +19,21 @@ import 'notification_screen.dart';
 import 'subscription_screen.dart';
 
 class BillManagerScreen extends StatefulWidget {
-  const BillManagerScreen({super.key});
+  final String? initialStatus; // 'upcoming', 'overdue', 'paid'
+  final String? highlightBillId; // Bill ID to highlight for 2 seconds
+
+  const BillManagerScreen({
+    super.key,
+    this.initialStatus,
+    this.highlightBillId,
+  });
 
   @override
   State<BillManagerScreen> createState() => _BillManagerScreenState();
 }
 
-class _BillManagerScreenState extends State<BillManagerScreen> {
+class _BillManagerScreenState extends State<BillManagerScreen>
+    with WidgetsBindingObserver {
   // Bills are now loaded from BillProvider - no hardcoded data!
 
   // Category data with emojis (matching add bill screen)
@@ -67,14 +77,121 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
   bool _compactAmounts = true;
   final bool _showSettings = false;
 
+  // Timer for periodic recurring bill check (for 1-minute testing)
+  Timer? _recurringBillTimer;
+
+  // Highlight state for bill card
+  String? _highlightedBillId;
+  Timer? _highlightTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Set initial status if provided (e.g., from notification click)
+    if (widget.initialStatus != null) {
+      selectedStatus = widget.initialStatus!;
+    }
 
     // Load bills when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BillProvider>().initialize();
+
+      // Start periodic timer to check recurring bills every 30 seconds
+      // This is needed for 1-minute recurring bills testing
+      _startRecurringBillTimer();
+
+      // Highlight bill if provided (from notification click)
+      if (widget.highlightBillId != null) {
+        setState(() {
+          _highlightedBillId = widget.highlightBillId;
+        });
+        // Clear highlight after 2 seconds
+        _highlightTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _highlightedBillId = null;
+            });
+          }
+        });
+      }
     });
+  }
+
+  void _startRecurringBillTimer() {
+    _recurringBillTimer?.cancel();
+    // Check every 15 seconds for 1-minute testing mode
+    _recurringBillTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) {
+        context.read<BillProvider>().runRecurringBillMaintenance();
+      }
+    });
+  }
+
+  // Sort bills based on status
+  List<Bill> _sortBillsByStatus(List<Bill> bills, String status) {
+    final sortedBills = List<Bill>.from(bills);
+
+    switch (status) {
+      case 'upcoming':
+        // Ascending: Earliest due date first (e.g., Tomorrow, then Day After)
+        sortedBills.sort((a, b) {
+          final dateCompare = a.dueAt.compareTo(b.dueAt);
+          if (dateCompare != 0) return dateCompare;
+          // Tie-breaker: Title
+          return a.title.compareTo(b.title);
+        });
+        break;
+
+      case 'overdue':
+        // Descending: Most recently overdue first (e.g., Yesterday, then 2 days ago)
+        // This ensures the bills that 'just' became overdue are at the top
+        sortedBills.sort((a, b) {
+          final dateCompare = b.dueAt.compareTo(a.dueAt); // Descending
+          if (dateCompare != 0) return dateCompare;
+          // Tie-breaker: Title
+          return a.title.compareTo(b.title);
+        });
+        break;
+
+      case 'paid':
+        // Descending: Most recently paid first
+        sortedBills.sort((a, b) {
+          // Use paidAt if available, otherwise fall back to dueAt as proxy
+          final dateA = a.paidAt ?? a.dueAt;
+          final dateB = b.paidAt ?? b.dueAt;
+          final dateCompare = dateB.compareTo(dateA); // Descending
+          if (dateCompare != 0) return dateCompare;
+          // Tie-breaker: Title
+          return a.title.compareTo(b.title);
+        });
+        break;
+
+      default:
+        // Default to ascending due date
+        sortedBills.sort((a, b) {
+          return a.dueAt.compareTo(b.dueAt);
+        });
+    }
+
+    return sortedBills;
+  }
+
+  @override
+  void dispose() {
+    _recurringBillTimer?.cancel();
+    _highlightTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When app comes to foreground, check for overdue recurring bills
+    if (state == AppLifecycleState.resumed) {
+      context.read<BillProvider>().checkOverdueRecurringBills();
+    }
   }
 
   // Totals are now calculated in BillProvider
@@ -86,49 +203,72 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
 
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
-        // Debug: Print bill count
-        print('DEBUG: Total bills in provider: ${billProvider.bills.length}');
-
         // Convert BillHive to legacy Bill format for UI
         // Show unpaid bills AND paid bills that haven't been archived yet (within 2 days)
+        // Remove TRUE duplicates (same title + same sequence number)
         final now = DateTime.now();
-        final bills = billProvider.bills
+
+        // First, filter out archived and deleted bills
+        final activeBillsHive = billProvider.bills
             .where((billHive) => !billHive.isArchived && !billHive.isDeleted)
-            .map(
-              (billHive) => Bill(
-                id: billHive.id,
-                title: billHive.title,
-                vendor: billHive.vendor,
-                amount: billHive.amount,
-                due: billHive.dueAt.toIso8601String().split('T')[0],
-                repeat: billHive.repeat,
-                category: billHive.category,
-                status: BillStatusHelper.calculateStatus(billHive),
-              ),
-            )
             .toList();
+
+        // Remove true duplicates: same title + same sequence number
+        // Keep only one bill per (title, sequence) combination
+        final Map<String, BillHive> uniqueBills = {};
+        for (var billHive in activeBillsHive) {
+          // Create a unique key based on title and sequence
+          final seq = billHive.recurringSequence ?? 0;
+          final key = '${billHive.title}_seq_$seq';
+
+          // If we already have this (title, sequence), keep the one with later due date
+          if (uniqueBills.containsKey(key)) {
+            final existing = uniqueBills[key]!;
+            // Keep the one with later due date (more recent)
+            if (billHive.dueAt.isAfter(existing.dueAt)) {
+              uniqueBills[key] = billHive;
+            }
+          } else {
+            uniqueBills[key] = billHive;
+          }
+        }
+
+        // Convert to Bill format
+        final bills = uniqueBills.values.map((billHive) {
+          final dueString = billHive.dueAt.toIso8601String().split('T')[0];
+          debugPrint(
+            '📋 Converting bill "${billHive.title}": dueAt=${billHive.dueAt}, due=$dueString',
+          );
+          return Bill(
+            id: billHive.id,
+            title: billHive.title,
+            vendor: billHive.vendor,
+            amount: billHive.amount,
+            due: dueString,
+            dueAt: billHive.dueAt, // Full datetime for precise sorting
+            repeat: billHive.repeat,
+            category: billHive.category,
+            status: BillStatusHelper.calculateStatus(billHive),
+            paidAt: billHive.paidAt,
+          );
+        }).toList();
 
         // Filter by status first, then by category
         final statusFilteredBills = bills
             .where((b) => b.status == selectedStatus)
             .toList();
 
-        final filteredBills = selectedCategory == 'All'
+        var filteredBills = selectedCategory == 'All'
             ? statusFilteredBills
             : statusFilteredBills
                   .where((b) => b.category == selectedCategory)
                   .toList();
 
+        // Sort bills based on status
+        filteredBills = _sortBillsByStatus(filteredBills, selectedStatus);
+
         final thisMonthTotal = billProvider.getThisMonthTotal();
         final next7DaysTotal = billProvider.getNext7DaysTotal();
-
-        // Debug: Print calculated values
-        print(
-          'DEBUG: This month total: $thisMonthTotal, count will be calculated',
-        );
-        print(
-          'DEBUG: Next 7 days total: $next7DaysTotal, count will be calculated',
-        );
 
         // Calculate counts (reuse 'now' from above)
         final startOfMonth = DateTime(now.year, now.month, 1);
@@ -138,20 +278,12 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           const Duration(days: 7, hours: 23, minutes: 59, seconds: 59),
         );
 
-        print('DEBUG: Date ranges - Month: $startOfMonth to $endOfMonth');
-        print('DEBUG: Date ranges - Next 7 days: $startOfToday to $endOf7Days');
-
         // Filter for UPCOMING bills only (not paid, not overdue)
         final thisMonthBills = bills.where((bill) {
           final dueDate = DateTime.parse('${bill.due}T00:00:00');
           final isInRange =
               !dueDate.isBefore(startOfMonth) && !dueDate.isAfter(endOfMonth);
-          final isUpcoming = bill.status == 'upcoming'; // Only upcoming bills
-          if (isInRange && isUpcoming) {
-            print(
-              'DEBUG: Upcoming bill in this month: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
-            );
-          }
+          final isUpcoming = bill.status == 'upcoming';
           return isInRange && isUpcoming;
         }).toList();
         final thisMonthCount = thisMonthBills.length;
@@ -164,12 +296,7 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           final dueDate = DateTime.parse('${bill.due}T00:00:00');
           final isInRange =
               !dueDate.isBefore(startOfToday) && !dueDate.isAfter(endOf7Days);
-          final isUpcoming = bill.status == 'upcoming'; // Only upcoming bills
-          if (isInRange && isUpcoming) {
-            print(
-              'DEBUG: Upcoming bill in next 7 days: ${bill.title} - Due: $dueDate - Amount: ${bill.amount}',
-            );
-          }
+          final isUpcoming = bill.status == 'upcoming';
           return isInRange && isUpcoming;
         }).toList();
         final next7DaysCount = next7DaysBills.length;
@@ -177,9 +304,6 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
           0.0,
           (sum, bill) => sum + bill.amount,
         );
-
-        print('DEBUG: This month count: $thisMonthCount');
-        print('DEBUG: Next 7 days count: $next7DaysCount');
 
         final filteredCount = filteredBills.length;
         final filteredAmount = filteredBills.fold(
@@ -311,26 +435,116 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
                             ),
                             tooltip: 'Notifications',
                           ),
-                          // Unread notification badge
-                          if (NotificationHistoryService.getUnreadCount() > 0)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFEF4444),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
+                          // Unread notification badge - uses provider for real-time updates
+                          Consumer<NotificationBadgeProvider>(
+                            builder: (context, badgeProvider, _) {
+                              if (badgeProvider.unreadCount > 0) {
+                                return Positioned(
+                                  right: 8,
+                                  top: 8,
+                                  child: Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFEF4444),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
+
+                // Free tier bill limit indicator
+                if (!TrialService.canAccessProFeatures())
+                  Consumer<BillProvider>(
+                    builder: (context, billProvider, child) {
+                      final remainingBills = billProvider
+                          .getRemainingFreeTierBills();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFFFFF5E6),
+                              const Color(0xFFFFE5CC).withValues(alpha: 0.5),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFFFFE5CC),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD4AF37),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.info_outline,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'You can add $remainingBills more bill${remainingBills != 1 ? 's' : ''} (${TrialService.freeMaxBills} max on free plan)',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF92400E),
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const SubscriptionScreen(),
+                                  ),
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text(
+                                'Upgrade',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFF97316),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
                 // Summary Cards
                 Row(
                   children: [
@@ -463,136 +677,161 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
     Widget icon,
     int billCount,
   ) {
-    return GestureDetector(
-      onTap: () {
-        AmountInfoBottomSheet.show(
-          context,
-          amount: amount,
-          billCount: billCount,
-          title: title,
-        );
-      },
-      child: AnimatedScale(
-        scale: 1.0,
-        duration: const Duration(milliseconds: 300),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: title != 'Next 7 days'
-                  ? [
-                      const Color(0xFFFED7AA), // orange-100
-                      const Color(0xFFFDE68A), // amber-100
-                      const Color(0xFFFEF08A), // yellow-100
-                    ]
-                  : [
-                      const Color(0xFFDBEAFE), // blue-100
-                      const Color(0xFFE0F2FE), // sky-100
-                      const Color(0xFFCFFAFE), // cyan-100
-                    ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: title != 'Next 7 days'
-                  ? const Color(0xFFFED7AA).withValues(alpha: 0.6) // orange-200
-                  : const Color(0xFFBFDBFE).withValues(alpha: 0.6), // blue-200
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    (title != 'Next 7 days'
-                            ? const Color(0xFFFB923C) // orange-400
-                            : const Color(0xFF3B82F6)) // blue-500
-                        .withValues(alpha: 0.25),
-                blurRadius: 30,
-                offset: const Offset(0, 8),
-                spreadRadius: 0,
-              ),
-            ],
+    // Check if amount is formatted (shortened) - only >= 1000 gets shortened
+    final isFormatted = amount >= 1000;
+
+    final cardContent = AnimatedScale(
+      scale: 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: title != 'Next 7 days'
+                ? [
+                    const Color(0xFFFED7AA), // orange-100
+                    const Color(0xFFFDE68A), // amber-100
+                    const Color(0xFFFEF08A), // yellow-100
+                  ]
+                : [
+                    const Color(0xFFDBEAFE), // blue-100
+                    const Color(0xFFE0F2FE), // sky-100
+                    const Color(0xFFCFFAFE), // cyan-100
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: title != 'Next 7 days'
-                            ? [
-                                const Color(0xFFFB923C), // orange-400
-                                const Color(0xFFF97316), // orange-500
-                              ]
-                            : [
-                                const Color(0xFF60A5FA), // blue-400
-                                const Color(0xFF3B82F6), // blue-500
-                              ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color:
-                              (title != 'Next 7 days'
-                                      ? const Color(0xFFFB923C) // orange-400
-                                      : const Color(0xFF60A5FA)) // blue-400
-                                  .withValues(alpha: 0.5),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: title != 'Next 7 days'
+                ? const Color(0xFFFED7AA).withValues(alpha: 0.6) // orange-200
+                : const Color(0xFFBFDBFE).withValues(alpha: 0.6), // blue-200
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  (title != 'Next 7 days'
+                          ? const Color(0xFFFB923C) // orange-400
+                          : const Color(0xFF3B82F6)) // blue-500
+                      .withValues(alpha: 0.25),
+              blurRadius: 30,
+              offset: const Offset(0, 8),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: title != 'Next 7 days'
+                          ? [
+                              const Color(0xFFFB923C), // orange-400
+                              const Color(0xFFF97316), // orange-500
+                            ]
+                          : [
+                              const Color(0xFF60A5FA), // blue-400
+                              const Color(0xFF3B82F6), // blue-500
+                            ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: icon,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            (title != 'Next 7 days'
+                                    ? const Color(0xFFFB923C) // orange-400
+                                    : const Color(0xFF60A5FA)) // blue-400
+                                .withValues(alpha: 0.5),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  Flexible(
-                    child: Text(
-                      title.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: title != 'Next 7 days'
-                            ? const Color(0xFFC2410C) // orange-700
-                            : const Color(0xFF1D4ED8), // blue-700
-                        letterSpacing: 0.8,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  child: icon,
+                ),
+                Flexible(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: title != 'Next 7 days'
+                          ? const Color(0xFFC2410C) // orange-700
+                          : const Color(0xFF1D4ED8), // blue-700
+                      letterSpacing: 0.8,
                     ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text(
+                  formatCurrencyShort(amount),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B), // slate-800
+                    height: 1.1,
+                  ),
+                ),
+                // Only show info icon when amount is formatted (shortened)
+                if (isFormatted) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: title != 'Next 7 days'
+                        ? const Color(0xFFC2410C) // orange-700
+                        : const Color(0xFF1D4ED8), // blue-700
                   ),
                 ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF334155), // slate-700
               ),
-              const SizedBox(height: 10),
-              Text(
-                formatCurrencyShort(amount),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1E293B), // slate-800
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF334155), // slate-700
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ],
-          ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ],
         ),
       ),
     );
+
+    // Only make tappable when amount is formatted
+    if (isFormatted) {
+      return GestureDetector(
+        onTap: () {
+          AmountInfoBottomSheet.show(
+            context,
+            amount: amount,
+            billCount: billCount,
+            title: title,
+          );
+        },
+        child: cardContent,
+      );
+    }
+
+    return cardContent;
   }
 
   Widget _buildFilterSection() {
@@ -874,11 +1113,13 @@ class _BillManagerScreenState extends State<BillManagerScreen> {
     // Bills now archive immediately when paid - no near archival warnings needed
     return Column(
       children: filteredBills.map((bill) {
+        final isHighlighted = _highlightedBillId == bill.id;
         return ExpandableBillCard(
           bill: bill,
           compactAmounts: _compactAmounts,
           daysRemaining: null, // No longer showing days remaining
           onMarkPaid: () => _showMarkPaidConfirmation(bill),
+          isHighlighted: isHighlighted,
         );
       }).toList(),
     );

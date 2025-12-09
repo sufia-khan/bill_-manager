@@ -58,50 +58,73 @@ class FirebaseService {
     if (currentUserId == null) {
       throw Exception('User not authenticated');
     }
+    await deleteUserAccountWithId(currentUserId!, _auth.currentUser);
+  }
 
-    final userId = currentUserId!; // Save userId before deletion
-    debugPrint('[Auth] 🗑️ Fast-deleting account for uid: $userId');
+  // Auth: Delete user account - FAST parallel deletion
+  static Future<void> deleteUserAccountWithId(
+    String userId,
+    User? authUser,
+  ) async {
+    final GoogleSignIn googleSignIn = GoogleSignIn();
 
+    // Run ALL deletions in parallel for maximum speed
+    await Future.wait([
+      _deleteUserBillsCollection(userId),
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('settings')
+          .doc('currency')
+          .delete()
+          .catchError((_) => null),
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .delete()
+          .catchError((_) => null),
+      googleSignIn.signOut(),
+      _auth.signOut(),
+    ]);
+
+    // Try to delete auth account (may fail, that's ok - data is gone)
     try {
-      final currentAuthUser = _auth.currentUser;
+      await authUser?.delete();
+    } catch (_) {}
+  }
 
-      // Run Firestore deletions in parallel for maximum speed
-      debugPrint('[Auth] Deleting Firestore data in parallel...');
-      await Future.wait([
-        // Delete bills collection
-        _deleteUserBillsCollection(userId),
-        // Delete user document
-        _firestore.collection('users').doc(userId).delete(),
-      ]);
-      debugPrint('[Auth] ✅ Firestore data deleted');
+  // ULTRA FAST: Delete only user data (not auth) - for instant deletion
+  static Future<void> deleteUserDataOnly(String userId) async {
+    // Delete everything in parallel, ignore errors
+    await Future.wait([
+      _deleteUserBillsCollection(userId).catchError((_) => null),
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('settings')
+          .doc('currency')
+          .delete()
+          .catchError((_) => null),
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .delete()
+          .catchError((_) => null),
+    ]);
+  }
 
-      // Delete Firebase Auth account
-      debugPrint('[Auth] Deleting Firebase Auth account...');
-      if (currentAuthUser != null) {
-        try {
-          await currentAuthUser.delete();
-          debugPrint('[Auth] ✅ Auth account deleted');
-        } on FirebaseAuthException catch (e) {
-          if (e.code == 'requires-recent-login') {
-            throw Exception(
-              'For security, please sign out and sign in again before deleting your account.',
-            );
-          }
-          rethrow;
-        }
-      }
+  // Sign out and delete auth in background (fire and forget)
+  static void signOutAndDeleteAuth(User? authUser) {
+    final GoogleSignIn googleSignIn = GoogleSignIn();
 
-      // Sign out from Google
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      await Future.wait([googleSignIn.signOut(), _auth.signOut()]);
-      debugPrint('[Auth] ✅ Signed out');
-
-      debugPrint('[Auth] 🎉 Account deleted successfully!');
-    } catch (e, stackTrace) {
-      debugPrint('[Auth] ❌ Error: $e');
-      debugPrint('[Auth] Stack: $stackTrace');
-      rethrow;
-    }
+    // Don't await - let it happen in background
+    Future.wait([
+      googleSignIn.signOut().catchError((_) => null),
+      _auth.signOut().catchError((_) => null),
+    ]).then((_) {
+      // Try to delete auth account after signout
+      authUser?.delete().catchError((_) => null);
+    });
   }
 
   // Helper: Delete all bills in user's collection (optimized)
@@ -215,17 +238,9 @@ class FirebaseService {
     }).toList();
   }
 
-  // Firestore: Listen to bills changes (real-time)
-  static Stream<List<BillHive>> watchBills() {
-    final collection = _getUserBillsCollection();
-    return collection.where('isDeleted', isEqualTo: false).snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.map((doc) {
-        return BillHive.fromFirestore(doc.data() as Map<String, dynamic>);
-      }).toList();
-    });
-  }
+  // REMOVED: Real-time listener - causes excessive reads
+  // Use HiveService.getAllBills() for local data instead
+  // Only sync with Firebase on login and when pushing changes
 
   // Firestore: Batch sync local bills to server
   static Future<void> syncLocalBillsToServer(List<BillHive> bills) async {

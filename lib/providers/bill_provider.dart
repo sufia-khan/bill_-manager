@@ -40,6 +40,11 @@ class BillProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Refresh UI (called when external state changes like TrialService.testMode)
+  void refreshUI() {
+    notifyListeners();
+  }
+
   // Trigger sync after changes - uses SyncService which reads needsSync flag from Hive
   // Fire-and-forget: sync happens in background without blocking UI
   void _triggerSync() {
@@ -121,8 +126,12 @@ class BillProvider with ChangeNotifier {
       Future.microtask(() async {
         try {
           await runMaintenance();
-          // Check for triggered notifications and add to history
-          await NotificationHistoryService.checkAndAddTriggeredNotifications();
+          // Check for overdue recurring bills and create next instances immediately
+          await checkOverdueRecurringBills();
+          // Check for triggered notifications and add to history (only for current user)
+          await NotificationHistoryService.checkAndAddTriggeredNotifications(
+            currentUserId: currentUserId,
+          );
         } catch (e) {
           print('Error running maintenance on initialization: $e');
           // Don't rethrow - maintenance failures shouldn't affect app initialization
@@ -151,6 +160,20 @@ class BillProvider with ChangeNotifier {
     String? notificationTime,
   }) async {
     try {
+      // Check free tier bill limit (only counts bills created after trial expiration)
+      if (!TrialService.canAccessProFeatures()) {
+        // Fix: Must include deleted bills in the count because deleted paid/overdue bills
+        // still count towards the limit (to prevent gaming the system)
+        final allBills = HiveService.getAllBillsIncludingDeleted();
+        final freeTierBillCount = TrialService.countFreeTierBills(allBills);
+
+        if (freeTierBillCount >= TrialService.freeMaxBills) {
+          throw Exception(
+            'Free plan limit reached. You can add up to ${TrialService.freeMaxBills} bills. Upgrade to Pro for unlimited bills.',
+          );
+        }
+      }
+
       final now = DateTime.now();
       final bill = BillHive(
         id: const Uuid().v4(),
@@ -171,6 +194,9 @@ class BillProvider with ChangeNotifier {
         notificationTime: notificationTime,
         // Set recurringSequence to 1 for the first bill if it's recurring with a count
         recurringSequence: (repeat != 'none' && repeatCount != null) ? 1 : null,
+        createdAt: now, // Set creation timestamp
+        createdDuringProTrial:
+            TrialService.canAccessProFeatures(), // Track if created during Pro/Trial
       );
 
       // Save to local storage
@@ -192,14 +218,34 @@ class BillProvider with ChangeNotifier {
       );
       print('═══════════════════════════════════════════════════════\n');
 
-      // Schedule notification if enabled
-      await _scheduleNotificationForBill(bill);
+      // Schedule notification if enabled (force reschedule for new bills)
+      await _scheduleNotificationForBill(bill, forceReschedule: true);
 
       // Show all pending notifications
       await _showPendingNotifications();
 
       // Update local list
       _bills = HiveService.getAllBills();
+
+      // Debug: Verify the bill was saved correctly
+      final savedBill = _bills.firstWhere(
+        (b) => b.id == bill.id,
+        orElse: () => bill,
+      );
+      print('\n🔍 ═══════════════════════════════════════════════════════');
+      print('🔍 VERIFICATION - Bill read back from Hive:');
+      print('🔍 ═══════════════════════════════════════════════════════');
+      print('   Title: ${savedBill.title}');
+      print('   DueAt (DateTime): ${savedBill.dueAt}');
+      print('   DueAt ISO: ${savedBill.dueAt.toIso8601String()}');
+      print(
+        '   DueAt Date Only: ${savedBill.dueAt.toIso8601String().split('T')[0]}',
+      );
+      print('   DueAt Year: ${savedBill.dueAt.year}');
+      print('   DueAt Month: ${savedBill.dueAt.month}');
+      print('   DueAt Day: ${savedBill.dueAt.day}');
+      print('🔍 ═══════════════════════════════════════════════════════\n');
+
       notifyListeners();
 
       // Trigger debounced sync
@@ -231,9 +277,9 @@ class BillProvider with ChangeNotifier {
       print('Is Paid: ${updatedBill.isPaid}');
       print('═══════════════════════════════════════════════════════\n');
 
-      // Reschedule notification if bill is not paid
+      // Reschedule notification if bill is not paid (force reschedule on update)
       if (!updatedBill.isPaid) {
-        await _scheduleNotificationForBill(updatedBill);
+        await _scheduleNotificationForBill(updatedBill, forceReschedule: true);
         await _showPendingNotifications();
       } else {
         // Cancel notification if bill is paid
@@ -280,6 +326,8 @@ class BillProvider with ChangeNotifier {
         // Run recurring maintenance immediately to create next instance
         if (isRecurring) {
           print('Creating next instance for recurring bill: ${bill.title}');
+          // Small delay to ensure bill is saved before processing
+          await Future.delayed(const Duration(milliseconds: 100));
           await runRecurringBillMaintenance();
         }
 
@@ -316,8 +364,8 @@ class BillProvider with ChangeNotifier {
         );
         await HiveService.saveBill(updatedBill);
 
-        // Reschedule notification for unpaid bill
-        await _scheduleNotificationForBill(updatedBill);
+        // Reschedule notification for unpaid bill (force reschedule on undo)
+        await _scheduleNotificationForBill(updatedBill, forceReschedule: true);
 
         // Force refresh to get latest data
         _bills = HiveService.getAllBills(forceRefresh: true);
@@ -404,35 +452,42 @@ class BillProvider with ChangeNotifier {
 
       final now = DateTime.now();
 
-      // Check if bill is overdue using reminder time logic
+      // Check if bill is overdue
       bool isOverdue = false;
       if (!bill.isPaid) {
-        final today = DateTime(now.year, now.month, now.day);
-        final dueDate = DateTime(
-          bill.dueAt.year,
-          bill.dueAt.month,
-          bill.dueAt.day,
-        );
-
-        if (today.isAfter(dueDate)) {
-          isOverdue = true;
-        } else if (today.isAtSameMomentAs(dueDate)) {
-          final reminderTime = bill.notificationTime ?? '09:00';
-          final reminderParts = reminderTime.split(':');
-          final reminderHour = int.parse(reminderParts[0]);
-          final reminderMinute = int.parse(reminderParts[1]);
-
-          final reminderDateTime = DateTime(
-            now.year,
-            now.month,
-            now.day,
-            reminderHour,
-            reminderMinute,
+        // For 1-minute testing, use exact time comparison
+        if (bill.repeat.toLowerCase() == '1 minute (testing)') {
+          isOverdue =
+              now.isAfter(bill.dueAt) || now.isAtSameMomentAs(bill.dueAt);
+        } else {
+          // For regular bills, use date + reminder time logic
+          final today = DateTime(now.year, now.month, now.day);
+          final dueDate = DateTime(
+            bill.dueAt.year,
+            bill.dueAt.month,
+            bill.dueAt.day,
           );
 
-          isOverdue =
-              now.isAfter(reminderDateTime) ||
-              now.isAtSameMomentAs(reminderDateTime);
+          if (today.isAfter(dueDate)) {
+            isOverdue = true;
+          } else if (today.isAtSameMomentAs(dueDate)) {
+            final reminderTime = bill.notificationTime ?? '09:00';
+            final reminderParts = reminderTime.split(':');
+            final reminderHour = int.parse(reminderParts[0]);
+            final reminderMinute = int.parse(reminderParts[1]);
+
+            final reminderDateTime = DateTime(
+              now.year,
+              now.month,
+              now.day,
+              reminderHour,
+              reminderMinute,
+            );
+
+            isOverdue =
+                now.isAfter(reminderDateTime) ||
+                now.isAtSameMomentAs(reminderDateTime);
+          }
         }
       }
 
@@ -445,17 +500,30 @@ class BillProvider with ChangeNotifier {
         await NotificationService().cancelBillNotification(billId);
         await HiveService.deleteBill(billId);
       }
-      // If this is an UPCOMING recurring bill, delete this + future unpaid bills
+      // If this is an UPCOMING recurring bill, delete this + ALL future instances
+      // This cancels the recurring series from this point forward
       else if (bill.repeat != 'none') {
         print(
-          '🗑️ Deleting upcoming recurring bill + future instances: ${bill.title}',
+          '🗑️ Deleting upcoming recurring bill + ALL future instances: ${bill.title}',
         );
 
-        // Find the parent ID
+        // Find the parent ID (the original bill that started the series)
         final parentId = bill.parentBillId ?? bill.id;
         final currentSequence = bill.recurringSequence ?? 0;
 
+        print(
+          '   Series parent ID: $parentId, Current sequence: $currentSequence',
+        );
+        if (bill.repeatCount != null) {
+          print(
+            '   Total occurrences in series: ${bill.repeatCount}, Remaining after this: ${bill.repeatCount! - currentSequence}',
+          );
+        } else {
+          print('   Unlimited recurring series - will be cancelled');
+        }
+
         // Find all UPCOMING (not paid, not overdue) bills in this series
+        // with sequence >= current sequence
         final allBills = HiveService.getAllBillsIncludingDeleted();
         final billsToDelete = allBills.where((b) {
           final billParentId = b.parentBillId ?? b.id;
@@ -500,14 +568,23 @@ class BillProvider with ChangeNotifier {
         }).toList();
 
         print(
-          '   Found ${billsToDelete.length} upcoming bills to delete (keeping paid & overdue)',
+          '   Found ${billsToDelete.length} upcoming bills to delete (keeping paid & overdue history)',
         );
 
-        // Delete all unpaid future bills in the series
+        // Delete all unpaid upcoming/future bills in the series
+        // This soft-deletes them (isDeleted = true) which signals to
+        // RecurringBillService to stop creating new instances
         for (final billToDelete in billsToDelete) {
+          print(
+            '   Deleting: ${billToDelete.title} (seq: ${billToDelete.recurringSequence}, due: ${billToDelete.dueAt})',
+          );
           await NotificationService().cancelBillNotification(billToDelete.id);
           await HiveService.deleteBill(billToDelete.id);
         }
+
+        print(
+          '   ✅ Series cancelled from sequence $currentSequence onwards. No future instances will be created.',
+        );
       } else {
         // Non-recurring upcoming bill - just delete this one
         await NotificationService().cancelBillNotification(billId);
@@ -580,8 +657,13 @@ class BillProvider with ChangeNotifier {
         _bills = HiveService.getAllBills(forceRefresh: true);
         notifyListeners();
 
-        // Reschedule notification
-        await NotificationService().scheduleBillNotification(restoredBill);
+        // Reschedule notification with userId
+        final currentUserId =
+            HiveService.getUserData('currentUserId') as String?;
+        await NotificationService().scheduleBillNotification(
+          restoredBill,
+          userId: currentUserId,
+        );
 
         // Trigger debounced sync
         _triggerSync();
@@ -594,7 +676,11 @@ class BillProvider with ChangeNotifier {
   }
 
   // Schedule notification for a bill based on user settings
-  Future<void> _scheduleNotificationForBill(BillHive bill) async {
+  // Set forceReschedule to true when user explicitly changes settings
+  Future<void> _scheduleNotificationForBill(
+    BillHive bill, {
+    bool forceReschedule = false,
+  }) async {
     try {
       print('\n🔔 ATTEMPTING TO SCHEDULE NOTIFICATION');
       print('─────────────────────────────────────────────────────');
@@ -676,11 +762,17 @@ class BillProvider with ChangeNotifier {
       }
       print('─────────────────────────────────────────────────────\n');
 
+      // Get current user ID from HiveService
+      final currentUserId = HiveService.getUserData('currentUserId') as String?;
+
       await notificationService.scheduleBillNotification(
         bill,
         daysBeforeDue: daysOffset,
         notificationHour: notificationHour,
         notificationMinute: notificationMinute,
+        userId: currentUserId,
+        forceReschedule:
+            forceReschedule, // Only cancel existing alarm if explicitly requested
       );
     } catch (e) {
       print('❌ Error scheduling notification for bill: $e');
@@ -796,6 +888,28 @@ class BillProvider with ChangeNotifier {
 
       return now.isBefore(reminderDateTime);
     }).toList()..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+  }
+
+  // Get used slots for free tier (including deleted paid/overdue bills)
+  int getFreeTierUsedCount() {
+    final allBills = HiveService.getAllBillsIncludingDeleted();
+    return TrialService.countFreeTierBills(allBills);
+  }
+
+  // Get remaining slots for free tier
+  int getRemainingFreeTierBills() {
+    // Use provider's bills list for consistency and reactivity
+    // Need to include deleted bills for accurate count
+    final allBills = HiveService.getAllBillsIncludingDeleted();
+    final remaining = TrialService.getRemainingFreeTierBills(allBills);
+
+    // Debug logging
+    print('📊 getRemainingFreeTierBills called:');
+    print('   Total bills (including deleted): ${allBills.length}');
+    print('   Remaining slots: $remaining');
+    print('   Can access pro: ${TrialService.canAccessProFeatures()}');
+
+    return remaining;
   }
 
   // Get overdue bills (considering reminder time)
@@ -923,6 +1037,32 @@ class BillProvider with ChangeNotifier {
     } catch (e) {
       print('Error running recurring bill maintenance: $e');
       // Don't rethrow - maintenance failures shouldn't block other operations
+    }
+  }
+
+  // Check for overdue recurring bills and create next instances
+  // This should be called when app comes to foreground or bills are refreshed
+  Future<void> checkOverdueRecurringBills() async {
+    try {
+      final now = DateTime.now();
+      final recurringBills = _bills
+          .where(
+            (bill) =>
+                bill.repeat != 'none' &&
+                !bill.isDeleted &&
+                !bill.isPaid &&
+                bill.dueAt.isBefore(now), // Bill is overdue
+          )
+          .toList();
+
+      if (recurringBills.isNotEmpty) {
+        print(
+          'Found ${recurringBills.length} overdue recurring bills - processing...',
+        );
+        await runRecurringBillMaintenance();
+      }
+    } catch (e) {
+      print('Error checking overdue recurring bills: $e');
     }
   }
 

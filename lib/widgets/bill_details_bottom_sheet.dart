@@ -276,6 +276,19 @@ class BillDetailsBottomSheet extends StatelessWidget {
       notificationTime = billHive.notificationTime;
       repeatCount = billHive.repeatCount;
       paidAt = billHive.paidAt;
+
+      // Fallback: If repeatCount is missing on this instance (e.g. data migration issue),
+      // try to find it on the parent bill to ensure we show "X of Y" correctly
+      if (repeatCount == null && billHive.parentBillId != null) {
+        try {
+          final parent = billProvider.bills.firstWhere(
+            (b) => b.id == billHive!.parentBillId,
+          );
+          repeatCount = parent.repeatCount;
+        } catch (_) {
+          // Parent not found in active bills (might be deleted/archived), ignore
+        }
+      }
     } catch (e) {
       // Bill not found in provider
     }
@@ -406,14 +419,17 @@ class BillDetailsBottomSheet extends StatelessWidget {
                         valueColor: _getStatusColor(),
                       ),
                       _buildDetailRow('Recurring', bill.repeat),
-                      if (repeatCount != null && repeatCount > 0) ...[
-                        if (billHive?.recurringSequence != null)
+                      if (bill.repeat != 'none') ...[
+                        if (repeatCount != null && repeatCount > 0)
                           _buildDetailRow(
                             'Occurrence',
-                            '${billHive!.recurringSequence} of $repeatCount',
+                            '${billHive?.recurringSequence ?? 1} of $repeatCount',
                           )
-                        else
-                          _buildDetailRow('Repeat Count', '$repeatCount times'),
+                        else if (billHive?.recurringSequence != null)
+                          _buildDetailRow(
+                            'Occurrence',
+                            '#${billHive!.recurringSequence}',
+                          ),
                       ],
                       if (reminderTiming != null && reminderTiming.isNotEmpty)
                         _buildDetailRow('Reminder', reminderTiming),
@@ -867,7 +883,7 @@ class BillDetailsBottomSheet extends StatelessWidget {
                                     );
                                   } else if (bill.repeat != 'none') {
                                     return Text(
-                                      'Are you sure you want to delete "${bill.title}"? This will also delete all future unpaid occurrences. Paid history will be kept.',
+                                      'Are you sure you want to delete "${bill.title}"?\n\nThis will permanently cancel the recurring series and delete all future occurrences. Your paid bill history will be kept.',
                                     );
                                   } else {
                                     return Text(
@@ -907,7 +923,7 @@ class BillDetailsBottomSheet extends StatelessWidget {
                                   dueDate.isBefore(now);
                               final message =
                                   (bill.repeat != 'none' && !isPaidOrOverdue)
-                                  ? '"${bill.title}" and future occurrences deleted'
+                                  ? '"${bill.title}" and all future occurrences permanently deleted'
                                   : 'Bill "${bill.title}" deleted';
 
                               ScaffoldMessenger.of(context).showSnackBar(
