@@ -376,11 +376,23 @@ class NotificationService {
       final currentSequence = bill.recurringSequence ?? 1;
       final repeatCount = bill.repeatCount ?? -1;
 
+      // Update body to include sequence number for recurring bills
+      String finalBody = body;
+      if (isRecurring && repeatCount > 0) {
+        // Include sequence number for recurring bills with a count
+        finalBody =
+            '${bill.title} - \${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} ($currentSequence of $repeatCount)';
+      } else if (isRecurring && repeatCount == -1) {
+        // Include sequence number for unlimited recurring bills
+        finalBody =
+            '${bill.title} - \${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} (#$currentSequence)';
+      }
+
       try {
         final nativeSuccess = await NativeAlarmService.scheduleAlarm(
           dateTime: alarmTime,
           title: title,
-          body: body,
+          body: finalBody,
           notificationId: bill.id.hashCode,
           userId: userId,
           billId: bill.id,

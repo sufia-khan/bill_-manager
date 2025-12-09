@@ -9,9 +9,9 @@ import 'screens/calendar_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/archived_bills_screen.dart';
-import 'screens/splash_screen.dart';
 // import 'screens/past_bills_screen.dart'; // Removed - paid bills now shown in Paid tab
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
+import 'package:google_fonts/google_fonts.dart';
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
 import 'services/pending_notification_service.dart';
@@ -30,44 +30,14 @@ import 'providers/notification_badge_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
+  // CRITICAL: Only initialize essential services before app starts
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  // Initialize Hive
   await HiveService.init();
-
-  // Run data migration for new fields
-  await HiveService.migrateExistingBills();
-
-  // Initialize user preferences
   await UserPreferencesService.init();
-
-  // Initialize notification service
-  await NotificationService().init();
-
-  // Initialize notification history service
-  await NotificationHistoryService.init();
-
-  // Process any pending notifications that triggered while app was closed
-  await PendingNotificationService.processPendingNotifications();
-
-  // Process any pending recurring bills created by native AlarmReceiver
-  await PendingRecurringService.processPendingRecurringBills();
-
-  // Perform auto-cleanup of old archived bills (respects user preferences)
-  try {
-    final deletedCount = await ArchiveManagementService.performAutoCleanup();
-    if (deletedCount > 0) {
-      print('🗑️ Auto-deleted $deletedCount old archived bills');
-    }
-  } catch (e) {
-    print('⚠️ Auto-cleanup error: $e');
-  }
 
   // Set up notification tap handler
   NotificationService.onNotificationTapped = (String? billId) async {
     if (billId != null && billId.isNotEmpty && billId != 'test_notification') {
-      // Navigate to BillManagerScreen with overdue tab and highlight the bill
       MyApp.navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => BillManagerScreen(
@@ -75,15 +45,43 @@ void main() async {
             highlightBillId: billId,
           ),
         ),
-        (route) => false, // Remove all previous routes
+        (route) => false,
       );
     }
   };
 
-  // Note: Background task scheduling removed due to workmanager compatibility issues
-  // Maintenance runs automatically on app startup via BillProvider.initialize()
-
   runApp(const MyApp());
+
+  // Run non-critical tasks in background AFTER app starts
+  _initializeBackgroundTasks();
+}
+
+// Background initialization - doesn't block app startup
+Future<void> _initializeBackgroundTasks() async {
+  try {
+    // Initialize notification service
+    await NotificationService().init();
+
+    // Initialize notification history
+    await NotificationHistoryService.init();
+
+    // Run data migration
+    await HiveService.migrateExistingBills();
+
+    // Process pending notifications
+    await PendingNotificationService.processPendingNotifications();
+
+    // Process pending recurring bills
+    await PendingRecurringService.processPendingRecurringBills();
+
+    // Auto-cleanup old archived bills
+    final deletedCount = await ArchiveManagementService.performAutoCleanup();
+    if (deletedCount > 0) {
+      print('🗑️ Auto-deleted $deletedCount old archived bills');
+    }
+  } catch (e) {
+    print('⚠️ Background initialization error: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -151,23 +149,197 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
+class _AuthWrapperState extends State<AuthWrapper>
+    with SingleTickerProviderStateMixin {
   bool _hasShownPermissionDialog = false;
   bool _hasLoadedCurrency = false;
   bool _showSplash = true;
+  late AnimationController _controller;
+  late Animation<double> _shadowOpacity;
+  late Animation<double> _textOpacity;
+  late Animation<Offset> _textSlide;
+  late Animation<double> _loaderOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Initialize animations
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _shadowOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
+      ),
+    );
+
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
+      ),
+    );
+
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
+          ),
+        );
+
+    _loaderOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
+      ),
+    );
+
+    // Start animations
+    _controller.forward();
+
+    // Hide splash after animation (longer duration to read features)
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (mounted) {
+        setState(() {
+          _showSplash = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     // Show custom splash screen first
     if (_showSplash) {
-      return SplashScreen(
-        onComplete: () {
-          if (mounted) {
-            setState(() {
-              _showSplash = false;
-            });
-          }
-        },
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: Colors.white,
+          child: SafeArea(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Spacer(flex: 2),
+                // Logo with animated shadow
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Container(
+                      width: 130,
+                      height: 130,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFF97316,
+                            ).withValues(alpha: 0.25 * _shadowOpacity.value),
+                            blurRadius: 25 * _shadowOpacity.value,
+                            offset: Offset(0, 10 * _shadowOpacity.value),
+                          ),
+                        ],
+                      ),
+                      child: child,
+                    );
+                  },
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/billminder_logo.png',
+                      width: 130,
+                      height: 130,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // Animated text
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return SlideTransition(
+                      position: _textSlide,
+                      child: Opacity(opacity: _textOpacity.value, child: child),
+                    );
+                  },
+                  child: Column(
+                    children: [
+                      Text(
+                        'BillMinder',
+                        style: GoogleFonts.poppins(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1F2937),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Never miss a bill again',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
+                          color: const Color(0xFF6B7280),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      // Feature points
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 48),
+                        child: Column(
+                          children: [
+                            _buildFeaturePoint(
+                              '📋 Track all your bills in one place',
+                            ),
+                            const SizedBox(height: 12),
+                            _buildFeaturePoint(
+                              '🔔 Get timely payment reminders',
+                            ),
+                            const SizedBox(height: 12),
+                            _buildFeaturePoint('📊 View spending analytics'),
+                            const SizedBox(height: 12),
+                            _buildFeaturePoint('☁️ Sync across all devices'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(flex: 2),
+                // Loading indicator
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Opacity(opacity: _loaderOpacity.value, child: child);
+                  },
+                  child: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFFF97316),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 48),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
@@ -420,9 +592,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF97316F5E6),
+                color: const Color(0xFFFFF5E6),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFF97316E5CC)),
+                border: Border.all(color: const Color(0xFFFFE5CC)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,9 +679,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF97316F5E6),
+                color: const Color(0xFFFFF5E6),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFF97316E5CC)),
+                border: Border.all(color: const Color(0xFFFFE5CC)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,6 +731,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFeaturePoint(String text) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF374151),
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
     );
   }
 }

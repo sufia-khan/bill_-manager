@@ -68,11 +68,11 @@ class AuthProvider with ChangeNotifier {
       // Save current user ID for data isolation
       final currentUserId = _user?.uid;
       if (currentUserId != null) {
+        final prefs = await SharedPreferences.getInstance();
         await HiveService.saveUserData('currentUserId', currentUserId);
 
         // CRITICAL: Also save to SharedPreferences for native Android code
         // The native AlarmReceiver reads from FlutterSharedPreferences
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('currentUserId', currentUserId);
         print(
           '✅ Saved currentUserId to SharedPreferences for native notifications',
@@ -216,32 +216,51 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Delete account permanently - ULTRA FAST deletion
+  // Delete account permanently - FAST but COMPLETE deletion
   Future<void> deleteAccount() async {
     final userId = FirebaseService.currentUserId;
     final authUser = FirebaseAuth.instance.currentUser;
 
     if (userId == null) throw Exception('No user logged in');
+    if (authUser == null) throw Exception('No authenticated user');
 
+    debugPrint('[Delete] Starting FAST account deletion for: $userId');
     SyncService.stopPeriodicSync();
 
-    // Run ALL deletions in parallel for maximum speed
+    // STEP 1: Delete Firestore data with AGGRESSIVE timeout (2 seconds max)
+    try {
+      await FirebaseService.deleteAllUserData(
+        userId,
+      ).timeout(const Duration(seconds: 2));
+      debugPrint('[Delete] ✅ Firestore deleted');
+    } catch (e) {
+      debugPrint('[Delete] ⚠️ Firestore timeout/error: $e');
+      // Continue anyway
+    }
+
+    // STEP 2: Delete Auth user (1 second max, no reauth)
+    try {
+      await authUser.delete().timeout(const Duration(seconds: 1));
+      debugPrint('[Delete] ✅ Auth deleted');
+    } catch (e) {
+      debugPrint('[Delete] ⚠️ Auth error, signing out: $e');
+      await FirebaseAuth.instance.signOut();
+    }
+
+    // STEP 3: Clear local data (instant)
     await Future.wait([
-      // Cloud deletion (fire and forget for auth)
-      FirebaseService.deleteUserDataOnly(userId),
-      // Local deletion
       HiveService.clearAllData(),
       UserPreferencesService.clearAll(),
-      SharedPreferences.getInstance().then((p) => p.remove('currentUserId')),
       NotificationService().cancelAllNotifications(),
+      SharedPreferences.getInstance().then((p) => p.clear()),
     ]);
 
-    // Sign out and delete auth account in background (don't wait)
-    FirebaseService.signOutAndDeleteAuth(authUser);
-
+    // STEP 4: Update state
     _user = null;
     _error = null;
     _isLoading = false;
     notifyListeners();
+
+    debugPrint('[Delete] ✅ Deletion completed');
   }
 }

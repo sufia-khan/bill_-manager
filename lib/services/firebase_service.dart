@@ -53,126 +53,121 @@ class FirebaseService {
     await _auth.signOut();
   }
 
-  // Auth: Delete user account and all data (OPTIMIZED FOR SPEED)
-  static Future<void> deleteUserAccount() async {
-    if (currentUserId == null) {
-      throw Exception('User not authenticated');
-    }
-    await deleteUserAccountWithId(currentUserId!, _auth.currentUser);
-  }
+  // Delete ALL user data from Firestore - COMPLETE CLEANUP
+  static Future<void> deleteAllUserData(String userId) async {
+    debugPrint('[Delete] Starting complete deletion for user: $userId');
 
-  // Auth: Delete user account - FAST parallel deletion
-  static Future<void> deleteUserAccountWithId(
-    String userId,
-    User? authUser,
-  ) async {
-    final GoogleSignIn googleSignIn = GoogleSignIn();
-
-    // Run ALL deletions in parallel for maximum speed
-    await Future.wait([
-      _deleteUserBillsCollection(userId),
-      _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('settings')
-          .doc('currency')
-          .delete()
-          .catchError((_) => null),
-      _firestore
-          .collection('users')
-          .doc(userId)
-          .delete()
-          .catchError((_) => null),
-      googleSignIn.signOut(),
-      _auth.signOut(),
-    ]);
-
-    // Try to delete auth account (may fail, that's ok - data is gone)
     try {
-      await authUser?.delete();
-    } catch (_) {}
+      // Delete all subcollections and user doc in parallel with individual timeouts
+      await Future.wait([
+        _deleteCollection(userId, 'bills').timeout(const Duration(seconds: 5)),
+        _deleteCollection(
+          userId,
+          'recurring_bills',
+        ).timeout(const Duration(seconds: 3)),
+        _deleteCollection(
+          userId,
+          'archives',
+        ).timeout(const Duration(seconds: 3)),
+        _deleteCollection(
+          userId,
+          'notifications',
+        ).timeout(const Duration(seconds: 3)),
+        _deleteAllSettings(userId).timeout(const Duration(seconds: 2)),
+        _firestore
+            .collection('users')
+            .doc(userId)
+            .delete()
+            .timeout(const Duration(seconds: 2)),
+      ]);
+
+      debugPrint('[Delete] ✅ All Firestore data deleted for user: $userId');
+    } catch (e) {
+      debugPrint('[Delete] ⚠️ Error during Firestore deletion: $e');
+      // Continue anyway - best effort
+    }
   }
 
-  // ULTRA FAST: Delete only user data (not auth) - for instant deletion
-  static Future<void> deleteUserDataOnly(String userId) async {
-    // Delete everything in parallel, ignore errors
-    await Future.wait([
-      _deleteUserBillsCollection(userId).catchError((_) => null),
-      _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('settings')
-          .doc('currency')
-          .delete()
-          .catchError((_) => null),
-      _firestore
-          .collection('users')
-          .doc(userId)
-          .delete()
-          .catchError((_) => null),
-    ]);
-  }
-
-  // Sign out and delete auth in background (fire and forget)
-  static void signOutAndDeleteAuth(User? authUser) {
-    final GoogleSignIn googleSignIn = GoogleSignIn();
-
-    // Don't await - let it happen in background
-    Future.wait([
-      googleSignIn.signOut().catchError((_) => null),
-      _auth.signOut().catchError((_) => null),
-    ]).then((_) {
-      // Try to delete auth account after signout
-      authUser?.delete().catchError((_) => null);
-    });
-  }
-
-  // Helper: Delete all bills in user's collection (optimized)
-  static Future<void> _deleteUserBillsCollection(String userId) async {
-    final billsCollection = _firestore
+  // Delete entire subcollection using batched deletes
+  static Future<void> _deleteCollection(
+    String userId,
+    String collectionName,
+  ) async {
+    final collection = _firestore
         .collection('users')
         .doc(userId)
-        .collection('bills');
+        .collection(collectionName);
 
-    final billsSnapshot = await billsCollection.get();
-    final billCount = billsSnapshot.docs.length;
+    final snapshot = await collection.get();
+    final docCount = snapshot.docs.length;
 
-    if (billCount == 0) {
-      debugPrint('[Auth] No bills to delete');
+    if (docCount == 0) {
+      debugPrint('[Delete] No documents in $collectionName');
       return;
     }
 
-    debugPrint('[Auth] Deleting $billCount bills...');
+    debugPrint('[Delete] Deleting $docCount documents from $collectionName');
 
-    // Delete all bills in a single batch (up to 500) or multiple parallel batches
-    if (billCount <= 500) {
-      // Single batch - fastest for small collections
+    // Batch delete (max 500 per batch)
+    if (docCount <= 500) {
       final batch = _firestore.batch();
-      for (var doc in billsSnapshot.docs) {
+      for (var doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
       await batch.commit();
     } else {
-      // Multiple parallel batches for large collections
-      final batchSize = 500;
+      // Multiple batches in parallel
       final batches = <Future>[];
-
-      for (var i = 0; i < billCount; i += batchSize) {
+      for (var i = 0; i < docCount; i += 500) {
         final batch = _firestore.batch();
-        final end = (i + batchSize < billCount) ? i + batchSize : billCount;
-
+        final end = (i + 500 < docCount) ? i + 500 : docCount;
         for (var j = i; j < end; j++) {
-          batch.delete(billsSnapshot.docs[j].reference);
+          batch.delete(snapshot.docs[j].reference);
         }
-
         batches.add(batch.commit());
       }
-
-      // Execute all batches in parallel
       await Future.wait(batches);
     }
 
-    debugPrint('[Auth] ✅ $billCount bills deleted');
+    debugPrint('[Delete] ✅ Deleted $docCount documents from $collectionName');
+  }
+
+  // Delete all settings subcollection documents
+  static Future<void> _deleteAllSettings(String userId) async {
+    final settingsRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('settings');
+
+    final snapshot = await settingsRef.get();
+
+    if (snapshot.docs.isEmpty) {
+      debugPrint('[Delete] No settings to delete');
+      return;
+    }
+
+    final batch = _firestore.batch();
+    for (var doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+
+    debugPrint('[Delete] ✅ Deleted ${snapshot.docs.length} settings documents');
+  }
+
+  // Delete user profile image from Storage (if exists)
+  static Future<void> deleteUserProfileImage(String userId) async {
+    try {
+      // Assuming profile images are stored at: /users/{userId}/profile.jpg
+      // Adjust path based on your actual storage structure
+      // If you're not using Firebase Storage, remove this method
+      debugPrint('[Delete] Profile image deletion not implemented');
+      // Example:
+      // final ref = FirebaseStorage.instance.ref('users/$userId/profile.jpg');
+      // await ref.delete();
+    } catch (e) {
+      debugPrint('[Delete] Profile image deletion skipped: $e');
+    }
   }
 
   // Firestore: Get user's bills collection reference

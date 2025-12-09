@@ -21,7 +21,6 @@ import 'onboarding_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'subscription_screen.dart';
-import 'splash_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -331,11 +330,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: notificationProvider.notificationsEnabled,
                     onChanged: (value) async {
                       await notificationProvider.setNotificationsEnabled(value);
+
+                      // Reschedule or cancel all notifications based on the new setting
                       if (mounted) {
+                        final billProvider = Provider.of<BillProvider>(
+                          context,
+                          listen: false,
+                        );
+                        await billProvider.rescheduleAllNotifications();
+
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'Notifications ${value ? 'enabled' : 'disabled'}',
+                              value
+                                  ? 'Notifications enabled - reminders scheduled'
+                                  : 'Notifications disabled - all reminders cancelled',
                             ),
                             backgroundColor: const Color(0xFFF97316),
                             behavior: SnackBarBehavior.floating,
@@ -355,9 +364,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           context,
                           listen: false,
                         );
+                    final newValue = !notificationProvider.notificationsEnabled;
                     await notificationProvider.setNotificationsEnabled(
-                      !notificationProvider.notificationsEnabled,
+                      newValue,
                     );
+
+                    // Reschedule or cancel all notifications based on the new setting
+                    if (mounted) {
+                      final billProvider = Provider.of<BillProvider>(
+                        context,
+                        listen: false,
+                      );
+                      await billProvider.rescheduleAllNotifications();
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            newValue
+                                ? 'Notifications enabled - reminders scheduled'
+                                : 'Notifications disabled - all reminders cancelled',
+                          ),
+                          backgroundColor: const Color(0xFFF97316),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
                   },
                 );
               },
@@ -666,26 +698,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Privacy & Security',
               onTap: () {
                 _showPrivacySecurityScreen(context, authProvider);
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // Splash Screen Preview
-            _buildSettingsOption(
-              icon: Icons.play_circle_outline,
-              title: 'Splash Screen',
-              subtitle: 'Preview app launch screen',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SplashScreen(
-                      onComplete: () {
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                );
               },
             ),
             const SizedBox(height: 12),
@@ -2661,28 +2673,78 @@ class _DeleteAccountBottomSheetState extends State<_DeleteAccountBottomSheet> {
       return;
     }
 
-    // Directly perform deletion - no extra confirmation needed
+    // Perform instant deletion
     _performDeletion();
   }
 
   Future<void> _performDeletion() async {
-    // Close the bottom sheet first
+    // Close the bottom sheet
     Navigator.of(context).pop();
 
-    // Small delay for smooth transition
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Show the full-screen blurred loading overlay
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        barrierColor: Colors.transparent,
-        builder: (dialogContext) => _DeletingAccountOverlay(
-          authProvider: widget.authProvider,
-          onDeleted: widget.onDeleted,
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Color(0xFFF97316)),
+                  SizedBox(height: 16),
+                  Text(
+                    'Deleting account...',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Please wait',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+      ),
+    );
+
+    try {
+      // Delete account with 3 second max timeout
+      await widget.authProvider.deleteAccount().timeout(
+        const Duration(seconds: 3),
       );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Navigate to login
+      if (mounted) widget.onDeleted();
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Deletion failed: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
