@@ -150,8 +150,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
 
             _buildSection(
               '10. Account Termination',
-              '''• You may delete your account at any time through the App settings.
-• We may terminate or suspend your account for violations of these terms.
+              '''• We may terminate or suspend your account for violations of these terms.
 • Upon termination, your right to use the App will immediately cease.
 • Some data may be retained as required by law or for legitimate business purposes.''',
             ),

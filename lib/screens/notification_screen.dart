@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../models/notification_history.dart';
 import '../providers/notification_badge_provider.dart';
+import '../providers/currency_provider.dart';
 import '../services/notification_history_service.dart';
 import '../services/pending_notification_service.dart';
 import '../services/hive_service.dart';
@@ -24,11 +25,11 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  final List<NotificationHistory> _notifications = [];
+  List<NotificationHistory> _notifications = [];
   bool _isLoading = false;
   bool _hasMore = true;
   int _currentPage = 0;
-  static const int _pageSize = 10;
+  static const int _pageSize = 20;
   String? _highlightedId;
   Timer? _highlightTimer;
   Timer? _refreshTimer;
@@ -37,8 +38,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
   void initState() {
     super.initState();
     _initializeNotifications();
-    // Refresh every 10 seconds to pick up new notifications
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Refresh every 30 seconds to pick up new notifications
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _refreshNotifications();
     });
   }
@@ -51,9 +52,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _refreshNotifications() async {
-    // Process any new pending notifications from native layer
     await PendingNotificationService.processPendingNotifications();
-    // Reload the list
     if (mounted) {
       await _loadNotifications();
     }
@@ -62,7 +61,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Future<void> _initializeNotifications() async {
     await PendingNotificationService.processPendingNotifications();
     await _checkTriggeredNotifications();
-    await NotificationHistoryService.removeDuplicates();
+    // Remove duplicates before loading
+    final removedCount = await NotificationHistoryService.removeDuplicates();
+    if (removedCount > 0) {
+      debugPrint('🧹 Removed $removedCount duplicate notifications on init');
+    }
     await _loadNotifications();
     await _markAllAsReadSilently();
 
@@ -80,7 +83,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     try {
       await NotificationHistoryService.markAllAsRead();
       if (mounted) {
-        // Update badge provider to reflect read status
         context.read<NotificationBadgeProvider>().forceRefresh();
         setState(() {});
       }
@@ -120,9 +122,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
         userId: currentUserId,
       );
 
+      // Remove duplicates from the list (same billId on same day)
+      final uniqueNotifications = _removeDuplicatesFromList(newNotifications);
+
       setState(() {
-        if (newNotifications.isNotEmpty) {
-          _notifications.addAll(newNotifications);
+        if (uniqueNotifications.isNotEmpty) {
+          _notifications.addAll(uniqueNotifications);
         }
         _hasMore = newNotifications.length == _pageSize;
         _isLoading = false;
@@ -138,24 +143,76 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
+  // Remove duplicates from the loaded list (client-side dedup)
+  List<NotificationHistory> _removeDuplicatesFromList(
+    List<NotificationHistory> notifications,
+  ) {
+    final seen = <String>{};
+    final unique = <NotificationHistory>[];
+
+    for (final n in notifications) {
+      // Create a unique key based on billId + day
+      final dayKey = n.billId != null
+          ? '${n.billId}_${n.sentAt.year}_${n.sentAt.month}_${n.sentAt.day}'
+          : '${n.title}_${n.body}_${n.sentAt.year}_${n.sentAt.month}_${n.sentAt.day}';
+
+      if (!seen.contains(dayKey)) {
+        seen.add(dayKey);
+        unique.add(n);
+      }
+    }
+
+    return unique;
+  }
+
   Future<void> _clearAllNotifications() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Notifications'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.delete_sweep,
+                color: Colors.red.shade600,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Clear All Notifications',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
         content: const Text(
-          'Are you sure you want to clear all notification history?',
+          'Are you sure you want to clear all notification history? This action cannot be undone.',
+          style: TextStyle(fontSize: 15, color: Color(0xFF4B5563)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: Colors.red.shade600,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: const Text('Clear All'),
           ),
@@ -168,9 +225,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
       _loadNotifications();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All notifications cleared'),
-            backgroundColor: Color(0xFF059669),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('All notifications cleared'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
       }
@@ -179,7 +246,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _deleteNotification(String id) async {
     await NotificationHistoryService.deleteNotification(id);
-    _loadNotifications();
+    setState(() {
+      _notifications.removeWhere((n) => n.id == id);
+    });
   }
 
   String _getTimeAgo(DateTime dateTime) {
@@ -207,10 +276,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final title = notification.title.toLowerCase();
     if (title.contains('paid')) return Icons.check_circle_rounded;
     if (title.contains('overdue')) return Icons.warning_rounded;
-    if (title.contains('today')) return Icons.today_rounded;
+    if (title.contains('today')) return Icons.calendar_today_rounded;
     if (title.contains('tomorrow')) return Icons.event_rounded;
     if (title.contains('week')) return Icons.date_range_rounded;
-    return Icons.notifications_rounded;
+    return Icons.notifications_active_rounded;
   }
 
   Color _getColorForNotification(NotificationHistory notification) {
@@ -218,16 +287,37 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (title.contains('paid')) return const Color(0xFF059669);
     if (title.contains('overdue')) return const Color(0xFFDC2626);
     if (title.contains('today')) return const Color(0xFFF97316);
-    return const Color(0xFF3B82F6);
+    if (title.contains('tomorrow')) return const Color(0xFF3B82F6);
+    return const Color(0xFF8B5CF6);
   }
 
-  Map<String, String> _parseBillDetails(String body) {
-    final result = <String, String>{};
+  // Parse bill details from notification body
+  Map<String, dynamic> _parseBillDetails(String body) {
+    final result = <String, dynamic>{};
     try {
+      // Pattern: "BillTitle - $Amount due to Vendor (X of Y)" or "(#X)"
       final dashIndex = body.indexOf(' - ');
       if (dashIndex > 0) {
         result['billName'] = body.substring(0, dashIndex).trim();
-        final remaining = body.substring(dashIndex + 3);
+        String remaining = body.substring(dashIndex + 3);
+
+        // Check for sequence pattern at the end
+        final sequenceMatch = RegExp(
+          r'\((\d+)\s*of\s*(\d+)\)$',
+        ).firstMatch(remaining);
+        final unlimitedMatch = RegExp(r'\(#(\d+)\)$').firstMatch(remaining);
+
+        if (sequenceMatch != null) {
+          result['currentSequence'] = int.parse(sequenceMatch.group(1)!);
+          result['totalSequence'] = int.parse(sequenceMatch.group(2)!);
+          remaining = remaining.substring(0, sequenceMatch.start).trim();
+        } else if (unlimitedMatch != null) {
+          result['currentSequence'] = int.parse(unlimitedMatch.group(1)!);
+          result['isUnlimited'] = true;
+          remaining = remaining.substring(0, unlimitedMatch.start).trim();
+        }
+
+        // Parse amount and vendor
         final dueToIndex = remaining.indexOf(' due to ');
         if (dueToIndex > 0) {
           result['amount'] = remaining.substring(0, dueToIndex).trim();
@@ -252,159 +342,243 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.white,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Color(0xFF374151),
-            size: 20,
-          ),
-        ),
-        title: Row(
-          children: [
-            const Text(
-              'Notifications',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFF97316),
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: CustomScrollView(
+        slivers: [
+          // Modern App Bar
+          SliverAppBar(
+            expandedHeight: 120,
+            floating: false,
+            pinned: true,
+            stretch: true,
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            leading: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.arrow_back_ios_new,
+                  color: Color(0xFF374151),
+                  size: 18,
+                ),
               ),
             ),
-            if (unreadCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626),
-                  borderRadius: BorderRadius.circular(12),
+            actions: [
+              if (_notifications.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: IconButton(
+                    onPressed: _clearAllNotifications,
+                    icon: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.delete_sweep_outlined,
+                        color: Color(0xFF6B7280),
+                        size: 20,
+                      ),
+                    ),
+                    tooltip: 'Clear All',
+                  ),
                 ),
-                child: Text(
-                  '$unreadCount',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.only(left: 60, bottom: 16),
+              title: Row(
+                children: [
+                  const Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  if (unreadCount > 0) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF97316), Color(0xFFEA580C)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFF97316).withOpacity(0.3),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white,
+                      const Color(0xFFF97316).withOpacity(0.05),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ],
-        ),
-        actions: [
-          if (_notifications.isNotEmpty)
-            IconButton(
-              onPressed: _clearAllNotifications,
-              icon: Icon(
-                Icons.delete_sweep_outlined,
-                color: Colors.grey.shade600,
-                size: 22,
-              ),
-              tooltip: 'Clear All',
             ),
+          ),
+
+          // Content
+          _notifications.isEmpty && !_isLoading
+              ? SliverFillRemaining(child: _buildEmptyState())
+              : SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      if (index == _notifications.length) {
+                        return _hasMore
+                            ? _buildLoadMoreButton()
+                            : const SizedBox.shrink();
+                      }
+                      return _buildNotificationCard(_notifications[index]);
+                    }, childCount: _notifications.length + 1),
+                  ),
+                ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _loadNotifications(),
-        color: const Color(0xFFF97316),
-        child: _notifications.isEmpty && !_isLoading
-            ? _buildEmptyState()
-            : _buildNotificationList(),
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return ListView(
-      children: [
-        SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF97316).withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.notifications_outlined,
-                  size: 64,
-                  color: Color(0xFFF97316),
-                ),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFFF97316).withOpacity(0.1),
+                  const Color(0xFFF97316).withOpacity(0.05),
+                ],
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'No notifications yet',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'Bill reminders and updates will appear here',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.notifications_off_outlined,
+              size: 56,
+              color: Color(0xFFF97316),
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNotificationList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: _notifications.length + (_hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == _notifications.length) {
-          return _buildLoadMoreButton();
-        }
-        return _buildNotificationCard(_notifications[index]);
-      },
+          const SizedBox(height: 24),
+          const Text(
+            'No notifications yet',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              'Bill reminders and updates will appear here when scheduled',
+              style: TextStyle(
+                fontSize: 15,
+                color: Colors.grey.shade500,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildLoadMoreButton() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: 20),
       child: Center(
         child: _isLoading
-            ? const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF97316)),
-              )
-            : TextButton.icon(
-                onPressed: () => _loadNotifications(loadMore: true),
-                icon: const Icon(Icons.expand_more, color: Color(0xFFF97316)),
-                label: const Text(
-                  'Load More',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFF97316),
-                  ),
+            ? const SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF97316)),
                 ),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF97316), Color(0xFFEA580C)],
                   ),
-                  backgroundColor: const Color(
-                    0xFFF97316,
-                  ).withValues(alpha: 0.1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF97316).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _loadNotifications(loadMore: true),
+                    borderRadius: BorderRadius.circular(12),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.expand_more,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Load More',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -417,6 +591,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final color = _getColorForNotification(notification);
     final icon = _getIconForNotification(notification);
     final billDetails = _parseBillDetails(notification.body);
+    final currencyProvider = context.watch<CurrencyProvider>();
+
+    // Format amount with currency
+    String formattedAmount = billDetails['amount'] ?? '';
+    if (formattedAmount.isNotEmpty) {
+      // Try to parse and reformat with user's currency
+      final amountStr = formattedAmount.replaceAll(RegExp(r'[^\d.]'), '');
+      final amount = double.tryParse(amountStr);
+      if (amount != null) {
+        formattedAmount = currencyProvider.formatCurrency(amount);
+      }
+    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -425,35 +611,46 @@ class _NotificationScreenState extends State<NotificationScreen> {
         key: Key(notification.id),
         direction: DismissDirection.endToStart,
         background: Container(
-          padding: const EdgeInsets.only(right: 20),
+          padding: const EdgeInsets.only(right: 24),
           decoration: BoxDecoration(
-            color: Colors.red.shade400,
-            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [Colors.red.shade300, Colors.red.shade500],
+            ),
+            borderRadius: BorderRadius.circular(20),
           ),
           alignment: Alignment.centerRight,
-          child: const Icon(
-            Icons.delete_rounded,
-            color: Colors.white,
-            size: 24,
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28),
+              SizedBox(height: 4),
+              Text(
+                'Delete',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
         onDismissed: (direction) => _deleteNotification(notification.id),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+        child: Container(
           decoration: BoxDecoration(
-            color: isHighlighted ? color.withValues(alpha: 0.15) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isHighlighted ? color : Colors.grey.shade200,
-              width: isHighlighted ? 2 : 1,
+              color: isHighlighted ? color : Colors.transparent,
+              width: isHighlighted ? 2 : 0,
             ),
             boxShadow: [
               BoxShadow(
                 color: isHighlighted
-                    ? color.withValues(alpha: 0.2)
-                    : Colors.black.withValues(alpha: 0.04),
-                blurRadius: isHighlighted ? 12 : 8,
-                offset: const Offset(0, 2),
+                    ? color.withOpacity(0.2)
+                    : Colors.black.withOpacity(0.04),
+                blurRadius: isHighlighted ? 16 : 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -466,21 +663,28 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   _loadNotifications();
                 }
               },
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Icon
+                    // Icon with gradient background
                     Container(
-                      width: 48,
-                      height: 48,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            color.withOpacity(0.15),
+                            color.withOpacity(0.08),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Icon(icon, color: color, size: 24),
+                      child: Icon(icon, color: color, size: 26),
                     ),
                     const SizedBox(width: 14),
                     // Content
@@ -488,28 +692,36 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Title with unread indicator
+                          // Title row with unread indicator
                           Row(
                             children: [
                               Expanded(
                                 child: Text(
                                   notification.title,
                                   style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: notification.isRead
-                                        ? FontWeight.w500
-                                        : FontWeight.w600,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
                                     color: color,
+                                    letterSpacing: 0.3,
                                   ),
                                 ),
                               ),
                               if (!notification.isRead)
                                 Container(
-                                  width: 8,
-                                  height: 8,
+                                  width: 10,
+                                  height: 10,
                                   decoration: BoxDecoration(
-                                    color: color,
+                                    gradient: LinearGradient(
+                                      colors: [color, color.withOpacity(0.7)],
+                                    ),
                                     shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: color.withOpacity(0.4),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
                                 ),
                             ],
@@ -520,51 +732,101 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             Text(
                               billDetails['billName']!,
                               style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
                                 color: Color(0xFF1F2937),
                               ),
                             ),
-                          const SizedBox(height: 4),
-                          // Amount and vendor
-                          Row(
+                          const SizedBox(height: 8),
+                          // Amount, vendor, and sequence row
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              if (billDetails['amount'] != null)
+                              // Amount badge
+                              if (formattedAmount.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        color.withOpacity(0.12),
+                                        color.withOpacity(0.06),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: color.withOpacity(0.2),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    formattedAmount,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: color,
+                                    ),
+                                  ),
+                                ),
+                              // Vendor
+                              if (billDetails['vendor'] != null)
+                                Text(
+                                  'to ${billDetails['vendor']}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              // Sequence badge for recurring bills
+                              if (billDetails['currentSequence'] != null)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.1),
+                                    color: const Color(
+                                      0xFF8B5CF6,
+                                    ).withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    billDetails['amount']!,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: color,
+                                    border: Border.all(
+                                      color: const Color(
+                                        0xFF8B5CF6,
+                                      ).withOpacity(0.3),
+                                      width: 1,
                                     ),
                                   ),
-                                ),
-                              if (billDetails['vendor'] != null) ...[
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'to ${billDetails['vendor']}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.repeat_rounded,
+                                        size: 12,
+                                        color: Color(0xFF8B5CF6),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        billDetails['isUnlimited'] == true
+                                            ? '#${billDetails['currentSequence']}'
+                                            : '${billDetails['currentSequence']} of ${billDetails['totalSequence']}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF8B5CF6),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          // Time
+                          const SizedBox(height: 10),
+                          // Time row
                           Row(
                             children: [
                               Icon(
@@ -572,20 +834,31 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                 size: 14,
                                 color: Colors.grey.shade400,
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
                               Text(
                                 _formatDateTime(notification.sentAt),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade400,
+                                  shape: BoxShape.circle,
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '• ${_getTimeAgo(notification.sentAt)}',
+                                _getTimeAgo(notification.sentAt),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade400,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],

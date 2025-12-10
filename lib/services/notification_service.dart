@@ -381,11 +381,11 @@ class NotificationService {
       if (isRecurring && repeatCount > 0) {
         // Include sequence number for recurring bills with a count
         finalBody =
-            '${bill.title} - \${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} ($currentSequence of $repeatCount)';
+            '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} ($currentSequence of $repeatCount)';
       } else if (isRecurring && repeatCount == -1) {
         // Include sequence number for unlimited recurring bills
         finalBody =
-            '${bill.title} - \${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} (#$currentSequence)';
+            '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} (#$currentSequence)';
       }
 
       try {
@@ -750,6 +750,67 @@ class NotificationService {
       debugPrint('✅ All notifications cancelled successfully');
     } catch (e) {
       debugPrint('❌ Error cancelling all notifications: $e');
+    }
+  }
+
+  /// Cancel all notifications for a specific user
+  /// This is called on logout to ensure no notifications for this user
+  /// will be shown after they log out
+  Future<void> cancelAllNotificationsForUser(String? userId) async {
+    if (userId == null) {
+      debugPrint('⚠️ No userId provided, cancelling ALL notifications');
+      await cancelAllNotifications();
+      return;
+    }
+
+    try {
+      debugPrint('🗑️ Cancelling all notifications for user: $userId');
+
+      // Cancel from flutter_local_notifications (this cancels ALL, but that's okay)
+      await _notifications.cancelAll();
+      debugPrint('✅ Cancelled all flutter notifications');
+
+      // Cancel only native alarms belonging to this user
+      try {
+        final trackingBox = await Hive.openBox('scheduledNotifications');
+        final keys = trackingBox.keys.toList();
+        int cancelledCount = 0;
+        final keysToDelete = <dynamic>[];
+
+        for (var key in keys) {
+          try {
+            final data = trackingBox.get(key);
+            if (data != null && data is Map) {
+              final notificationUserId = data['userId'] as String?;
+              final billId = data['billId'] as String?;
+
+              // Only cancel notifications for this user
+              if (notificationUserId == userId && billId != null) {
+                await NativeAlarmService.cancelAlarm(billId.hashCode);
+                keysToDelete.add(key);
+                cancelledCount++;
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Failed to cancel native alarm for key $key: $e');
+          }
+        }
+
+        // Remove cancelled notifications from tracking
+        for (var key in keysToDelete) {
+          await trackingBox.delete(key);
+        }
+
+        debugPrint(
+          '✅ Cancelled $cancelledCount native alarms for user $userId',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Failed to access tracking box: $e');
+      }
+
+      debugPrint('✅ All notifications cancelled for user: $userId');
+    } catch (e) {
+      debugPrint('❌ Error cancelling notifications for user: $e');
     }
   }
 

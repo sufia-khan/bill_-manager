@@ -539,6 +539,43 @@ class NotificationHistoryService {
     }
   }
 
+  /// Clear all scheduled notification tracking for a specific user
+  /// This is called on logout to ensure notifications aren't triggered for this user
+  /// while they're logged out, but preserved notification history for when they log back in
+  static Future<void> clearScheduledTrackingForUser(String? userId) async {
+    if (userId == null) {
+      print('⚠️ No userId provided for clearing scheduled tracking');
+      return;
+    }
+
+    try {
+      final trackingBox = await Hive.openBox('scheduledNotifications');
+      final keys = trackingBox.keys.toList();
+      int deletedCount = 0;
+
+      for (final key in keys) {
+        try {
+          final data = trackingBox.get(key);
+          if (data != null && data is Map) {
+            final trackingUserId = data['userId'] as String?;
+            if (trackingUserId == userId) {
+              await trackingBox.delete(key);
+              deletedCount++;
+            }
+          }
+        } catch (e) {
+          print('⚠️ Error processing tracking key $key: $e');
+        }
+      }
+
+      print(
+        '🗑️ Cleared $deletedCount scheduled notification tracking entries for user: $userId',
+      );
+    } catch (e) {
+      print('Error clearing scheduled tracking for user: $e');
+    }
+  }
+
   // Check all bills and add notifications for any whose notification time has passed
   // This is called when user logs in to show missed notifications
   static Future<void> checkMissedNotificationsForUser({

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
@@ -13,6 +14,7 @@ import '../services/hive_service.dart';
 import '../services/firebase_service.dart';
 import '../services/user_preferences_service.dart';
 import '../services/notification_service.dart';
+import '../services/account_service.dart';
 import '../widgets/currency_selector_sheet.dart';
 import 'analytics_screen.dart';
 import 'calendar_screen.dart';
@@ -468,85 +470,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               currentCurrency:
                                   currencyProvider.selectedCurrency,
                               onCurrencySelected: (currency, convert, rate) async {
-                                // Close the currency selector sheet first
-                                Navigator.of(sheetContext).pop();
-
-                                // Small delay for smooth transition
-                                await Future.delayed(
-                                  const Duration(milliseconds: 300),
-                                );
-
-                                // Show loading dialog for better UX
-                                showDialog(
-                                  context: settingsContext,
-                                  barrierDismissible: false,
-                                  barrierColor: Colors.black54,
-                                  builder: (dialogContext) => PopScope(
-                                    canPop: false,
-                                    child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 5,
-                                        sigmaY: 5,
-                                      ),
-                                      child: Center(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(32),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                          ),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const CircularProgressIndicator(
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                      Color
-                                                    >(Color(0xFFF97316)),
-                                              ),
-                                              const SizedBox(height: 20),
-                                              Text(
-                                                'Changing currency to ${currency.code}...',
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Color(0xFF1F2937),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-
                                 try {
-                                  // Change currency first
+                                  // Change currency immediately
                                   await currencyProvider.setCurrency(
                                     currency,
                                     convert,
                                     rate,
                                   );
 
-                                  // Wait 2 seconds for better UX
-                                  await Future.delayed(
-                                    const Duration(seconds: 2),
-                                  );
-
-                                  if (mounted) {
-                                    // Close loading dialog
-                                    Navigator.of(settingsContext).pop();
-
-                                    // Small delay before navigating back
-                                    await Future.delayed(
-                                      const Duration(milliseconds: 200),
-                                    );
-
-                                    // Navigate back to home screen
-                                    Navigator.of(settingsContext).pop();
+                                  if (settingsContext.mounted) {
+                                    // Navigate back to home screen (pop until we reach the first route)
+                                    Navigator.of(
+                                      settingsContext,
+                                    ).popUntil((route) => route.isFirst);
 
                                     // Show success message
                                     ScaffoldMessenger.of(
@@ -576,10 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     );
                                   }
                                 } catch (e) {
-                                  if (mounted) {
-                                    // Close loading dialog
-                                    Navigator.of(settingsContext).pop();
-
+                                  if (settingsContext.mounted) {
                                     // Show error message
                                     ScaffoldMessenger.of(
                                       settingsContext,
@@ -1168,27 +1101,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSettingsOption(
               icon: Icons.delete_forever_outlined,
               title: 'Delete Account',
-              titleColor: Colors.red.shade700,
-              onTap: () async {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => _DeleteAccountBottomSheet(
-                    authProvider: authProvider,
-                    onDeleted: () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (context) => const LoginScreen(),
-                        ),
-                        (route) => false,
-                      );
-                    },
-                  ),
-                );
-              },
+              titleColor: Colors.red,
+              onTap: () => _showDeleteAccountDialog(context, authProvider),
             ),
-
             const SizedBox(height: 80),
 
             // Footer
@@ -2626,575 +2541,204 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
   }
-}
 
-// Modern Delete Account Bottom Sheet with Full-Screen Loading Overlay
-class _DeleteAccountBottomSheet extends StatefulWidget {
-  final AuthProvider authProvider;
-  final VoidCallback onDeleted;
-
-  const _DeleteAccountBottomSheet({
-    required this.authProvider,
-    required this.onDeleted,
-  });
-
-  @override
-  State<_DeleteAccountBottomSheet> createState() =>
-      _DeleteAccountBottomSheetState();
-}
-
-class _DeleteAccountBottomSheetState extends State<_DeleteAccountBottomSheet> {
-  bool _confirmChecked = false;
-
-  void _showDeleteConfirmation() {
-    if (!_confirmChecked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Please check the confirmation box first',
-                  style: TextStyle(fontWeight: FontWeight.w500),
-                ),
+  /// Show delete account confirmation dialog
+  Future<void> _showDeleteAccountDialog(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            SizedBox(width: 12),
+            Text(
+              'Delete Account?',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
               ),
-            ],
-          ),
-          backgroundColor: Colors.orange.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          duration: const Duration(seconds: 2),
+            ),
+          ],
         ),
-      );
-      return;
-    }
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This will permanently delete:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '• Your account and profile\n'
+                    '• All bills and recurring history\n'
+                    '• All notifications and reminders\n'
+                    '• All data from this device and cloud',
+                    style: TextStyle(fontSize: 13, color: Colors.red),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'This action cannot be undone.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
 
-    // Perform instant deletion
-    _performDeletion();
-  }
-
-  Future<void> _performDeletion() async {
-    // Close the bottom sheet
-    Navigator.of(context).pop();
+    if (confirmed != true || !mounted) return;
 
     // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: const Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Color(0xFFF97316)),
-                  SizedBox(height: 16),
-                  Text(
-                    'Deleting account...',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Please wait',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      // Delete account with 3 second max timeout
-      await widget.authProvider.deleteAccount().timeout(
-        const Duration(seconds: 3),
-      );
-
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
-
-      // Navigate to login
-      if (mounted) widget.onDeleted();
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
-
-      // Show error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text('Deletion failed: $e')),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = widget.authProvider.user;
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Warning Icon
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.warning_amber_rounded,
-                  size: 40,
-                  color: Colors.red.shade600,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Title
-              const Text(
-                'Delete Account?',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F2937),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // User info
-              Text(
-                user?.email ?? 'Your account',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 20),
-
-              // Warning message
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.shade100),
-                ),
-                child: Column(
-                  children: [
-                    _buildWarningItem(
-                      Icons.delete_forever,
-                      'All your bills will be permanently deleted',
-                    ),
-                    const SizedBox(height: 12),
-                    _buildWarningItem(
-                      Icons.cloud_off,
-                      'Data removed from all devices',
-                    ),
-                    const SizedBox(height: 12),
-                    _buildWarningItem(
-                      Icons.history,
-                      'This action cannot be undone',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Confirmation checkbox
-              InkWell(
-                onTap: () => setState(() => _confirmChecked = !_confirmChecked),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: Checkbox(
-                          value: _confirmChecked,
-                          onChanged: (v) =>
-                              setState(() => _confirmChecked = v ?? false),
-                          activeColor: Colors.red,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'I understand this will permanently delete my account and all data',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF4B5563),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Action buttons
-              Row(
-                children: [
-                  // Cancel button
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(color: Color(0xFFE5E7EB)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Delete button
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _showDeleteConfirmation,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _confirmChecked
-                            ? Colors.red
-                            : Colors.red.shade200,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Delete Account',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWarningItem(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: Colors.red.shade600),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(fontSize: 14, color: Colors.red.shade700),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// Full-screen blurred loading overlay for account deletion
-class _DeletingAccountOverlay extends StatefulWidget {
-  final AuthProvider authProvider;
-  final VoidCallback onDeleted;
-
-  const _DeletingAccountOverlay({
-    required this.authProvider,
-    required this.onDeleted,
-  });
-
-  @override
-  State<_DeletingAccountOverlay> createState() =>
-      _DeletingAccountOverlayState();
-}
-
-class _DeletingAccountOverlayState extends State<_DeletingAccountOverlay>
-    with SingleTickerProviderStateMixin {
-  String _status = 'Preparing deletion...';
-  bool _isComplete = false;
-  bool _hasError = false;
-  String _errorMessage = '';
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1), // Instant
-    );
-    _fadeAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.0,
-    ).animate(_animationController);
-    _animationController.forward();
-    _performDeletion();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _performDeletion() async {
-    try {
-      // Show deleting status immediately
-      if (mounted) setState(() => _status = 'Deleting account...');
-
-      // Perform the actual deletion (runs in parallel for speed)
-      await widget.authProvider.deleteAccount();
-
-      // Close immediately and navigate - no delay
-      if (mounted) {
-        Navigator.of(context).pop(); // Close overlay
-        widget.onDeleted();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = e.toString();
-          _status = 'Failed to delete account';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Blurred background
-            BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.5),
-                width: double.infinity,
-                height: double.infinity,
-              ),
+            CircularProgressIndicator(color: Colors.red),
+            SizedBox(height: 16),
+            Text(
+              'Deleting account...',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            // Content
-            Center(
-              child: Container(
-                margin: const EdgeInsets.all(32),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Icon or loading indicator
-                    if (_hasError)
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Colors.red.shade600,
-                        ),
-                      )
-                    else if (_isComplete)
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.check_circle,
-                          size: 48,
-                          color: Colors.green.shade600,
-                        ),
-                      )
-                    else
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.red,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 24),
-
-                    // Status text
-                    Text(
-                      _hasError
-                          ? 'Deletion Failed'
-                          : (_isComplete ? 'Done!' : 'Deleting Account'),
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: _hasError
-                            ? Colors.red.shade700
-                            : const Color(0xFF1F2937),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Detailed status
-                    Text(
-                      _hasError ? _errorMessage : _status,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: _hasError
-                            ? Colors.red.shade600
-                            : Colors.grey.shade600,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-
-                    // Retry/Close button for error case
-                    if (_hasError) ...[
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                              side: BorderSide(color: Colors.grey.shade300),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'Close',
-                              style: TextStyle(
-                                color: Color(0xFF6B7280),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: () {
-                              setState(() {
-                                _hasError = false;
-                                _status = 'Retrying...';
-                              });
-                              _performDeletion();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'Retry',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            SizedBox(height: 8),
+            Text(
+              'Please wait while we remove all your data.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       ),
     );
+
+    // Perform account deletion
+    final result = await AccountService.deleteAccount();
+
+    if (!mounted) return;
+
+    // Close loading dialog
+    Navigator.pop(context);
+
+    if (result.success) {
+      // Reset BillProvider state
+      final billProvider = Provider.of<BillProvider>(context, listen: false);
+      billProvider.reset();
+
+      // Navigate to login screen
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Account deleted successfully'),
+            ],
+          ),
+          backgroundColor: Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } else {
+      // Show error dialog with retry option
+      final shouldRetry = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                result.wasOffline ? Icons.wifi_off : Icons.error_outline,
+                color: Colors.red,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Deletion Failed',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            result.error ?? 'An unknown error occurred.',
+            style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldRetry == true && mounted) {
+        // Retry deletion
+        _showDeleteAccountDialog(context, authProvider);
+      }
+    }
   }
 }

@@ -166,22 +166,16 @@ These services have their own privacy policies, and we encourage you to review t
             _buildSection('6. Your Rights', '''You have the right to:
 • Access your personal data
 • Correct inaccurate data
-• Delete your account and all associated data
 • Export your data
 • Opt-out of non-essential communications
 • Withdraw consent at any time
 
 To exercise these rights, contact us or use the App's settings.'''),
 
-            _buildSection(
-              '7. Data Retention',
-              '''We retain your data:
+            _buildSection('7. Data Retention', '''We retain your data:
 • While your account is active
-• For a reasonable period after account deletion for legal compliance
-• Anonymized data may be retained indefinitely for analytics
-
-You can delete your account and all associated data at any time through the App settings.''',
-            ),
+• For a reasonable period after you stop using the App for legal compliance
+• Anonymized data may be retained indefinitely for analytics'''),
 
             _buildSection(
               '8. Children\'s Privacy',

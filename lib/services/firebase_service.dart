@@ -4,6 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/bill_hive.dart';
 
+/// Singleton GoogleSignIn instance for consistent state management
+/// This prevents issues with multiple instances having different cached states
+GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email']);
+
 class FirebaseService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -14,160 +18,94 @@ class FirebaseService {
   // Get current user ID
   static String? get currentUserId => _auth.currentUser?.uid;
 
-  // Auth: Sign in with Google
+  /// Reset and get a fresh GoogleSignIn instance
+  /// Call this before sign-in to ensure no stale tokens
+  static Future<void> resetGoogleSignIn() async {
+    try {
+      // Try to sign out any existing session
+      await _googleSignIn.signOut();
+    } catch (_) {}
+    try {
+      await _googleSignIn.disconnect();
+    } catch (_) {}
+    // Create fresh instance
+    _googleSignIn = GoogleSignIn(scopes: ['email']);
+    debugPrint('[Auth] GoogleSignIn instance reset');
+  }
+
+  /// Sign in with Google - OPTIMIZED for speed
+  /// Uses singleton GoogleSignIn and handles edge cases
   static Future<UserCredential?> signInWithGoogle() async {
-    // Trigger the authentication flow
     debugPrint('[Auth] Starting Google sign-in');
-    final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
-    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
-    // User cancelled the sign-in
-    if (googleUser == null) {
-      debugPrint('[Auth] Google sign-in cancelled by user');
-      return null;
+    try {
+      // First, ensure we have a clean state
+      // Check if already signed in silently
+      GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+
+      // If not silently signed in, show account picker
+      if (googleUser == null) {
+        googleUser = await _googleSignIn.signIn();
+      }
+
+      // User cancelled the sign-in
+      if (googleUser == null) {
+        debugPrint('[Auth] Google sign-in cancelled by user');
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with the Google credential
+      debugPrint('[Auth] Signing in to Firebase with Google credential');
+      final result = await _auth.signInWithCredential(credential);
+      debugPrint(
+        '[Auth] Firebase sign-in completed for uid: \'${result.user?.uid}\'',
+      );
+      return result;
+    } catch (e) {
+      debugPrint('[Auth] Google sign-in error: $e');
+      rethrow;
     }
-
-    // Obtain the auth details from the request
-    final GoogleSignInAuthentication googleAuth =
-        await googleUser.authentication;
-
-    // Create a new credential
-    final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
-
-    // Sign in to Firebase with the Google credential
-    debugPrint('[Auth] Signing in to Firebase with Google credential');
-    final result = await _auth.signInWithCredential(credential);
-    debugPrint(
-      '[Auth] Firebase sign-in completed for uid: \'${result.user?.uid}\'',
-    );
-    return result;
   }
 
-  // Auth: Sign out from Google
+  /// Complete sign out from Google and Firebase
+  /// This ensures account picker appears next time
   static Future<void> signOutGoogle() async {
-    final GoogleSignIn googleSignIn = GoogleSignIn();
-    await googleSignIn.signOut();
-    await _auth.signOut();
-  }
+    debugPrint('[Auth] Starting complete sign out');
 
-  // Delete ALL user data from Firestore - COMPLETE CLEANUP
-  static Future<void> deleteAllUserData(String userId) async {
-    debugPrint('[Delete] Starting complete deletion for user: $userId');
-
+    // 1. Disconnect Google (removes app authorization, forces account picker)
     try {
-      // Delete all subcollections and user doc in parallel with individual timeouts
-      await Future.wait([
-        _deleteCollection(userId, 'bills').timeout(const Duration(seconds: 5)),
-        _deleteCollection(
-          userId,
-          'recurring_bills',
-        ).timeout(const Duration(seconds: 3)),
-        _deleteCollection(
-          userId,
-          'archives',
-        ).timeout(const Duration(seconds: 3)),
-        _deleteCollection(
-          userId,
-          'notifications',
-        ).timeout(const Duration(seconds: 3)),
-        _deleteAllSettings(userId).timeout(const Duration(seconds: 2)),
-        _firestore
-            .collection('users')
-            .doc(userId)
-            .delete()
-            .timeout(const Duration(seconds: 2)),
-      ]);
-
-      debugPrint('[Delete] ✅ All Firestore data deleted for user: $userId');
+      await _googleSignIn.disconnect();
+      debugPrint('[Auth] Google disconnected');
     } catch (e) {
-      debugPrint('[Delete] ⚠️ Error during Firestore deletion: $e');
-      // Continue anyway - best effort
-    }
-  }
-
-  // Delete entire subcollection using batched deletes
-  static Future<void> _deleteCollection(
-    String userId,
-    String collectionName,
-  ) async {
-    final collection = _firestore
-        .collection('users')
-        .doc(userId)
-        .collection(collectionName);
-
-    final snapshot = await collection.get();
-    final docCount = snapshot.docs.length;
-
-    if (docCount == 0) {
-      debugPrint('[Delete] No documents in $collectionName');
-      return;
+      debugPrint('[Auth] Google disconnect failed: $e');
+      // Try signOut as fallback
+      try {
+        await _googleSignIn.signOut();
+        debugPrint('[Auth] Google signed out (fallback)');
+      } catch (_) {}
     }
 
-    debugPrint('[Delete] Deleting $docCount documents from $collectionName');
-
-    // Batch delete (max 500 per batch)
-    if (docCount <= 500) {
-      final batch = _firestore.batch();
-      for (var doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
-    } else {
-      // Multiple batches in parallel
-      final batches = <Future>[];
-      for (var i = 0; i < docCount; i += 500) {
-        final batch = _firestore.batch();
-        final end = (i + 500 < docCount) ? i + 500 : docCount;
-        for (var j = i; j < end; j++) {
-          batch.delete(snapshot.docs[j].reference);
-        }
-        batches.add(batch.commit());
-      }
-      await Future.wait(batches);
-    }
-
-    debugPrint('[Delete] ✅ Deleted $docCount documents from $collectionName');
-  }
-
-  // Delete all settings subcollection documents
-  static Future<void> _deleteAllSettings(String userId) async {
-    final settingsRef = _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('settings');
-
-    final snapshot = await settingsRef.get();
-
-    if (snapshot.docs.isEmpty) {
-      debugPrint('[Delete] No settings to delete');
-      return;
-    }
-
-    final batch = _firestore.batch();
-    for (var doc in snapshot.docs) {
-      batch.delete(doc.reference);
-    }
-    await batch.commit();
-
-    debugPrint('[Delete] ✅ Deleted ${snapshot.docs.length} settings documents');
-  }
-
-  // Delete user profile image from Storage (if exists)
-  static Future<void> deleteUserProfileImage(String userId) async {
+    // 2. Sign out from Firebase Auth
     try {
-      // Assuming profile images are stored at: /users/{userId}/profile.jpg
-      // Adjust path based on your actual storage structure
-      // If you're not using Firebase Storage, remove this method
-      debugPrint('[Delete] Profile image deletion not implemented');
-      // Example:
-      // final ref = FirebaseStorage.instance.ref('users/$userId/profile.jpg');
-      // await ref.delete();
+      await _auth.signOut();
+      debugPrint('[Auth] Firebase signed out');
     } catch (e) {
-      debugPrint('[Delete] Profile image deletion skipped: $e');
+      debugPrint('[Auth] Firebase sign out error: $e');
     }
+
+    // 3. Reset the GoogleSignIn instance for next login
+    _googleSignIn = GoogleSignIn(scopes: ['email']);
+    debugPrint('[Auth] Sign out completed');
   }
 
   // Firestore: Get user's bills collection reference
@@ -233,10 +171,6 @@ class FirebaseService {
     }).toList();
   }
 
-  // REMOVED: Real-time listener - causes excessive reads
-  // Use HiveService.getAllBills() for local data instead
-  // Only sync with Firebase on login and when pushing changes
-
   // Firestore: Batch sync local bills to server
   static Future<void> syncLocalBillsToServer(List<BillHive> bills) async {
     final batch = _firestore.batch();
@@ -247,5 +181,37 @@ class FirebaseService {
     }
 
     await batch.commit();
+  }
+
+  /// Delete all user data from Firestore
+  /// This deletes all bills and the user document
+  /// Used for account deletion
+  static Future<void> deleteAllUserData(String userId) async {
+    debugPrint('[Firebase] Deleting all data for user: $userId');
+
+    // Delete all bills in batches of 500
+    final billsCollection = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('bills');
+
+    const batchSize = 500;
+    while (true) {
+      final snapshot = await billsCollection.limit(batchSize).get();
+      if (snapshot.docs.isEmpty) break;
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      debugPrint('[Firebase] Deleted ${snapshot.docs.length} bills');
+
+      if (snapshot.docs.length < batchSize) break;
+    }
+
+    // Delete the user document
+    await _firestore.collection('users').doc(userId).delete();
+    debugPrint('[Firebase] User document deleted');
   }
 }

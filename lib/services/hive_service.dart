@@ -98,7 +98,7 @@ class HiveService {
         _cachedBills != null &&
         _cacheTimestamp != null &&
         now.difference(_cacheTimestamp!) < _cacheExpiry) {
-      print('📦 Using cached bills: ${_cachedBills!.length}');
+      // Removed verbose logging - was causing console flood
       return _cachedBills!;
     }
 

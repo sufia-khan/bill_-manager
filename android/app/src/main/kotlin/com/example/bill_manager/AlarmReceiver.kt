@@ -32,6 +32,10 @@ class AlarmReceiver : BroadcastReceiver() {
         Log.d("AlarmReceiver", "Notification triggered: $title")
         Log.d("AlarmReceiver", "Bill ID: $billId, isRecurring: $isRecurring, type: $recurringType, seq: $currentSequence/$repeatCount")
         
+        // Get current logged-in user
+        val currentUserId = getCurrentUserId(context)
+        Log.d("AlarmReceiver", "Current logged-in user: $currentUserId, Notification for user: $notificationUserId")
+        
         // For recurring bills, create unique billId with sequence and add sequence to body
         var uniqueBillId = billId
         var displayBody = body
@@ -43,28 +47,39 @@ class AlarmReceiver : BroadcastReceiver() {
             displayBody = "$body (#$currentSequence)"
         }
         
-        // ALWAYS save to history first with unique ID
-        saveToHistory(context, title, displayBody, uniqueBillId, notificationUserId)
-        
-        // If this is a recurring bill, schedule the next instance
-        if (isRecurring && recurringType.isNotEmpty()) {
-            scheduleNextRecurringInstance(
-                context, billId, billTitle, billAmount, billVendor,
-                notificationUserId, recurringType, currentSequence, repeatCount
-            )
+        // CRITICAL: Only save to history if notification belongs to a valid user
+        // This prevents orphan notifications when user logs out
+        if (notificationUserId.isNotEmpty()) {
+            saveToHistory(context, title, displayBody, uniqueBillId, notificationUserId)
         }
         
-        // Check if should show notification
-        val currentUserId = getCurrentUserId(context)
+        // CRITICAL: Only schedule next recurring instance if:
+        // 1. The notification user matches the currently logged-in user
+        // 2. A user is actually logged in
+        // This prevents ghost notifications from accumulating after logout
+        if (isRecurring && recurringType.isNotEmpty()) {
+            if (currentUserId.isEmpty()) {
+                Log.d("AlarmReceiver", "No user logged in - NOT scheduling next recurring instance")
+            } else if (notificationUserId.isEmpty() || notificationUserId == currentUserId) {
+                scheduleNextRecurringInstance(
+                    context, billId, billTitle, billAmount, billVendor,
+                    notificationUserId, recurringType, currentSequence, repeatCount
+                )
+            } else {
+                Log.d("AlarmReceiver", "User mismatch - NOT scheduling next recurring instance (notification: $notificationUserId, current: $currentUserId)")
+            }
+        }
+        
+        // Check if should show notification on device
         val shouldShowNotification = when {
-            notificationUserId.isEmpty() -> true
-            currentUserId.isEmpty() -> false
-            notificationUserId != currentUserId -> false
+            notificationUserId.isEmpty() -> true  // Legacy notification without userId
+            currentUserId.isEmpty() -> false      // No user logged in - don't show
+            notificationUserId != currentUserId -> false  // Wrong user - don't show
             else -> true
         }
         
         if (!shouldShowNotification) {
-            Log.d("AlarmReceiver", "Notification saved but not shown (different user)")
+            Log.d("AlarmReceiver", "Notification saved but not shown (no user or different user)")
             return
         }
         
