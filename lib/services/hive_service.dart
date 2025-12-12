@@ -1,10 +1,16 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../models/bill_hive.dart';
 import '../models/notification_history.dart';
 
 class HiveService {
   static const String billBoxName = 'bills';
   static const String userBoxName = 'user';
+  static const String localBillsBoxName =
+      'localBills'; // Track bills created on this device
+  static const String deviceIdKey = 'deviceId'; // Unique device identifier
+  static const String migrationKey =
+      'localBillsMigrationDone'; // Migration flag
 
   // Track current user for data isolation
   static String? _currentUserId;
@@ -40,6 +46,9 @@ class HiveService {
     try {
       await Hive.openBox<BillHive>(billBoxName);
       await Hive.openBox(userBoxName);
+      await Hive.openBox<String>(
+        localBillsBoxName,
+      ); // For tracking locally-created bills
     } catch (e) {
       print('⚠️ Error opening Hive boxes, attempting recovery: $e');
 
@@ -71,10 +80,17 @@ class HiveService {
           // Ignore if box doesn't exist
         }
 
+        try {
+          await Hive.deleteBoxFromDisk(localBillsBoxName);
+        } catch (_) {
+          // Ignore if box doesn't exist
+        }
+
         print('🔄 Cleared corrupted Hive data, recreating boxes...');
 
         await Hive.openBox<BillHive>(billBoxName);
         await Hive.openBox(userBoxName);
+        await Hive.openBox<String>(localBillsBoxName);
         print('✅ Hive boxes recreated successfully');
       } catch (recoveryError) {
         print('❌ Failed to recover Hive boxes: $recoveryError');
@@ -97,6 +113,123 @@ class HiveService {
       print('⚠️ getUserBox failed: $e');
       return null;
     }
+  }
+
+  // Get local bills tracking box
+  static Box<String>? getLocalBillsBox() {
+    try {
+      if (!Hive.isBoxOpen(localBillsBoxName)) return null;
+      return Hive.box<String>(localBillsBoxName);
+    } catch (e) {
+      print('⚠️ getLocalBillsBox failed: $e');
+      return null;
+    }
+  }
+
+  // ============================================================
+  // DEVICE ID & LOCAL BILL TRACKING
+  // These methods enable notification isolation per device
+  // ============================================================
+
+  /// Get or create a unique device ID.
+  /// This ID persists across app restarts but changes on reinstall.
+  static String getDeviceId() {
+    final userBox = getUserBox();
+    if (userBox == null) {
+      // Fallback: generate new ID each time if box not available
+      return const Uuid().v4();
+    }
+
+    String? deviceId = userBox.get(deviceIdKey) as String?;
+    if (deviceId == null) {
+      deviceId = const Uuid().v4();
+      userBox.put(deviceIdKey, deviceId);
+      print('📱 Generated new device ID: ${deviceId.substring(0, 8)}...');
+    }
+    return deviceId;
+  }
+
+  /// Mark a bill as locally created on this device.
+  /// Only locally-created bills should have notifications scheduled.
+  static Future<void> markBillAsLocal(String billId) async {
+    final box = getLocalBillsBox();
+    if (box == null) return;
+
+    final deviceId = getDeviceId();
+    await box.put(billId, deviceId);
+    print(
+      '📌 Marked bill $billId as local (device: ${deviceId.substring(0, 8)}...)',
+    );
+  }
+
+  /// Check if a bill was created locally on this device.
+  /// Returns true only if the bill was created on THIS specific device.
+  static bool isLocalBill(String billId) {
+    final box = getLocalBillsBox();
+    if (box == null) return false;
+
+    final storedDeviceId = box.get(billId);
+    if (storedDeviceId == null) return false;
+
+    final currentDeviceId = getDeviceId();
+    return storedDeviceId == currentDeviceId;
+  }
+
+  /// Clear all local bill tracking data.
+  /// Called on logout to ensure no stale notification state.
+  static Future<void> clearLocalBillTracking() async {
+    final box = getLocalBillsBox();
+    if (box == null) return;
+
+    await box.clear();
+    print('🧹 Cleared local bill tracking data');
+  }
+
+  /// Check if migration for local bills has been done.
+  static bool isLocalBillsMigrationDone() {
+    final userBox = getUserBox();
+    if (userBox == null) return false;
+    return userBox.get(migrationKey) == true;
+  }
+
+  /// Mark migration as done.
+  static Future<void> markLocalBillsMigrationDone() async {
+    final userBox = getUserBox();
+    if (userBox == null) return;
+    await userBox.put(migrationKey, true);
+    print('✅ Local bills migration marked as complete');
+  }
+
+  /// One-time migration: Mark all existing Hive bills as local.
+  /// This ensures existing users don't lose notifications after the update.
+  /// MUST be called BEFORE initial Firestore sync on first run.
+  static Future<void> migrateExistingBillsToLocal() async {
+    if (isLocalBillsMigrationDone()) {
+      print('⏭️ Local bills migration already done, skipping');
+      return;
+    }
+
+    final billBox = getBillsBox();
+    final existingBills = billBox.values.toList();
+
+    if (existingBills.isEmpty) {
+      print('📦 No existing bills to migrate');
+      await markLocalBillsMigrationDone();
+      return;
+    }
+
+    print(
+      '🔄 Migrating ${existingBills.length} existing bills to local tracking...',
+    );
+
+    for (final bill in existingBills) {
+      await markBillAsLocal(bill.id);
+    }
+
+    await markLocalBillsMigrationDone();
+    print(
+      '✅ Migration complete: ${existingBills.length} bills marked as local',
+    );
   }
 
   // Add or update bill

@@ -112,6 +112,119 @@ class RecurringBillService {
     );
   }
 
+  /// PRE-GENERATE ALL RECURRING BILL INSTANCES
+  /// Called at bill creation time to generate all future instances upfront.
+  /// Each instance has an exact timestamp for:
+  /// - Notification scheduling (fires at exact time)
+  /// - Overdue detection (compares instanceTime vs now)
+  ///
+  /// Returns list of created instances (excluding the parent bill itself).
+  /// The parent bill is instance 1 and should be saved separately.
+  ///
+  /// Cap: 100 instances max for 1-minute testing mode.
+  static Future<List<BillHive>> generateAllInstances({
+    required BillHive parentBill,
+    required int repeatCount,
+  }) async {
+    try {
+      Logger.info(
+        'Generating $repeatCount instances for ${parentBill.title}',
+        _tag,
+      );
+
+      // Cap at 100 for testing mode to prevent excessive instance creation
+      final effectiveCount =
+          parentBill.repeat.toLowerCase() == '1 minute (testing)'
+          ? (repeatCount > 100 ? 100 : repeatCount)
+          : repeatCount;
+
+      if (effectiveCount != repeatCount) {
+        Logger.warning(
+          'Capped instance count from $repeatCount to $effectiveCount (testing mode)',
+          _tag,
+        );
+      }
+
+      final instances = <BillHive>[];
+      final now = DateTime.now();
+      DateTime currentDueAt = parentBill.dueAt;
+
+      // Skip instance 1 - that's the parent bill itself
+      // Generate instances 2 through repeatCount
+      for (int sequence = 2; sequence <= effectiveCount; sequence++) {
+        // Calculate next due date from current
+        currentDueAt = calculateNextDueDate(currentDueAt, parentBill.repeat);
+
+        // Calculate notification time for this instance
+        // For 1-minute testing, use the exact dueAt time
+        // For regular bills, keep the same notification time as parent
+        String? instanceNotificationTime;
+        if (parentBill.repeat.toLowerCase() == '1 minute (testing)') {
+          final h = currentDueAt.hour.toString().padLeft(2, '0');
+          final m = currentDueAt.minute.toString().padLeft(2, '0');
+          instanceNotificationTime = '$h:$m';
+        } else {
+          instanceNotificationTime = parentBill.notificationTime;
+        }
+
+        // Determine status based on exact timestamp comparison
+        final status = currentDueAt.isBefore(now) ? 'overdue' : 'upcoming';
+
+        final instance = BillHive(
+          id: const Uuid().v4(),
+          title: parentBill.title,
+          vendor: parentBill.vendor,
+          amount: parentBill.amount,
+          dueAt: currentDueAt, // EXACT instance timestamp
+          notes: parentBill.notes,
+          category: parentBill.category,
+          isPaid: false,
+          isDeleted: false,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          repeat: parentBill.repeat,
+          needsSync: true,
+          paidAt: null,
+          isArchived: false,
+          archivedAt: null,
+          parentBillId: parentBill.id, // Link to parent (instance 1)
+          recurringSequence: sequence,
+          repeatCount: effectiveCount,
+          reminderTiming: parentBill.reminderTiming,
+          notificationTime: instanceNotificationTime,
+          userId: parentBill.userId,
+          createdDuringProTrial: parentBill.createdDuringProTrial,
+          status: status,
+          processing: false,
+        );
+
+        // Save to Hive immediately
+        await HiveService.saveBill(instance);
+        instances.add(instance);
+
+        Logger.info(
+          '  Created instance $sequence/${effectiveCount}: due ${currentDueAt.toIso8601String()}, status: $status',
+          _tag,
+        );
+      }
+
+      Logger.info(
+        'Successfully generated ${instances.length} instances for ${parentBill.title}',
+        _tag,
+      );
+
+      return instances;
+    } catch (e, stackTrace) {
+      Logger.error(
+        'Failed to generate instances for ${parentBill.title}',
+        error: e,
+        stackTrace: stackTrace,
+        tag: _tag,
+      );
+      return [];
+    }
+  }
+
   /// Check if next instance of a recurring bill already exists
   /// Returns true if a bill with matching parentBillId and due date exists
   /// [seriesParentId] - The root parent ID of the recurring series

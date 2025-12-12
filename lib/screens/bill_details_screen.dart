@@ -408,7 +408,9 @@ class BillDetailsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Instance #${billHive.recurringSequence ?? 1}',
+                      billHive.repeatCount != null && billHive.repeatCount! > 0
+                          ? '${billHive.recurringSequence ?? 1} of ${billHive.repeatCount}'
+                          : 'Instance ${billHive.recurringSequence ?? 1}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

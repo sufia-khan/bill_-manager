@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'hive_service.dart';
 import 'firebase_service.dart';
 import 'notification_history_service.dart';
+import '../models/bill_hive.dart';
+
+/// Callback type for when remote changes are received from Firestore
+typedef OnRemoteChangesCallback = void Function();
 
 class SyncService {
   static const String lastSyncKey = 'last_sync_time';
@@ -11,12 +16,24 @@ class SyncService {
   static StreamSubscription<List<ConnectivityResult>>?
   _connectivitySubscription;
 
+  // Firestore real-time listener subscription
+  static StreamSubscription<QuerySnapshot>? _firestoreSubscription;
+
+  // Callback to notify BillProvider when remote changes are received
+  static OnRemoteChangesCallback? _onRemoteChanges;
+
   // Track if initial sync was done this session (to avoid repeated full syncs)
   static bool _initialSyncDoneThisSession = false;
 
   // CRITICAL: Track which user the sync service is bound to
   // This prevents syncing data to wrong account after account switch
   static String? _boundUserId;
+
+  /// Set the callback for when remote changes are received.
+  /// BillProvider should call this to be notified when Firestore data changes.
+  static void setOnRemoteChanges(OnRemoteChangesCallback? callback) {
+    _onRemoteChanges = callback;
+  }
 
   /// Start sync service bound to a specific user.
   /// MUST be called after login before any sync operations.
@@ -25,6 +42,8 @@ class SyncService {
     _boundUserId = userId;
     _initialSyncDoneThisSession = false;
     startPeriodicSync();
+    // Start Firestore listener for real-time sync
+    startFirestoreListener(userId);
   }
 
   /// Stop sync service completely.
@@ -34,6 +53,115 @@ class SyncService {
     _boundUserId = null;
     _initialSyncDoneThisSession = false;
     stopPeriodicSync();
+    stopFirestoreListener();
+  }
+
+  /// Start listening to Firestore for real-time updates from other devices.
+  /// Updates Hive when remote changes occur but does NOT schedule notifications.
+  static void startFirestoreListener(String userId) {
+    // Cancel any existing subscription
+    _firestoreSubscription?.cancel();
+
+    print('👂 Starting Firestore listener for user: $userId');
+
+    final collection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('bills');
+
+    _firestoreSubscription = collection
+        .where('isDeleted', isEqualTo: false)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            _handleFirestoreChanges(snapshot, userId);
+          },
+          onError: (error) {
+            print('❌ Firestore listener error: $error');
+          },
+        );
+  }
+
+  /// Stop listening to Firestore changes.
+  static void stopFirestoreListener() {
+    _firestoreSubscription?.cancel();
+    _firestoreSubscription = null;
+    print('🔇 Stopped Firestore listener');
+  }
+
+  /// Handle changes received from Firestore.
+  /// Updates Hive but does NOT trigger notification scheduling.
+  static Future<void> _handleFirestoreChanges(
+    QuerySnapshot snapshot,
+    String userId,
+  ) async {
+    // Skip if this is the initial snapshot (we handle that in initialSync)
+    if (!_initialSyncDoneThisSession) {
+      print('⏭️ Ignoring Firestore snapshot - initial sync not done yet');
+      return;
+    }
+
+    // Validate user binding to prevent data leak
+    if (_boundUserId != userId) {
+      print('⚠️ Firestore snapshot ignored - user mismatch');
+      return;
+    }
+
+    print(
+      '📡 Received Firestore changes: ${snapshot.docChanges.length} documents',
+    );
+
+    bool hasChanges = false;
+
+    for (final docChange in snapshot.docChanges) {
+      final data = docChange.doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+
+      final billId = data['id'] as String?;
+      if (billId == null) continue;
+
+      switch (docChange.type) {
+        case DocumentChangeType.added:
+        case DocumentChangeType.modified:
+          // Check if we already have this bill locally with pending changes
+          final localBill = HiveService.getBillById(billId);
+          if (localBill != null && localBill.needsSync) {
+            // Local changes take priority - don't overwrite
+            print('   ↪ Skipping $billId - local changes pending');
+            continue;
+          }
+
+          // Update Hive with remote data (marking as from server)
+          final remoteBill = BillHive.fromFirestore(data);
+          final billWithUser = remoteBill.copyWith(
+            needsSync: false,
+            userId: userId,
+          );
+          await HiveService.saveBill(billWithUser);
+
+          // CRITICAL: Do NOT mark as local - this is a remote bill
+          // Do NOT schedule notifications for remote bills
+          print('   ✓ Synced remote bill: ${billWithUser.title}');
+          hasChanges = true;
+          break;
+
+        case DocumentChangeType.removed:
+          // Handle remote deletion
+          final localBill = HiveService.getBillById(billId);
+          if (localBill != null && !localBill.needsSync) {
+            await HiveService.deleteBill(billId);
+            print('   ✓ Deleted bill: $billId');
+            hasChanges = true;
+          }
+          break;
+      }
+    }
+
+    // Notify BillProvider to refresh UI if there were changes
+    if (hasChanges && _onRemoteChanges != null) {
+      print('📢 Notifying UI of remote changes');
+      _onRemoteChanges!();
+    }
   }
 
   /// Validate that sync can proceed for current user.

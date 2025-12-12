@@ -244,17 +244,42 @@ class _AddBillScreenState extends State<AddBillScreen> {
           (b) => b.id == widget.billToEdit!.id,
         );
 
+        // Calculate proper dueAt including time for recurring bills
+        DateTime editDueAt =
+            _selectedDueDate ?? DateTime.now().add(const Duration(days: 30));
+
+        // For recurring bills, include the notification time in dueAt
+        // This is critical for exact timestamp comparison in overdue detection
+        if (_selectedRepeat.toLowerCase() != 'none' &&
+            _notificationTime != null) {
+          editDueAt = DateTime(
+            editDueAt.year,
+            editDueAt.month,
+            editDueAt.day,
+            _notificationTime!.hour,
+            _notificationTime!.minute,
+          );
+          debugPrint('📅 Edit: Set dueAt with time: $editDueAt');
+        }
+
+        // Calculate repeat count for the update
+        // If user changed to/from recurring, use the current state
+        // Otherwise preserve the existing value
+        final int? repeatCountForUpdate =
+            _selectedRepeat.toLowerCase() != 'none' ? _repeatCount : null;
+
         final updatedBill = billHive.copyWith(
           title: _titleController.text.trim(),
           vendor: _titleController.text.trim(), // Use title as vendor
           amount: double.parse(_amountController.text),
-          dueAt:
-              _selectedDueDate ?? DateTime.now().add(const Duration(days: 30)),
+          dueAt: editDueAt,
           notes: _notesController.text.trim().isEmpty
               ? null
               : _notesController.text.trim(),
           category: _selectedCategory,
           repeat: _selectedRepeat.toLowerCase(),
+          repeatCount:
+              repeatCountForUpdate, // CRITICAL FIX: Preserve repeatCount
           updatedAt: DateTime.now(),
           clientUpdatedAt: DateTime.now(),
           needsSync: true,

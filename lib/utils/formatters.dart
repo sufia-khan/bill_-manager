@@ -32,25 +32,36 @@ String formatCurrencyShort(double value, {String? symbol}) {
 
   final abs = value.abs();
 
+  // Helper function to format with smart decimals
+  // Shows 1 decimal place, but removes trailing zeros
+  String formatValue(double val) {
+    String formatted = val.toStringAsFixed(1);
+    // Remove trailing .0
+    if (formatted.endsWith('.0')) {
+      formatted = formatted.substring(0, formatted.length - 2);
+    }
+    return formatted;
+  }
+
   String result;
 
   if (abs >= 1e15) {
     // Quadrillion
-    result = '$currencySymbol${(value / 1e15).toStringAsFixed(2)}Q';
+    result = '$currencySymbol${formatValue(value / 1e15)}Q';
   } else if (abs >= 1e12) {
     // Trillion
-    result = '$currencySymbol${(value / 1e12).toStringAsFixed(2)}T';
+    result = '$currencySymbol${formatValue(value / 1e12)}T';
   } else if (abs >= 1e9) {
     // Billion
-    result = '$currencySymbol${(value / 1e9).toStringAsFixed(2)}B';
+    result = '$currencySymbol${formatValue(value / 1e9)}B';
   } else if (abs >= 1e6) {
     // Million
-    result = '$currencySymbol${(value / 1e6).toStringAsFixed(2)}M';
+    result = '$currencySymbol${formatValue(value / 1e6)}M';
   } else if (abs >= 1e3) {
     // Thousand
-    result = '$currencySymbol${(value / 1e3).toStringAsFixed(2)}K';
+    result = '$currencySymbol${formatValue(value / 1e3)}K';
   } else {
-    // Less than 1000
+    // Less than 1000 - show full amount with 2 decimals
     result = '$currencySymbol${value.toStringAsFixed(2)}';
   }
 
@@ -66,19 +77,29 @@ String formatCurrencyIndian(double value, {String symbol = '₹'}) {
 
   final abs = value.abs();
 
+  // Helper function to format with smart decimals
+  String formatValue(double val) {
+    String formatted = val.toStringAsFixed(1);
+    // Remove trailing .0
+    if (formatted.endsWith('.0')) {
+      formatted = formatted.substring(0, formatted.length - 2);
+    }
+    return formatted;
+  }
+
   String result;
 
   if (abs >= 1e7) {
     // Crore
-    result = '${symbol}${(value / 1e7).toStringAsFixed(2)} Cr';
+    result = '$symbol${formatValue(value / 1e7)} Cr';
   } else if (abs >= 1e5) {
     // Lakh
-    result = '${symbol}${(value / 1e5).toStringAsFixed(2)} L';
+    result = '$symbol${formatValue(value / 1e5)} L';
   } else if (abs >= 1e3) {
     // Thousand
-    result = '${symbol}${(value / 1e3).toStringAsFixed(2)}K';
+    result = '$symbol${formatValue(value / 1e3)}K';
   } else {
-    result = '${symbol}${value.toStringAsFixed(2)}';
+    result = '$symbol${value.toStringAsFixed(2)}';
   }
 
   return result;

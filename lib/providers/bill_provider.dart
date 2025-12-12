@@ -168,6 +168,14 @@ class BillProvider with ChangeNotifier {
     _initializedForUserId = null;
     _statusRefreshTimer?.cancel();
     _statusRefreshTimer = null;
+
+    // CRITICAL: Clear local bill tracking on logout
+    // This ensures no notifications fire after logout
+    HiveService.clearLocalBillTracking();
+
+    // Stop sync service and Firestore listener
+    SyncService.stop();
+
     notifyListeners();
   }
 
@@ -428,9 +436,24 @@ class BillProvider with ChangeNotifier {
         notifyListeners();
       }
 
+      // CRITICAL: Set up remote changes callback BEFORE any sync operations
+      // This allows SyncService to notify us when Firestore data changes
+      SyncService.setOnRemoteChanges(() {
+        print('📡 Remote changes callback triggered - refreshing from Hive');
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
+        notifyListeners();
+      });
+
+      // ONE-TIME MIGRATION: Mark existing Hive bills as local
+      // This MUST run BEFORE initial sync to preserve notifications for existing users
+      // Bills that exist in Hive before this update should continue to fire notifications
+      await HiveService.migrateExistingBillsToLocal();
+
       // CRITICAL FIX: Check for user change and clear stale data BEFORE loading bills
       // This prevents bills from Account A appearing in Account B
       final storedUserId = HiveService.getUserData('currentUserId') as String?;
+
       final existingBillsCount = HiveService.getAllBills(
         forceRefresh: true,
       ).length;
@@ -682,33 +705,55 @@ class BillProvider with ChangeNotifier {
         createdDuringProTrial:
             TrialService.canAccessProFeatures(), // Store trial status
         userId: FirebaseService.currentUserId, // Associate with current user
-        status: dueAt.isBefore(now)
-            ? 'overdue'
-            : 'upcoming', // Initialize status
         processing: false,
       );
 
+      // Calculate initial status using the helper
+      // This ensures the status respects reminder time from the start
+      final initialStatus = BillStatusHelper.calculateStatus(bill);
+      final billWithStatus = bill.copyWith(status: initialStatus);
+
       // Save to local storage
-      await HiveService.saveBill(bill);
+      await HiveService.saveBill(billWithStatus);
+
+      // CRITICAL: Mark this bill as locally created on THIS device
+      // Only locally-created bills will have notifications scheduled
+      await HiveService.markBillAsLocal(billWithStatus.id);
 
       print('\n═══════════════════════════════════════════════════════');
       print('📝 BILL ADDED SUCCESSFULLY');
       print('═══════════════════════════════════════════════════════');
-      print('Title: ${bill.title}');
-      print('Amount: \$${bill.amount.toStringAsFixed(2)}');
-      print('Due Date: ${bill.dueAt}');
-      print('Category: ${bill.category}');
-      print('Repeat: ${bill.repeat}');
+      print('Title: ${billWithStatus.title}');
+      print('Amount: \$${billWithStatus.amount.toStringAsFixed(2)}');
+      print('Due Date: ${billWithStatus.dueAt}');
+      print('Category: ${billWithStatus.category}');
+      print('Repeat: ${billWithStatus.repeat}');
       print(
-        'Reminder Timing: ${bill.reminderTiming ?? "Using global settings"}',
+        'Reminder Timing: ${billWithStatus.reminderTiming ?? "Using global settings"}',
       );
       print(
-        'Notification Time: ${bill.notificationTime ?? "Using global settings"}',
+        'Notification Time: ${billWithStatus.notificationTime ?? "Using global settings"}',
       );
       print('═══════════════════════════════════════════════════════\n');
 
       // Schedule notification if enabled (force reschedule for new bills)
-      await _scheduleNotificationForBill(bill, forceReschedule: true);
+      await _scheduleNotificationForBill(billWithStatus, forceReschedule: true);
+
+      print('\\n📝 ═══════════════════════════════════════════════════════');
+      print('📝 RECURRING BILL CREATED');
+      print('📝 ═══════════════════════════════════════════════════════');
+      if (repeat.toLowerCase() != 'none' &&
+          repeatCount != null &&
+          repeatCount > 1) {
+        print('   Title: ${billWithStatus.title}');
+        print('   Repeat: $repeat');
+        print('   Total planned occurrences: $repeatCount');
+        print('   Created: Instance 1 of $repeatCount');
+        print('   ℹ️  Next instance will be created automatically when:');
+        print('      - Instance 1 is marked as paid, OR');
+        print('      - Instance 1 becomes overdue');
+        print('📝 ═══════════════════════════════════════════════════════\\n');
+      }
 
       // Show all pending notifications
       await _showPendingNotifications();
@@ -719,8 +764,8 @@ class BillProvider with ChangeNotifier {
 
       // Debug: Verify the bill was saved correctly
       final savedBill = _bills.firstWhere(
-        (b) => b.id == bill.id,
-        orElse: () => bill,
+        (b) => b.id == billWithStatus.id,
+        orElse: () => billWithStatus,
       );
       print('\n🔍 ═══════════════════════════════════════════════════════');
       print('🔍 VERIFICATION - Bill read back from Hive:');
@@ -750,32 +795,106 @@ class BillProvider with ChangeNotifier {
   // Update bill
   Future<void> updateBill(BillHive bill) async {
     try {
+      final now = DateTime.now();
+
+      // CRITICAL: Recalculate status using centralized helper
+      // This ensures consistent behavior across the app
+      final calculatedStatus = BillStatusHelper.calculateStatus(bill);
+
       final updatedBill = bill.copyWith(
-        updatedAt: DateTime.now(),
-        clientUpdatedAt: DateTime.now(),
+        updatedAt: now,
+        clientUpdatedAt: now,
         needsSync: true,
+        status: calculatedStatus, // Update status
       );
 
-      await HiveService.saveBill(updatedBill);
+      // CRITICAL FIX: If this is a recurring bill, delete and regenerate all instances
+      if (updatedBill.repeat.toLowerCase() != 'none' &&
+          updatedBill.repeatCount != null &&
+          updatedBill.repeatCount! > 1) {
+        print('\n🔄 ═══════════════════════════════════════════════════════');
+        print('🔄 UPDATING RECURRING BILL - REGENERATING INSTANCES');
+        print('🔄 ═══════════════════════════════════════════════════════');
+        print('   Title: ${updatedBill.title}');
+        print('   Repeat: ${updatedBill.repeat}');
+        print('   Total occurrences: ${updatedBill.repeatCount}');
+        print('   Due date: ${updatedBill.dueAt}');
+        print('   Status: $calculatedStatus');
 
-      print('\n═══════════════════════════════════════════════════════');
-      print('✏️  BILL UPDATED');
-      print('═══════════════════════════════════════════════════════');
-      print('Title: ${updatedBill.title}');
-      print('Amount: \$${updatedBill.amount.toStringAsFixed(2)}');
-      print('Due Date: ${updatedBill.dueAt}');
-      print('Is Paid: ${updatedBill.isPaid}');
-      print('═══════════════════════════════════════════════════════\n');
+        // Step 1: Find the parent ID of this series
+        final seriesParentId = updatedBill.parentBillId ?? updatedBill.id;
 
-      // Reschedule notification if bill is not paid (force reschedule on update)
-      if (!updatedBill.isPaid) {
-        await _scheduleNotificationForBill(updatedBill, forceReschedule: true);
-        await _showPendingNotifications();
+        // Step 2: Find all instances in this series (excluding instance 1 - the parent)
+        final allBills = HiveService.getAllBills(forceRefresh: true);
+        final instancesToDelete = allBills.where((b) {
+          final billParentId = b.parentBillId ?? b.id;
+          final isInSeries =
+              billParentId == seriesParentId || b.id == seriesParentId;
+          final isNotParent =
+              b.id != updatedBill.id; // Don't delete the bill being edited
+          final isInstance =
+              b.recurringSequence != null && b.recurringSequence! > 1;
+          return isInSeries && isNotParent && isInstance && !b.isDeleted;
+        }).toList();
+
+        print(
+          '   Found ${instancesToDelete.length} instances to delete and regenerate',
+        );
+
+        // Step 3: Delete all future instances
+        for (final instance in instancesToDelete) {
+          print(
+            '   Deleting instance ${instance.recurringSequence}: ${instance.title} (${instance.id.substring(0, 8)})',
+          );
+          await NotificationService().cancelBillNotification(instance.id);
+          await HiveService.deleteBill(instance.id);
+        }
+
+        // Step 4: Ensure the parent bill (instance 1) has correct sequence and repeatCount
+        final parentBill = updatedBill.copyWith(
+          recurringSequence: 1, // Ensure this is instance 1
+          parentBillId: null, // Parent has no parent
+        );
+
+        await HiveService.saveBill(parentBill);
+        print('   ✅ Saved updated parent bill (instance 1)');
+
+        print(
+          '   ℹ️  Future instances will be created one-at-a-time automatically',
+        );
+        print('🔄 ═══════════════════════════════════════════════════════\n');
+
+        // Reschedule notification for the updated parent bill
+        if (!parentBill.isPaid) {
+          await _scheduleNotificationForBill(parentBill, forceReschedule: true);
+        }
       } else {
-        // Cancel notification if bill is paid
-        print('🔕 Cancelling notification for paid bill\n');
-        await NotificationService().cancelBillNotification(updatedBill.id);
-        await _showPendingNotifications();
+        // Not a recurring bill or single occurrence - just update normally
+        await HiveService.saveBill(updatedBill);
+
+        print('\n═══════════════════════════════════════════════════════');
+        print('✏️  BILL UPDATED');
+        print('═══════════════════════════════════════════════════════');
+        print('Title: ${updatedBill.title}');
+        print('Amount: \$${updatedBill.amount.toStringAsFixed(2)}');
+        print('Due Date: ${updatedBill.dueAt}');
+        print('Is Paid: ${updatedBill.isPaid}');
+        print('Status: ${updatedBill.status}');
+        print('═══════════════════════════════════════════════════════\n');
+
+        // Reschedule notification if bill is not paid (force reschedule on update)
+        if (!updatedBill.isPaid) {
+          await _scheduleNotificationForBill(
+            updatedBill,
+            forceReschedule: true,
+          );
+          await _showPendingNotifications();
+        } else {
+          // Cancel notification if bill is paid
+          print('🔕 Cancelling notification for paid bill\n');
+          await NotificationService().cancelBillNotification(updatedBill.id);
+          await _showPendingNotifications();
+        }
       }
 
       _bills = _loadCurrentUsersBills();
@@ -1243,6 +1362,15 @@ class BillProvider with ChangeNotifier {
         return;
       }
 
+      // CRITICAL: Only schedule notifications for bills created on THIS device
+      // Bills synced from Firestore (other devices) should NOT trigger notifications
+      if (!HiveService.isLocalBill(bill.id)) {
+        print('❌ Bill is from another device - skipping notification');
+        print('   (Only locally-created bills get notifications)');
+        print('─────────────────────────────────────────────────────\n');
+        return;
+      }
+
       final notificationService = NotificationService();
 
       // Use per-bill settings if available, otherwise use global settings
@@ -1560,29 +1688,18 @@ class BillProvider with ChangeNotifier {
   }
 
   // Run recurring bill maintenance
-  // Processes all recurring bills and creates next instances if needed
+  // NOTE: Instance creation is now handled at bill creation time via generateAllInstances()
+  // This method is kept for backwards compatibility but no longer creates new instances
   Future<void> runRecurringBillMaintenance() async {
     try {
       print('Running recurring bill maintenance...');
-      final currentUserId = FirebaseService.currentUserId;
-
-      final createdCount = await RecurringBillService.processRecurringBills(
-        userId: currentUserId,
-      );
-
+      // DISABLED: processRecurringBills() - instances are now pre-generated at creation time
+      // The old reactive system was creating unlimited instances and not respecting repeatCount
       print(
-        'Recurring maintenance complete. Created $createdCount new instances.',
+        'Recurring maintenance skipped - instances are now pre-generated at creation',
       );
-
-      if (createdCount > 0) {
-        // Reload bills if new instances were created
-        _bills = _loadCurrentUsersBills(forceRefresh: true);
-        _processBills();
-        notifyListeners();
-      }
     } catch (e) {
       print('Error running recurring bill maintenance: $e');
-      // Don't rethrow - maintenance failures shouldn't block other operations
     }
   }
 
@@ -2026,10 +2143,9 @@ class BillProvider with ChangeNotifier {
       // Purge soft-deleted bills to prevent any stale data issues
       await HiveService.purgeDeletedBills();
 
-      // Process recurring bills - strictly for the current user if ID is provided
-      final billsCreated = await RecurringBillService.processRecurringBills(
-        userId: userId,
-      );
+      // DISABLED: processRecurringBills() - instances are now pre-generated at creation time
+      // The old reactive system was creating unlimited instances and not respecting repeatCount
+      final billsCreated = 0; // No longer creating instances reactively
 
       // Process archival
       final billsArchived = await BillArchivalService.processArchival();
