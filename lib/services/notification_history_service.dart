@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_history.dart';
 
 class NotificationHistoryService {
@@ -19,7 +20,7 @@ class NotificationHistoryService {
     }
   }
 
-  // Add a notification to history
+  // Add a notification to history (Hive + Firestore)
   // Automatically checks for duplicates before adding
   static Future<bool> addNotification({
     required String title,
@@ -70,7 +71,14 @@ class NotificationHistoryService {
         userId: userId, // Store userId
       );
 
+      // Save to Hive
       await _box!.put(notification.id, notification);
+
+      // Save to Firestore if userId is present
+      if (userId != null) {
+        await _addNotificationToFirestore(userId, notification);
+      }
+
       return true;
     } catch (e) {
       print('Error adding notification to history: $e');
@@ -78,7 +86,7 @@ class NotificationHistoryService {
     }
   }
 
-  // Add a notification to history with specific timestamp
+  // Add a notification to history with specific timestamp (Hive + Firestore)
   // Used for notifications that were triggered while app was closed
   // Automatically checks for duplicates before adding
   static Future<bool> addNotificationWithTime({
@@ -130,12 +138,148 @@ class NotificationHistoryService {
         userId: userId,
       );
 
+      // Save to Hive
       await _box!.put(notification.id, notification);
+
+      // Save to Firestore if userId is present
+      if (userId != null) {
+        await _addNotificationToFirestore(userId, notification);
+      }
+
       print('📝 Added notification with timestamp: $title at $sentAt');
       return true;
     } catch (e) {
       print('Error adding notification with time: $e');
       return false;
+    }
+  }
+
+  // Firestore: Add notification to 'users/{userId}/notifications'
+  static Future<void> _addNotificationToFirestore(
+    String userId,
+    NotificationHistory notification,
+  ) async {
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('notifications')
+          .doc(notification.id);
+
+      await docRef.set({
+        'id': notification.id,
+        'title': notification.title,
+        'body': notification.body,
+        'billId': notification.billId,
+        'billTitle': notification.billTitle,
+        'timestamp': Timestamp.fromDate(
+          notification.sentAt,
+        ), // Use Firestore Timestamp
+        'status': notification.isRead ? 'read' : 'unread',
+        // Also save isRead for compatibility
+        'isRead': notification.isRead,
+      });
+
+      print('☁️ Saved notification to Firestore: ${notification.title}');
+    } catch (e) {
+      print('❌ Error saving notification to Firestore: $e');
+    }
+  }
+
+  // Firestore: Get notifications stream for a user
+  // Used by NotificationScreen
+  static Stream<QuerySnapshot> getFirestoreNotificationsStream(String userId) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+  }
+
+  // Firestore: Mark notification as read
+  static Future<void> markAsReadInFirestore(
+    String userId,
+    String notificationId,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'status': 'read', 'isRead': true});
+    } catch (e) {
+      print('❌ Error marking Firestore notification as read: $e');
+    }
+  }
+
+  // Firestore: Mark ALL notifications as read
+  static Future<void> markAllAsReadInFirestore(String userId) async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('notifications');
+
+      final snapshot = await collection
+          .where('status', isEqualTo: 'unread')
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'status': 'read', 'isRead': true});
+      }
+
+      await batch.commit();
+    } catch (e) {
+      final error = e.toString();
+      if (error.contains('permission-denied') ||
+          error.contains('PERMISSION_DENIED')) {
+        print(
+          '⚠️ Permission denied marking notifications read. Check Firestore rules or auth state.',
+        );
+      } else {
+        print('❌ Error marking all Firestore notifications as read: $e');
+      }
+    }
+  }
+
+  // Firestore: Delete notification
+  static Future<void> deleteNotificationFromFirestore(
+    String userId,
+    String notificationId,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('notifications')
+          .doc(notificationId)
+          .delete();
+    } catch (e) {
+      print('❌ Error deleting Firestore notification: $e');
+    }
+  }
+
+  // Firestore: Clear all notifications
+  static Future<void> clearAllNotificationsFromFirestore(String userId) async {
+    try {
+      final collection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('notifications');
+
+      final batch = FirebaseFirestore.instance.batch();
+      final snapshot = await collection.get();
+
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+    } catch (e) {
+      print('❌ Error clearing all Firestore notifications: $e');
     }
   }
 
@@ -205,7 +349,7 @@ class NotificationHistoryService {
   }
 
   // Mark notification as read
-  static Future<void> markAsRead(String id) async {
+  static Future<void> markAsRead(String id, {String? userId}) async {
     try {
       await init();
       if (_box == null) return;
@@ -214,6 +358,11 @@ class NotificationHistoryService {
       if (notification != null) {
         final updated = notification.copyWith(isRead: true);
         await _box!.put(id, updated);
+      }
+
+      // Sync with Firestore if userId provided
+      if (userId != null) {
+        await markAsReadInFirestore(userId, id);
       }
     } catch (e) {
       print('Error marking notification as read: $e');
@@ -272,17 +421,24 @@ class NotificationHistoryService {
   }
 
   // Mark all as read
-  static Future<void> markAllAsRead() async {
+  static Future<void> markAllAsRead({String? userId}) async {
     try {
       await init();
       if (_box == null) return;
 
       final notifications = _box!.values.toList();
       for (final notification in notifications) {
+        if (userId != null && notification.userId != userId) continue;
+
         if (!notification.isRead) {
           final updated = notification.copyWith(isRead: true);
           await _box!.put(notification.id, updated);
         }
+      }
+
+      // Sync with Firestore
+      if (userId != null) {
+        await markAllAsReadInFirestore(userId);
       }
     } catch (e) {
       print('Error marking all notifications as read: $e');
@@ -357,22 +513,36 @@ class NotificationHistoryService {
   }
 
   // Delete a notification
-  static Future<void> deleteNotification(String id) async {
+  static Future<void> deleteNotification(String id, {String? userId}) async {
     try {
       await init();
       if (_box == null) return;
       await _box!.delete(id);
+
+      // Sync with Firestore
+      if (userId != null) {
+        await deleteNotificationFromFirestore(userId, id);
+      }
     } catch (e) {
       print('Error deleting notification: $e');
     }
   }
 
   // Clear all notifications
-  static Future<void> clearAll() async {
+  static Future<void> clearAll({String? userId}) async {
     try {
       await init();
       if (_box == null) return;
-      await _box!.clear();
+      await _box!
+          .clear(); // This clears hive for everyone - maybe redundant if filtered
+      // If we only want to clear for current user in Hive, we would iterate and delete.
+      // But clearing Hive usually means "Clear local history".
+      // Let's stick to user request: "Clear All" in UI likely means clear specific user's.
+
+      // Sync with Firestore
+      if (userId != null) {
+        await clearAllNotificationsFromFirestore(userId);
+      }
     } catch (e) {
       print('Error clearing all notifications: $e');
     }
@@ -390,6 +560,7 @@ class NotificationHistoryService {
       for (final notification in notifications) {
         if (notification.sentAt.isBefore(cutoffDate)) {
           await _box!.delete(notification.id);
+          // Optional: also delete from Firestore logic here, though usually Firestore handles retention
         }
       }
     } catch (e) {
@@ -462,6 +633,13 @@ class NotificationHistoryService {
         final tracked = data['tracked'] as bool? ?? false;
         final userId = data['userId'] as String?;
 
+        // CRITICAL FIX: Only process notifications for the CURRENT user
+        // Processing other users' notifications causes Permission Denied errors
+        // because we try to write to their Firestore collection with our token.
+        if (currentUserId != null && userId != currentUserId) {
+          continue;
+        }
+
         // Process ALL notifications whose time has passed (not just current user)
         // This ensures notifications are added to history for when user logs in
 
@@ -480,6 +658,7 @@ class NotificationHistoryService {
 
           if (!alreadyExists) {
             // Add to notification history with the scheduled time
+            // This will now ALSO save to Firestore if userId is present!
             await addNotificationWithTime(
               title: data['title'] as String,
               body: data['body'] as String,
@@ -668,6 +847,7 @@ class NotificationHistoryService {
                 '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
 
             // Add to notification history with the actual scheduled time
+            // Saves to Firestore as well!
             await addNotificationWithTime(
               title: title,
               body: body,

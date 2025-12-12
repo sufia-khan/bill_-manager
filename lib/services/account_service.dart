@@ -83,8 +83,16 @@ class AccountService {
 
       // STEP 3: Delete all CLOUD data FIRST (while we still have valid auth)
       // This is the CRITICAL step - if this succeeds, data is permanently gone
-      debugPrint('☁️ Step 3: Deleting cloud data...');
-      await _deleteAllCloudData(userId);
+      // Use timeout to handle slow networks
+      debugPrint('☁️ Step 3: Deleting cloud data (30 second timeout)...');
+      await _deleteAllCloudData(userId).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception(
+            'Cloud deletion timed out. Please check your network and try again.',
+          );
+        },
+      );
       debugPrint('✅ Cloud data deleted (${stopwatch.elapsedMilliseconds}ms)');
 
       // Cloud deletion succeeded - this is the point of no return

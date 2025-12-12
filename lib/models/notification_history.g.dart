@@ -26,7 +26,7 @@ class NotificationHistoryAdapter extends TypeAdapter<NotificationHistory> {
       isRead: fields[6] as bool,
       createdAt: fields[7] as DateTime,
       userId: fields[8] as String?,
-      isHighlighted: fields[9] as bool? ?? false,
+      isHighlighted: fields[9] as bool,
     );
   }
 

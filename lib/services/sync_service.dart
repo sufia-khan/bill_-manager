@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'hive_service.dart';
 import 'firebase_service.dart';
+import 'notification_history_service.dart';
 
 class SyncService {
   static const String lastSyncKey = 'last_sync_time';
@@ -181,25 +182,46 @@ class SyncService {
     print('👤 Current User: $currentUserId');
     print('💾 Stored User: $storedUserId');
 
-    // Check if this is a different user
+    // CRITICAL FIX: Detect user change more robustly
+    // Clear bills if:
+    // 1. Stored user is different from current user (account switch)
+    // 2. Stored user is null BUT there are existing bills (fresh login after logout)
+    final existingBills = HiveService.getAllBills(forceRefresh: true);
+    final hasPreviousUserData = existingBills.isNotEmpty;
+
     final isDifferentUser =
         storedUserId != null && storedUserId != currentUserId;
+    final isFreshLoginWithStaleData =
+        storedUserId == null && hasPreviousUserData && currentUserId != null;
+
+    print('📊 Existing bills: ${existingBills.length}');
+    print('🔄 Is different user: $isDifferentUser');
+    print('🔄 Is fresh login with stale data: $isFreshLoginWithStaleData');
 
     // Check if we already did initial sync this session
-    if (_initialSyncDoneThisSession && !isDifferentUser) {
+    if (_initialSyncDoneThisSession &&
+        !isDifferentUser &&
+        !isFreshLoginWithStaleData) {
       print('⏭️ Initial sync already done this session, skipping');
       print('========================================\n');
       return;
     }
 
-    // If different user, clear old data
-    if (isDifferentUser) {
-      print('⚠️ Different user - clearing old data');
+    // CRITICAL: Clear old data if user changed OR if there's stale data from previous user
+    if (isDifferentUser || isFreshLoginWithStaleData) {
+      print(
+        '⚠️ User changed or fresh login with stale data - clearing old bills',
+      );
       await HiveService.clearBillsOnly();
+      // Also clear notification history to prevent cross-account leak
+      await NotificationHistoryService.clearAll();
+      print('✅ Old user data cleared');
     }
 
     // Store current user ID
     if (currentUserId != null) {
+      // CRITICAL: Set current user in HiveService to invalidate cache
+      HiveService.setCurrentUserId(currentUserId);
       await HiveService.saveUserData('currentUserId', currentUserId);
     }
 
@@ -242,11 +264,16 @@ class SyncService {
         final serverBills = await FirebaseService.getAllBills();
         print('✅ Fetched ${serverBills.length} bills');
 
-        // Merge with local
+        // Merge with local - CRITICAL: Ensure userId is set correctly
         for (var serverBill in serverBills) {
           final localBill = HiveService.getBillById(serverBill.id);
           if (localBill == null || !localBill.needsSync) {
-            await HiveService.saveBill(serverBill.copyWith(needsSync: false));
+            // CRITICAL FIX: Always set userId to current user to prevent data leak
+            final billWithUser = serverBill.copyWith(
+              needsSync: false,
+              userId: currentUserId, // Ensure userId is set correctly
+            );
+            await HiveService.saveBill(billWithUser);
           }
         }
 
@@ -315,11 +342,17 @@ class SyncService {
       }
 
       // Then pull
+      final currentUserId = FirebaseService.currentUserId;
       final serverBills = await FirebaseService.getAllBills();
       for (var serverBill in serverBills) {
         final localBill = HiveService.getBillById(serverBill.id);
         if (localBill == null || !localBill.needsSync) {
-          await HiveService.saveBill(serverBill.copyWith(needsSync: false));
+          // CRITICAL FIX: Always set userId to prevent data leak
+          final billWithUser = serverBill.copyWith(
+            needsSync: false,
+            userId: currentUserId,
+          );
+          await HiveService.saveBill(billWithUser);
         }
       }
 

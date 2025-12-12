@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/bill_hive.dart';
 import '../services/hive_service.dart';
 import '../services/firebase_service.dart';
@@ -10,20 +12,137 @@ import '../services/bill_archival_service.dart';
 import '../services/notification_service.dart';
 import '../services/notification_history_service.dart';
 import '../services/trial_service.dart';
+import '../models/bill.dart';
+import '../utils/bill_status_helper.dart';
 import '../providers/notification_settings_provider.dart';
 
 class BillProvider with ChangeNotifier {
   List<BillHive> _bills = [];
+
+  // Helper to load bills safely filtered by current user
+  // CRITICAL: Uses HiveService.getBillsForUser for proper data isolation
+  List<BillHive> _loadCurrentUsersBills({bool forceRefresh = false}) {
+    final currentUserId = FirebaseService.currentUserId;
+    if (currentUserId == null || currentUserId.isEmpty) {
+      print(
+        '⚠️ _loadCurrentUsersBills: No current user - returning empty list',
+      );
+      return [];
+    }
+
+    // Use the user-filtered method to ensure data isolation
+    return HiveService.getBillsForUser(
+      currentUserId,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  // Cached pre-processed lists for UI optimization
+  List<Bill> _allProcessedBills = [];
+  List<Bill> _upcomingBills = [];
+  List<Bill> _overdueBills = [];
+  List<Bill> _paidBills = [];
+
+  // Cached totals
+  double _totalUpcomingThisMonth = 0;
+  double _totalUpcomingNext7Days = 0;
+  int _countUpcomingThisMonth = 0;
+  int _countUpcomingNext7Days = 0;
+
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
   String? _initializedForUserId; // Track which user we initialized for
   NotificationSettingsProvider? _notificationSettings;
+  Timer? _statusRefreshTimer;
 
   List<BillHive> get bills => _bills;
+
+  // Getters for cached UI data
+  List<Bill> get allProcessedBills => _allProcessedBills;
+  List<Bill> get upcomingBills => _upcomingBills;
+  List<Bill> get overdueBills => _overdueBills;
+  List<Bill> get paidBills => _paidBills;
+
+  double get totalUpcomingThisMonth => _totalUpcomingThisMonth;
+  double get totalUpcomingNext7Days => _totalUpcomingNext7Days;
+  int get countUpcomingThisMonth => _countUpcomingThisMonth;
+  int get countUpcomingNext7Days => _countUpcomingNext7Days;
+
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isInitialized => _isInitialized;
+
+  // Real-time Firestore Streams for Tabs (Requirement 1)
+  Stream<List<Bill>> getUpcomingBillsStream() {
+    final userId = FirebaseService.currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('bills')
+        .where('status', isEqualTo: 'upcoming')
+        .orderBy('dueAt')
+        .snapshots()
+        .map((snapshot) => _mapSnapshotToBills(snapshot));
+  }
+
+  Stream<List<Bill>> getOverdueBillsStream() {
+    final userId = FirebaseService.currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('bills')
+        .where('status', isEqualTo: 'overdue')
+        .orderBy(
+          'dueAt',
+        ) // Sorting might be implicitly asc, but list logic usually handles or we can reverse
+        .snapshots()
+        .map((snapshot) => _mapSnapshotToBills(snapshot));
+  }
+
+  Stream<List<Bill>> getPaidBillsStream() {
+    final userId = FirebaseService.currentUserId;
+    if (userId == null) return Stream.value([]);
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('bills')
+        .where('status', isEqualTo: 'paid')
+        .orderBy('paidAt', descending: true)
+        .snapshots()
+        .map((snapshot) => _mapSnapshotToBills(snapshot));
+  }
+
+  List<Bill> _mapSnapshotToBills(QuerySnapshot snapshot) {
+    return snapshot.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      // Ensure ID is set from doc ID if missing
+      data['id'] = doc.id;
+      // Convert to BillHive then to Legacy Bill
+      // We use BillHive.fromFirestore to parsing logic
+      final billHive = BillHive.fromFirestore(data);
+      final legacy = billHive.toLegacyBill();
+
+      // Explicitly construct Bill object to ensure types
+      return Bill(
+        id: legacy['id'],
+        title: legacy['title'],
+        vendor: legacy['vendor'],
+        amount: legacy['amount'],
+        due: legacy['due'],
+        dueAt: billHive.dueAt,
+        repeat: legacy['repeat'],
+        category: legacy['category'],
+        status: legacy['status'],
+        paidAt: billHive.paidAt,
+      );
+    }).toList();
+  }
 
   // Set notification settings provider
   void setNotificationSettings(NotificationSettingsProvider settings) {
@@ -31,18 +150,212 @@ class BillProvider with ChangeNotifier {
   }
 
   // Reset provider state (called when user changes/logs out)
+  // CRITICAL: Must clear ALL cached state to prevent data leaks between accounts
   void reset() {
+    print('🔄 BillProvider.reset() - Clearing all cached state');
     _bills = [];
+    _allProcessedBills = [];
+    _upcomingBills = [];
+    _overdueBills = [];
+    _paidBills = [];
+    _totalUpcomingThisMonth = 0;
+    _totalUpcomingNext7Days = 0;
+    _countUpcomingThisMonth = 0;
+    _countUpcomingNext7Days = 0;
     _isLoading = false;
     _error = null;
     _isInitialized = false;
     _initializedForUserId = null;
+    _statusRefreshTimer?.cancel();
+    _statusRefreshTimer = null;
     notifyListeners();
   }
 
   // Refresh UI (called when external state changes like TrialService.testMode)
   void refreshUI() {
+    _processBills(); // Re-process in case time/status changed (though usually time dependent)
     notifyListeners();
+  }
+
+  // Optimize UI performance by pre-processing bills in the provider
+  // reducing work on the UI thread during build
+  void _processBills() {
+    final now = DateTime.now();
+
+    // 1. Filter out archived and deleted bills from Hive source
+    final activeBillsHive = _bills
+        .where((billHive) => !billHive.isArchived && !billHive.isDeleted)
+        .toList();
+
+    // 2. Remove true duplicates: same title + same sequence number
+    final Map<String, BillHive> uniqueBills = {};
+    for (var billHive in activeBillsHive) {
+      final seq = billHive.recurringSequence ?? 0;
+      final key = '${billHive.title}_seq_$seq';
+
+      if (uniqueBills.containsKey(key)) {
+        final existing = uniqueBills[key]!;
+        if (billHive.dueAt.isAfter(existing.dueAt)) {
+          uniqueBills[key] = billHive;
+        }
+      } else {
+        uniqueBills[key] = billHive;
+      }
+    }
+
+    // 3. Convert to Bill format (Legacy UI Model)
+    _allProcessedBills = uniqueBills.values.map((billHive) {
+      final dueString = billHive.dueAt.toIso8601String().split('T')[0];
+      return Bill(
+        id: billHive.id,
+        title: billHive.title,
+        vendor: billHive.vendor,
+        amount: billHive.amount,
+        due: dueString,
+        dueAt: billHive.dueAt,
+        repeat: billHive.repeat,
+        category: billHive.category,
+        status: BillStatusHelper.calculateStatus(billHive),
+        paidAt: billHive.paidAt,
+      );
+    }).toList();
+
+    // 4. Split into category lists
+    _upcomingBills = _allProcessedBills
+        .where((b) => b.status == 'upcoming')
+        .toList();
+    _overdueBills = _allProcessedBills
+        .where((b) => b.status == 'overdue')
+        .toList();
+    _paidBills = _allProcessedBills.where((b) => b.status == 'paid').toList();
+
+    // 5. Sort lists
+    // Upcoming: Ascending
+    _upcomingBills.sort((a, b) {
+      final dateCompare = a.dueAt.compareTo(b.dueAt);
+      if (dateCompare != 0) return dateCompare;
+      return a.title.compareTo(b.title);
+    });
+
+    // Overdue: Descending
+    _overdueBills.sort((a, b) {
+      final dateCompare = b.dueAt.compareTo(a.dueAt);
+      if (dateCompare != 0) return dateCompare;
+      return a.title.compareTo(b.title);
+    });
+
+    // Paid: Descending
+    _paidBills.sort((a, b) {
+      final dateA = a.paidAt ?? a.dueAt;
+      final dateB = b.paidAt ?? b.dueAt;
+      final dateCompare = dateB.compareTo(dateA);
+      if (dateCompare != 0) return dateCompare;
+      return a.title.compareTo(b.title);
+    });
+
+    // 6. Calculate Totals for Dashboard
+    // Reuse 'now'
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final endOf7Days = startOfToday.add(
+      const Duration(days: 7, hours: 23, minutes: 59, seconds: 59),
+    );
+
+    // Filter UPCOMING bills that fall into ranges
+    // Note: We use _upcomingBills source which already filters by status='upcoming'
+    final thisMonthBills = _upcomingBills.where((bill) {
+      final dueDate = DateTime.parse('${bill.due}T00:00:00');
+      return !dueDate.isBefore(startOfMonth) && !dueDate.isAfter(endOfMonth);
+    }).toList();
+
+    _countUpcomingThisMonth = thisMonthBills.length;
+    _totalUpcomingThisMonth = thisMonthBills.fold(
+      0.0,
+      (sum, bill) => sum + bill.amount,
+    );
+
+    final next7DaysBills = _upcomingBills.where((bill) {
+      final dueDate = DateTime.parse('${bill.due}T00:00:00');
+      return !dueDate.isBefore(startOfToday) && !dueDate.isAfter(endOf7Days);
+    }).toList();
+
+    _countUpcomingNext7Days = next7DaysBills.length;
+    _totalUpcomingNext7Days = next7DaysBills.fold(
+      0.0,
+      (sum, bill) => sum + bill.amount,
+    );
+
+    // Schedule automatic refresh for when next bill becomes overdue
+    _scheduleStatusRefresh();
+  }
+
+  // Schedule a timer to refresh the UI when the next upcoming bill becomes overdue
+  // This ensures the bill moves to the Overdue tab exactly when the notification time is reached
+  void _scheduleStatusRefresh() {
+    _statusRefreshTimer?.cancel();
+    _statusRefreshTimer = null;
+
+    if (_upcomingBills.isEmpty) return;
+
+    DateTime? nextRefreshTime;
+    final now = DateTime.now();
+
+    for (final bill in _upcomingBills) {
+      // Find the BillHive object corresponding to this Bill to get the overdue time
+      // (Bill model is a simplified UI model, we need the raw data for calculation)
+      // Since _allProcessedBills contains simplified objects, we might need to look up or recalculate
+      // Actually, BillStatusHelper can accept BillHive.
+      // Optimization: We can reconstruct the overdue time from the Bill object fields if possible,
+      // or look up the original from _bills.
+      // Lookup is safer:
+      try {
+        final originalBill = _bills.firstWhere((b) => b.id == bill.id);
+        final overdueTime = BillStatusHelper.getOverdueTime(originalBill);
+
+        // We only care about times in the future (transitions from upcoming -> overdue)
+        if (overdueTime.isAfter(now)) {
+          if (nextRefreshTime == null ||
+              overdueTime.isBefore(nextRefreshTime)) {
+            nextRefreshTime = overdueTime;
+          }
+        }
+      } catch (e) {
+        // Skip if bill not found (shouldn't happen)
+      }
+    }
+
+    if (nextRefreshTime != null) {
+      final duration = nextRefreshTime.difference(now);
+      // Add a small buffer (1 second) to ensure we are definitely past the time when we refresh
+      final buffer = const Duration(seconds: 1);
+
+      _statusRefreshTimer = Timer(duration + buffer, () async {
+        print(
+          '⏰ Status refresh timer fired! Updating UI to reflect new overdue status...',
+        );
+        refreshUI();
+
+        // Also check if we need to generate next recurring instance immediately
+        print(
+          '⏰ Checking for overdue recurring bills to generate next instances...',
+        );
+        await checkOverdueRecurringBills();
+      });
+
+      // Only log if the wait is reasonable (less than 24 hours) to avoid log spam
+      if (duration.inHours < 24) {
+        print(
+          '⏰ Scheduled UI refresh in ${duration.inSeconds} seconds (at $nextRefreshTime)',
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _statusRefreshTimer?.cancel();
+    super.dispose();
   }
 
   // Trigger sync after changes - uses SyncService which reads needsSync flag from Hive
@@ -86,17 +399,120 @@ class BillProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Load local bills first for instant UI (offline-first approach)
-      _bills = HiveService.getAllBills();
-      print('📱 Loaded ${_bills.length} bills from local storage');
+      // CRITICAL FIX: Check for user change and clear stale data BEFORE loading bills
+      // This prevents bills from Account A appearing in Account B
+      final storedUserId = HiveService.getUserData('currentUserId') as String?;
+      final existingBillsCount = HiveService.getAllBills(
+        forceRefresh: true,
+      ).length;
+
+      print('📊 Stored User ID: $storedUserId');
+      print('📊 Current User ID: $currentUserId');
+      print('📊 Existing bills in Hive: $existingBillsCount');
+
+      // Detect if we need to clear stale data:
+      // 1. Different user logged in (stored ID != current ID)
+      // 2. Fresh login after logout (stored ID is null but there are bills, and a user is now logged in)
+      final isDifferentUser =
+          storedUserId != null && storedUserId != currentUserId;
+      final isFreshLoginWithStaleData =
+          storedUserId == null &&
+          existingBillsCount > 0 &&
+          currentUserId != null;
+
+      if (isDifferentUser || isFreshLoginWithStaleData) {
+        print('⚠️ USER CHANGE DETECTED - Clearing stale data BEFORE loading!');
+        print('   isDifferentUser: $isDifferentUser');
+        print('   isFreshLoginWithStaleData: $isFreshLoginWithStaleData');
+
+        // Clear old bills SYNCHRONOUSLY before loading
+        await HiveService.clearBillsOnly();
+
+        // Also clear notification history and scheduled tracking to prevent cross-account leak
+        await NotificationHistoryService.clearAll();
+        await NotificationService().cancelAllNotifications();
+
+        print('✅ Stale data cleared');
+      }
+
+      // Store current user ID for future checks
+      if (currentUserId != null) {
+        await HiveService.saveUserData('currentUserId', currentUserId);
+      }
+
+      // Load bills and filter by user ID (to prevent data leaks)
+      var allBills = HiveService.getAllBills(forceRefresh: true);
+
+      // MIGRATION: Assign current user ID to legacy bills (userId is null)
+      // This assumes that if we are logged in, any unidentified bills belong to us
+      // (since the previous version was single-user localized)
+      if (currentUserId != null) {
+        final legacyBills = allBills.where((b) => b.userId == null).toList();
+        if (legacyBills.isNotEmpty) {
+          print(
+            '🛠️ Migrating ${legacyBills.length} legacy bills to user: $currentUserId',
+          );
+          for (var bill in legacyBills) {
+            final updatedBill = bill.copyWith(userId: currentUserId);
+            await HiveService.saveBill(updatedBill);
+          }
+          // Refresh list after migration
+          allBills = HiveService.getAllBills(forceRefresh: true);
+        }
+      }
+
+      // Filter bills to show ONLY those belonging to the current user
+      if (currentUserId != null) {
+        _bills = allBills.where((b) => b.userId == currentUserId).toList();
+        print(
+          '📱 Filtered: Showing ${_bills.length} bills for user $currentUserId (Total in box: ${allBills.length})',
+        );
+
+        // CRITICAL FIX: Delete bills belonging to OTHER users from local storage
+        // This cleans up any leaked data from previous users
+        final otherUserBills = allBills
+            .where((b) => b.userId != null && b.userId != currentUserId)
+            .toList();
+        if (otherUserBills.isNotEmpty) {
+          print(
+            '🗑️ CLEANUP: Found ${otherUserBills.length} bills from OTHER users - deleting permanently',
+          );
+          for (var bill in otherUserBills) {
+            print(
+              '   - Deleting: "${bill.title}" (user: ${bill.userId?.substring(0, 8)}...)',
+            );
+            await HiveService.getBillsBox().delete(bill.id);
+          }
+          print(
+            '✅ Cleanup complete - deleted ${otherUserBills.length} leaked bills',
+          );
+          // Refresh after cleanup
+          allBills = HiveService.getAllBills(forceRefresh: true);
+          _bills = allBills.where((b) => b.userId == currentUserId).toList();
+        }
+      } else {
+        // If no user logged in, should theoretically show nothing or local-only bills?
+        // Safe default: show nothing to enforce login
+        print('⚠️ No user logged in - showing empty bill list');
+        _bills = [];
+      }
+
       for (var bill in _bills) {
-        print('   - ${bill.title} (${bill.id.substring(0, 8)})');
+        print(
+          '   - ${bill.title} (${bill.id.substring(0, 8)}) [User: ${bill.userId}]',
+        );
+      }
+
+      // MIGRATION / REPAIR: Ensure all Firestore documents have 'status' field
+      if (currentUserId != null) {
+        await _ensureFirestoreStatuses(currentUserId);
       }
 
       // Update UI immediately with local data
       _isLoading = false;
       _isInitialized = true;
       _initializedForUserId = currentUserId;
+      _processBills(); // Process bills before notifying
       notifyListeners();
 
       // Sync with Firebase in background if user is authenticated
@@ -105,8 +521,15 @@ class BillProvider with ChangeNotifier {
         SyncService.initialSync()
             .then((_) {
               // Reload bills after sync completes
-              _bills = HiveService.getAllBills();
-              print('✅ Background sync completed, UI updated');
+              _bills = _loadCurrentUsersBills(forceRefresh: true);
+              _processBills();
+              print(
+                '✅ Background sync completed, UI updated with ${_bills.length} bills',
+              );
+              print(
+                '✅ Background sync completed, UI updated with ${_bills.length} bills',
+              );
+              _processBills(); // Process bills after sync
               notifyListeners();
             })
             .catchError((e) {
@@ -125,13 +548,47 @@ class BillProvider with ChangeNotifier {
       // This ensures the UI is responsive during app startup
       Future.microtask(() async {
         try {
-          await runMaintenance();
-          // Check for overdue recurring bills and create next instances immediately
-          await checkOverdueRecurringBills();
-          // Check for triggered notifications and add to history (only for current user)
+          // CRITICAL: Check for missed notifications FIRST (before maintenance)
+          // This ensures notifications that fired while user was logged out are added
+          // to history with their correct original scheduled times, before any
+          // recurring bill maintenance creates new bills with adjusted times.
+          if (currentUserId != null) {
+            await NotificationHistoryService.checkMissedNotificationsForUser(
+              userId: currentUserId,
+              bills: _bills,
+            );
+
+            // Re-schedule notifications for all upcoming bills
+            // This restores device alarms that were cancelled on logout
+            print('🔄 Rescheduling notifications for user: $currentUserId');
+            await rescheduleAllNotifications();
+          }
+
+          // Check for triggered notifications from tracking box
           await NotificationHistoryService.checkAndAddTriggeredNotifications(
             currentUserId: currentUserId,
           );
+
+          // NOW run maintenance (may create new recurring bill instances)
+          await runMaintenance();
+          // Check for overdue recurring bills and create next instances
+          await checkOverdueRecurringBills();
+
+          // CRITICAL: Re-check for missed notifications AFTER maintenance
+          // This catches any newly created recurring bills that were generated as overdue
+          if (currentUserId != null) {
+            print(
+              '🔄 Re-checking missed notifications for user (post-maintenance)...',
+            );
+            // Must reload bills first to get the newly created ones?
+            // runMaintenance reloads _bills, so we are good if we use _bills
+            // But we need to be carefully accessing _bills which is on the provder
+            // Accessing _bills here is safe as we are in the provider method
+            await NotificationHistoryService.checkMissedNotificationsForUser(
+              userId: currentUserId,
+              bills: _bills,
+            );
+          }
         } catch (e) {
           print('Error running maintenance on initialization: $e');
           // Don't rethrow - maintenance failures shouldn't affect app initialization
@@ -189,14 +646,17 @@ class BillProvider with ChangeNotifier {
         clientUpdatedAt: now,
         repeat: repeat,
         needsSync: true,
+        recurringSequence: 1,
         repeatCount: repeatCount,
-        reminderTiming: reminderTiming,
-        notificationTime: notificationTime,
-        // Set recurringSequence to 1 for the first bill if it's recurring with a count
-        recurringSequence: (repeat != 'none' && repeatCount != null) ? 1 : null,
-        createdAt: now, // Set creation timestamp
+        reminderTiming: reminderTiming, // Save reminder timing
+        notificationTime: notificationTime, // Save notification time
         createdDuringProTrial:
-            TrialService.canAccessProFeatures(), // Track if created during Pro/Trial
+            TrialService.canAccessProFeatures(), // Store trial status
+        userId: FirebaseService.currentUserId, // Associate with current user
+        status: dueAt.isBefore(now)
+            ? 'overdue'
+            : 'upcoming', // Initialize status
+        processing: false,
       );
 
       // Save to local storage
@@ -225,7 +685,8 @@ class BillProvider with ChangeNotifier {
       await _showPendingNotifications();
 
       // Update local list
-      _bills = HiveService.getAllBills();
+      _bills = _loadCurrentUsersBills();
+      _processBills();
 
       // Debug: Verify the bill was saved correctly
       final savedBill = _bills.firstWhere(
@@ -288,7 +749,8 @@ class BillProvider with ChangeNotifier {
         await _showPendingNotifications();
       }
 
-      _bills = HiveService.getAllBills();
+      _bills = _loadCurrentUsersBills();
+      _processBills();
       notifyListeners();
 
       // Trigger debounced sync
@@ -301,47 +763,93 @@ class BillProvider with ChangeNotifier {
   }
 
   // Mark bill as paid
+  // CRITICAL: Updates local Hive immediately for responsive UI, then syncs to Firestore
   Future<void> markBillAsPaid(String billId) async {
     try {
       final bill = HiveService.getBillById(billId);
       if (bill != null) {
         final now = DateTime.now();
-        final isRecurring = bill.repeat != 'none';
 
-        // Mark as paid but keep visible in paid tab (not archived)
+        // 1. IMMEDIATELY update local Hive state for responsive UI
         final updatedBill = bill.copyWith(
           isPaid: true,
           paidAt: now,
-          isArchived: false, // Keep visible in paid tab
-          archivedAt: null,
+          status: 'paid',
           updatedAt: now,
           clientUpdatedAt: now,
           needsSync: true,
         );
         await HiveService.saveBill(updatedBill);
 
-        // Cancel notification for paid bill
+        // 2. Cancel notification for paid bill
         await NotificationService().cancelBillNotification(billId);
 
-        // Run recurring maintenance immediately to create next instance
-        if (isRecurring) {
-          print('Creating next instance for recurring bill: ${bill.title}');
-          // Small delay to ensure bill is saved before processing
-          await Future.delayed(const Duration(milliseconds: 100));
-          await runRecurringBillMaintenance();
+        // 3. Create next recurring instance IMMEDIATELY if applicable
+        BillHive? nextInstance;
+        if (bill.repeat != 'none') {
+          nextInstance = await RecurringBillService.createNextInstance(bill);
+          if (nextInstance != null) {
+            print(
+              '✅ Created next recurring instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence})',
+            );
+
+            // Schedule notification for the new instance
+            await _scheduleNotificationForBill(
+              nextInstance,
+              forceReschedule: true,
+            );
+
+            // NOTE: Removed "New Bill Generated" notification per user request
+            // The user does not want notifications for auto-generated recurring instances
+          }
         }
 
-        // Force refresh to get latest data after all operations
-        _bills = HiveService.getAllBills(forceRefresh: true);
+        // 4. Refresh local UI state IMMEDIATELY
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
 
-        // Trigger debounced sync
-        _triggerSync();
+        // 5. Sync to Firestore in background (non-blocking)
+        // Use a try-catch to handle offline/slow network gracefully
+        _syncPaidBillToFirestore(updatedBill, nextInstance).catchError((e) {
+          print('⚠️ Background Firestore sync failed (will retry later): $e');
+          // Mark as needing sync so it gets picked up later
+        });
+
+        // Send paid notification
+        await NotificationService().sendNotification(
+          bill: updatedBill,
+          type: 'paid',
+        );
       }
     } catch (e) {
       _error = e.toString();
       print('Error marking bill as paid: $e');
       rethrow;
+    }
+  }
+
+  // Helper method to sync paid bill and next instance to Firestore
+  // Runs in background without blocking UI
+  Future<void> _syncPaidBillToFirestore(
+    BillHive paidBill,
+    BillHive? nextInstance,
+  ) async {
+    try {
+      // Sync the paid bill
+      await FirebaseService.saveBill(paidBill);
+      await HiveService.markBillAsSynced(paidBill.id);
+
+      // Sync the next instance if created
+      if (nextInstance != null) {
+        await FirebaseService.saveBill(nextInstance);
+        await HiveService.markBillAsSynced(nextInstance.id);
+      }
+
+      print('✅ Synced paid bill and next instance to Firestore');
+    } catch (e) {
+      print('⚠️ Failed to sync to Firestore: $e');
+      // Don't rethrow - local state is already updated, sync will happen later
     }
   }
 
@@ -368,7 +876,8 @@ class BillProvider with ChangeNotifier {
         await _scheduleNotificationForBill(updatedBill, forceReschedule: true);
 
         // Force refresh to get latest data
-        _bills = HiveService.getAllBills(forceRefresh: true);
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
 
         // Trigger debounced sync
@@ -399,7 +908,8 @@ class BillProvider with ChangeNotifier {
         await HiveService.saveBill(updatedBill);
 
         // Force refresh to get latest data
-        _bills = HiveService.getAllBills(forceRefresh: true);
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
 
         // Trigger debounced sync
@@ -425,7 +935,8 @@ class BillProvider with ChangeNotifier {
         await BillArchivalService.archiveBill(bill);
 
         // Force refresh to get latest data
-        _bills = HiveService.getAllBills(forceRefresh: true);
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
 
         // Trigger debounced sync
@@ -592,7 +1103,8 @@ class BillProvider with ChangeNotifier {
       }
 
       // Force refresh to update UI immediately
-      _bills = HiveService.getAllBills(forceRefresh: true);
+      _bills = _loadCurrentUsersBills(forceRefresh: true);
+      _processBills();
       notifyListeners();
 
       // Trigger debounced sync
@@ -627,7 +1139,8 @@ class BillProvider with ChangeNotifier {
       await box.delete(billId);
 
       // Force refresh
-      _bills = HiveService.getAllBills(forceRefresh: true);
+      _bills = _loadCurrentUsersBills(forceRefresh: true);
+      _processBills();
       notifyListeners();
 
       // Trigger debounced sync
@@ -654,7 +1167,8 @@ class BillProvider with ChangeNotifier {
         await box.put(billId, restoredBill);
 
         // Force refresh to get the restored bill immediately
-        _bills = HiveService.getAllBills(forceRefresh: true);
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
 
         // Reschedule notification with userId
@@ -995,7 +1509,8 @@ class BillProvider with ChangeNotifier {
 
     try {
       await SyncService.forceSyncNow();
-      _bills = HiveService.getAllBills();
+      _bills = _loadCurrentUsersBills();
+      _processBills();
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -1020,19 +1535,21 @@ class BillProvider with ChangeNotifier {
   Future<void> runRecurringBillMaintenance() async {
     try {
       print('Running recurring bill maintenance...');
-      final createdCount = await RecurringBillService.processRecurringBills();
+      final currentUserId = FirebaseService.currentUserId;
+
+      final createdCount = await RecurringBillService.processRecurringBills(
+        userId: currentUserId,
+      );
+
       print(
         'Recurring maintenance complete. Created $createdCount new instances.',
       );
 
       if (createdCount > 0) {
         // Reload bills if new instances were created
-        _bills = HiveService.getAllBills(forceRefresh: true);
-        print('Bills reloaded. Total bills: ${_bills.length}');
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
         notifyListeners();
-
-        // Trigger debounced sync
-        _triggerSync();
       }
     } catch (e) {
       print('Error running recurring bill maintenance: $e');
@@ -1040,26 +1557,98 @@ class BillProvider with ChangeNotifier {
     }
   }
 
-  // Check for overdue recurring bills and create next instances
-  // This should be called when app comes to foreground or bills are refreshed
+  // Check for overdue recurring bills and create next instances IMMEDIATELY
+  // This is called when:
+  // 1. Status refresh timer fires (bill just became overdue)
+  // 2. App comes to foreground
+  // 3. Bills are refreshed
   Future<void> checkOverdueRecurringBills() async {
     try {
-      final now = DateTime.now();
-      final recurringBills = _bills
+      // Find all overdue recurring bills that haven't been paid
+      final overdueRecurringBills = _bills
           .where(
             (bill) =>
                 bill.repeat != 'none' &&
                 !bill.isDeleted &&
                 !bill.isPaid &&
-                bill.dueAt.isBefore(now), // Bill is overdue
+                BillStatusHelper.calculateStatus(bill) == 'overdue',
           )
           .toList();
 
-      if (recurringBills.isNotEmpty) {
-        print(
-          'Found ${recurringBills.length} overdue recurring bills - processing...',
-        );
-        await runRecurringBillMaintenance();
+      if (overdueRecurringBills.isEmpty) {
+        return;
+      }
+
+      print(
+        '⏰ Found ${overdueRecurringBills.length} overdue recurring bills - creating next instances IMMEDIATELY...',
+      );
+
+      int createdCount = 0;
+      final currentUserId = FirebaseService.currentUserId;
+
+      for (final overdueBill in overdueRecurringBills) {
+        try {
+          // Check if repeat count limit reached
+          if (overdueBill.repeatCount != null) {
+            final currentSequence = overdueBill.recurringSequence ?? 1;
+            if (currentSequence >= overdueBill.repeatCount!) {
+              print(
+                '   ⏭️ ${overdueBill.title}: Repeat limit reached, skipping',
+              );
+              continue;
+            }
+          }
+
+          // Create next instance IMMEDIATELY
+          final nextInstance = await RecurringBillService.createNextInstance(
+            overdueBill,
+          );
+
+          if (nextInstance != null) {
+            createdCount++;
+            print(
+              '   ✅ Created next instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence}) due ${nextInstance.dueAt}',
+            );
+
+            // Schedule notification for the new instance
+            await _scheduleNotificationForBill(
+              nextInstance,
+              forceReschedule: true,
+            );
+
+            // NOTE: Removed "New Bill Generated" notification per user request
+            // The user does not want notifications for auto-generated recurring instances
+
+            // Sync the new instance to Firestore in background
+            if (currentUserId != null) {
+              FirebaseService.saveBill(nextInstance)
+                  .then((_) {
+                    HiveService.markBillAsSynced(nextInstance.id);
+                    print('   ☁️ Synced ${nextInstance.title} to Firestore');
+                  })
+                  .catchError((e) {
+                    print('   ⚠️ Failed to sync to Firestore (will retry): $e');
+                  });
+            }
+          } else {
+            print(
+              '   ⏭️ ${overdueBill.title}: Next instance already exists or limit reached',
+            );
+          }
+        } catch (e) {
+          print(
+            '   ❌ Error creating next instance for ${overdueBill.title}: $e',
+          );
+        }
+      }
+
+      if (createdCount > 0) {
+        print('⏰ Created $createdCount new recurring instances');
+
+        // Reload bills and update UI IMMEDIATELY
+        _bills = _loadCurrentUsersBills(forceRefresh: true);
+        _processBills();
+        notifyListeners();
       }
     } catch (e) {
       print('Error checking overdue recurring bills: $e');
@@ -1079,7 +1668,8 @@ class BillProvider with ChangeNotifier {
 
       if (archivedCount > 0 || deletedCount > 0) {
         // Reload bills if any were archived or deleted
-        _bills = HiveService.getAllBills();
+        _bills = _loadCurrentUsersBills();
+        _processBills();
         notifyListeners();
 
         // Trigger debounced sync
@@ -1089,6 +1679,10 @@ class BillProvider with ChangeNotifier {
           'Archived $archivedCount bills, auto-deleted $deletedCount old bills',
         );
       }
+
+      // Check for overdue bills to notify (Requirement 3: Overdue Notification)
+      // This runs after maintenance to ensure everything is up to date
+      await _checkAndNotifyOverdueBills();
     } catch (e) {
       print('Error running archival maintenance: $e');
       // Don't rethrow - maintenance failures shouldn't block other operations
@@ -1210,6 +1804,7 @@ class BillProvider with ChangeNotifier {
               : null, // Set archival timestamp only if archived
           parentBillId: null,
           recurringSequence: null,
+          userId: FirebaseService.currentUserId, // Associate with current user
         );
 
         importedBills.add(bill);
@@ -1221,7 +1816,8 @@ class BillProvider with ChangeNotifier {
       }
 
       // Update local list
-      _bills = HiveService.getAllBills();
+      _bills = _loadCurrentUsersBills();
+      _processBills();
       notifyListeners();
 
       // Trigger debounced sync
@@ -1244,7 +1840,11 @@ class BillProvider with ChangeNotifier {
 
       // Run maintenance in background isolate for better performance
       // Note: For Flutter apps, we use compute() which handles isolate creation
-      final results = await compute(_runMaintenanceInIsolate, null);
+      // Pass current user ID to ensure isolate processes only this user's bills
+      final currentUserId = FirebaseService.currentUserId;
+      final params = {'userId': currentUserId};
+
+      final results = await compute(_runMaintenanceInIsolate, params);
 
       final duration = DateTime.now().difference(startTime);
       print(
@@ -1255,7 +1855,8 @@ class BillProvider with ChangeNotifier {
 
       // Reload bills if any changes were made
       if (results['billsCreated']! > 0 || results['billsArchived']! > 0) {
-        _bills = HiveService.getAllBills();
+        _bills = _loadCurrentUsersBills();
+        _processBills();
         notifyListeners();
 
         // Sync changes to Firebase
@@ -1271,10 +1872,97 @@ class BillProvider with ChangeNotifier {
     }
   }
 
-  /// Static method to run maintenance in isolate
-  /// This method is called by compute() and runs in a separate isolate
-  static Future<Map<String, int>> _runMaintenanceInIsolate(void _) async {
+  // Check for overdue bills and trigger notifications + state updates using Transactions
+  Future<void> _checkAndNotifyOverdueBills() async {
+    final now = DateTime.now();
+
+    // Filter for bills that are overdue but NOT processed yet
+    // 'status' might be null in legacy bills, so check date
+    final overdueCandidates = _bills.where((b) {
+      if (b.isPaid || b.isDeleted) return false;
+      return now.isAfter(b.dueAt);
+    }).toList();
+
+    for (final bill in overdueCandidates) {
+      // If already 'overdue' status, skip (idempotency handled here to avoid RPC calls)
+      if (bill.status == 'overdue') continue;
+
+      try {
+        print('🔒 Processing overdue transaction for ${bill.title}...');
+        await RecurringBillService.processBillEventInTransaction(
+          bill: bill,
+          eventType: 'overdue',
+        );
+      } catch (e) {
+        print('Error processing overdue bill ${bill.id}: $e');
+      }
+    }
+  }
+
+  // Ensure all bills in Firestore have a valid 'status' field
+  // This is a self-healing Step to fix legacy data for the new Real-time Queries
+  Future<void> _ensureFirestoreStatuses(String userId) async {
     try {
+      print('🔧 Verifying Firestore data integrity for user: $userId');
+      final collection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('bills');
+
+      // Get all bills (optimized: maybe check for missing status?
+      // Firestore doesn't support "where field is missing". So fetch all.)
+      final snapshot = await collection.get();
+
+      final batch = FirebaseFirestore.instance.batch();
+      bool needsCommit = false;
+      int fixedCount = 0;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['status'] == null) {
+          // Calculate status
+          final isPaid = data['isPaid'] == true;
+          final dueAtStr = data['dueAt'] as String?;
+          final dueAt = dueAtStr != null
+              ? DateTime.parse(dueAtStr)
+              : DateTime.now();
+
+          String status;
+          if (isPaid) {
+            status = 'paid';
+          } else if (DateTime.now().isAfter(dueAt)) {
+            status = 'overdue';
+          } else {
+            status = 'upcoming';
+          }
+
+          batch.update(doc.reference, {'status': status});
+          needsCommit = true;
+          fixedCount++;
+        }
+      }
+
+      if (needsCommit) {
+        print(
+          '🔧 Fixing $fixedCount bills with missing status in Firestore...',
+        );
+        await batch.commit();
+        print('✅ Firestore data repair complete.');
+      } else {
+        print('✅ Firestore data is healthy.');
+      }
+    } catch (e) {
+      print('⚠️ Error during Firestore status repair: $e');
+      // Non-fatal, proceed
+    }
+  }
+
+  static Future<Map<String, int>> _runMaintenanceInIsolate(
+    Map<String, dynamic>? params,
+  ) async {
+    try {
+      final userId = params?['userId'] as String?;
+
       // Initialize Hive in the isolate
       await HiveService.init();
 
@@ -1284,8 +1972,10 @@ class BillProvider with ChangeNotifier {
       // Purge soft-deleted bills to prevent any stale data issues
       await HiveService.purgeDeletedBills();
 
-      // Process recurring bills
-      final billsCreated = await RecurringBillService.processRecurringBills();
+      // Process recurring bills - strictly for the current user if ID is provided
+      final billsCreated = await RecurringBillService.processRecurringBills(
+        userId: userId,
+      );
 
       // Process archival
       final billsArchived = await BillArchivalService.processArchival();

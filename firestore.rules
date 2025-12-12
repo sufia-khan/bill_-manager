@@ -44,6 +44,11 @@ service cloud.firestore {
       // Allow delete if user owns the resource
       allow delete: if isOwner(userId);
     }
+
+    // User notifications
+    match /users/{userId}/notifications/{notificationId} {
+      allow read, write: if isOwner(userId);
+    }
     
     // User profile/settings (optional for future use)
     match /users/{userId} {

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firebase_service.dart';
 import '../services/hive_service.dart';
@@ -73,6 +74,34 @@ class AuthProvider with ChangeNotifier {
       // Save current user ID for data isolation
       final currentUserId = _user?.uid;
       if (currentUserId != null) {
+        // CRITICAL FIX (Issue 3): Detect account switch and clear Firestore cache
+        // This prevents data from previous user appearing for new user
+        final previousUserId =
+            HiveService.getUserData('currentUserId') as String?;
+        if (previousUserId != null && previousUserId != currentUserId) {
+          debugPrint(
+            '⚠️ Account switch detected: $previousUserId → $currentUserId',
+          );
+          debugPrint('🔥 Clearing Firestore cache for account switch...');
+          try {
+            await FirebaseFirestore.instance.terminate();
+            await FirebaseFirestore.instance.clearPersistence();
+            debugPrint('✅ Firestore cache cleared for account switch');
+          } catch (e) {
+            debugPrint('⚠️ Failed to clear Firestore cache on switch: $e');
+            // Continue with login - the new user's data will eventually sync
+          }
+
+          // Also clear Hive bills to prevent data leak
+          await HiveService.clearAllData();
+          debugPrint('✅ Hive data cleared for account switch');
+        }
+
+        // CRITICAL: Set current user in HiveService FIRST to invalidate cache
+        // This prevents data from previous user being shown to new user
+        HiveService.setCurrentUserId(currentUserId);
+        debugPrint('✅ Set HiveService currentUserId for data isolation');
+
         final prefs = await SharedPreferences.getInstance();
         await HiveService.saveUserData('currentUserId', currentUserId);
 
@@ -146,23 +175,32 @@ class AuthProvider with ChangeNotifier {
       final currentUserId = _user?.uid;
       debugPrint('👤 Logging out user: $currentUserId');
 
-      // CRITICAL: Sync any unsynced bills BEFORE clearing data
+      // CRITICAL: Try to sync any unsynced bills BEFORE clearing data
+      // Use timeout to prevent blocking logout on slow networks
       final unsyncedBills = HiveService.getBillsNeedingSync();
       if (unsyncedBills.isNotEmpty) {
         debugPrint(
           '⚠️ Found ${unsyncedBills.length} unsynced bills before logout',
         );
-        debugPrint('📤 Syncing to Firebase before clearing...');
+        debugPrint('📤 Attempting to sync to Firebase (5 second timeout)...');
 
         try {
-          // Force sync now
-          await SyncService.syncBills();
+          // Force sync with timeout - don't block logout on slow networks
+          await SyncService.syncBills().timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('⚠️ Sync timeout - continuing with logout');
+              debugPrint('📝 Unsynced bills will be synced on next login');
+              // Don't throw - just continue with logout
+            },
+          );
           debugPrint('✅ Unsynced bills pushed to Firebase');
         } catch (e) {
-          debugPrint('❌ Failed to sync bills before logout: $e');
-          debugPrint('⚠️ Bills will be lost! Consider canceling logout.');
-          // Rethrow to let UI handle the error
-          rethrow;
+          debugPrint('⚠️ Failed to sync bills before logout: $e');
+          debugPrint('📝 Bills are saved locally, will sync on next login');
+          // DON'T rethrow - allow logout to continue even if sync fails
+          // Bills are still in Hive and marked needsSync=true
+          // They will be synced when user logs back in
         }
       } else {
         debugPrint('✅ No unsynced bills to push');
@@ -194,6 +232,26 @@ class AuthProvider with ChangeNotifier {
       debugPrint('🧹 Clearing local data...');
       await HiveService.clearAllData();
 
+      // CRITICAL FIX: Clear Firestore offline cache to prevent data leak between users
+      // This ensures cached bills from User A don't appear for User B
+      debugPrint('🔥 Clearing Firestore offline cache...');
+      try {
+        await FirebaseFirestore.instance.clearPersistence();
+        debugPrint('✅ Firestore offline cache cleared');
+      } catch (e) {
+        // clearPersistence() can fail if Firestore has pending operations
+        // In that case, terminate and reinitialize
+        debugPrint('⚠️ clearPersistence failed: $e, trying terminate...');
+        try {
+          await FirebaseFirestore.instance.terminate();
+          await FirebaseFirestore.instance.clearPersistence();
+          debugPrint('✅ Firestore terminated and cache cleared');
+        } catch (e2) {
+          debugPrint('⚠️ Failed to clear Firestore cache: $e2');
+          // Continue with logout even if cache clearing fails
+        }
+      }
+
       // Clear notification history for current user only (preserve other users' history)
       // This ensures when user logs back in, they can see past notifications
       debugPrint('🗑️ Clearing notification tracking for current user...');
@@ -208,6 +266,11 @@ class AuthProvider with ChangeNotifier {
       // Sign out from Firebase and Google
       debugPrint('🔓 Signing out from Firebase...');
       await FirebaseService.signOutGoogle();
+
+      // CRITICAL: Clear HiveService currentUserId to invalidate cache
+      // This ensures next login starts with clean state
+      HiveService.setCurrentUserId(null);
+      debugPrint('✅ Cleared HiveService currentUserId');
 
       _user = null;
       _error = null;

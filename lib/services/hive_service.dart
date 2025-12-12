@@ -6,6 +6,24 @@ class HiveService {
   static const String billBoxName = 'bills';
   static const String userBoxName = 'user';
 
+  // Track current user for data isolation
+  static String? _currentUserId;
+
+  /// Set the current user ID. MUST be called on login and before loading bills.
+  /// Automatically invalidates the cache if the user changed.
+  static void setCurrentUserId(String? userId) {
+    if (_currentUserId != userId) {
+      print(
+        '👤 HiveService: User changed from $_currentUserId to $userId - invalidating cache',
+      );
+      _invalidateCache();
+      _currentUserId = userId;
+    }
+  }
+
+  /// Get the current user ID
+  static String? get currentUserId => _currentUserId;
+
   // Initialize Hive
   static Future<void> init() async {
     await Hive.initFlutter();
@@ -117,6 +135,46 @@ class HiveService {
     return _cachedBills!;
   }
 
+  // Get bills filtered by user ID - CRITICAL for preventing data leaks
+  // This should be the PRIMARY method used by providers to load bills
+  static List<BillHive> getBillsForUser(
+    String userId, {
+    bool forceRefresh = false,
+  }) {
+    // Safety check: reject if userId is empty
+    if (userId.isEmpty) {
+      print(
+        '⚠️ getBillsForUser called with empty userId - returning empty list',
+      );
+      return [];
+    }
+
+    final allBills = getAllBills(forceRefresh: forceRefresh);
+    final userBills = allBills.where((bill) => bill.userId == userId).toList();
+
+    // Debug logging to help track data isolation
+    print(
+      '📦 Filtered bills for user $userId: ${userBills.length} of ${allBills.length} total',
+    );
+
+    // Extra safety: Log any bills that belong to OTHER users (indicates potential data leak)
+    final otherUserBills = allBills
+        .where((bill) => bill.userId != null && bill.userId != userId)
+        .toList();
+    if (otherUserBills.isNotEmpty) {
+      print(
+        '⚠️ WARNING: Found ${otherUserBills.length} bills belonging to OTHER users in local storage!',
+      );
+      for (var bill in otherUserBills) {
+        print(
+          '   - "${bill.title}" belongs to user: ${bill.userId?.substring(0, 8)}...',
+        );
+      }
+    }
+
+    return userBills;
+  }
+
   // Invalidate cache when bills are modified
   static void _invalidateCache() {
     _cachedBills = null;
@@ -161,13 +219,29 @@ class HiveService {
     }
   }
 
-  // Clear all data (for logout)
+  // Clear all data (for logout) - ENHANCED for complete isolation
   static Future<void> clearAllData() async {
+    // Step 1: Clear box contents
     final billBox = getBillsBox();
     final userBox = getUserBox();
     await billBox.clear();
     await userBox.clear();
     _invalidateCache();
+
+    // Step 2: Close boxes to release any memory references
+    await billBox.close();
+    await userBox.close();
+
+    // Step 3: Reopen boxes fresh for next session
+    // This ensures no stale data remains in memory
+    await Hive.openBox<BillHive>(billBoxName);
+    await Hive.openBox(userBoxName);
+
+    // CRITICAL: Clear the current user tracking to prevent data leaks
+    _currentUserId = null;
+    print(
+      '🧹 HiveService.clearAllData() - All data cleared, boxes reopened fresh',
+    );
   }
 
   // Clear only bills data (preserves user settings like currentUserId)
@@ -186,6 +260,11 @@ class HiveService {
     final billBox = getBillsBox();
     await billBox.clear();
     _invalidateCache();
+    // Note: We DON'T clear _currentUserId here because this method is meant
+    // to preserve user context while clearing stale bills (e.g., on user switch)
+    print(
+      '🧹 HiveService.clearBillsOnly() - Bills cleared, user context preserved',
+    );
 
     // Also clear last sync time so we do a fresh pull
     final userBox = getUserBox();

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/bill_hive.dart';
 import 'notification_history_service.dart';
@@ -305,7 +306,44 @@ class NotificationService {
           '   Difference: ${now.difference(scheduledTime).inMinutes} minutes ago\n'
           '   TIP: Set due date further in future or use "Same Day" reminder',
         );
-        // Don't cancel existing alarm - it may have already fired or is about to fire
+        debugPrint(
+          '⚠️ NOTIFICATION NOT SCHEDULED - Time is in the past!\n'
+          '   Bill: ${bill.title}\n'
+          '   Scheduled Time: $scheduledTime\n'
+          '   Current Time: $now\n'
+          '   Difference: ${now.difference(scheduledTime).inMinutes} minutes ago\n'
+          '   📝 Adding to notification history as missed notification',
+        );
+
+        // Determine notification title for history
+        String historyTitle;
+        if (daysBeforeDue == 0) {
+          historyTitle = 'Bill Due Today';
+        } else if (daysBeforeDue == 1) {
+          historyTitle = 'Bill Due Tomorrow';
+        } else if (daysBeforeDue == 7) {
+          historyTitle = 'Bill Due in 1 Week';
+        } else {
+          historyTitle = 'Bill Due in $daysBeforeDue Days';
+        }
+
+        final historyBody =
+            '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
+
+        // Add to notification history as a missed notification
+        // This ensures the user sees it in the app even if they were logged out
+        debugPrint(
+          '📝 Adding missed notification to history for ${bill.title}',
+        );
+        await NotificationHistoryService.addNotificationWithTime(
+          title: historyTitle,
+          body: historyBody,
+          billId: bill.id,
+          billTitle: bill.title,
+          userId: userId,
+          sentAt: scheduledTime.toLocal(), // Use the past scheduled time
+        );
+
         return;
       }
 
@@ -449,7 +487,9 @@ class NotificationService {
     }
   }
 
-  /// Show immediate notification (for testing)
+  /// Show immediate notification
+  /// STICT RULE: Only shows device notification if userId matches currently logged in user
+  /// STICT RULE: Always saves to history regardless of user
   Future<void> showImmediateNotification(
     String title,
     String body, {
@@ -459,19 +499,38 @@ class NotificationService {
     String? userId, // Add userId parameter
   }) async {
     try {
-      debugPrint('🔔 Showing immediate notification...');
-      debugPrint('   Title: $title');
-      debugPrint('   Body: $body');
+      debugPrint('🔔 Processing immediate notification for user: $userId');
+
+      // 1. ALWAYS Save to notification history (Requirement 2 & 3A)
+      // This happens regardless of who is logged in
+      await NotificationHistoryService.addNotification(
+        title: title,
+        body: body,
+        billId: billId,
+        billTitle: billTitle,
+        userId: userId,
+      );
+      debugPrint('💾 Saved to notification history');
+
+      // 2. CONDITIONALLY Show device notification (Requirement 1 & 3B)
+      // Only if the notification belongs to the currently logged-in user
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final currentUserId = currentUser?.uid;
+
+      if (userId != null && userId != currentUserId) {
+        debugPrint(
+          '🚫 Skipping device notification: Belong to $userId, but current user is $currentUserId',
+        );
+        return;
+      }
+
+      debugPrint('🔔 Showing device notification for current user...');
 
       // Check permissions
       final enabled = await areNotificationsEnabled();
-      debugPrint('📱 Notifications enabled: $enabled');
-
       if (!enabled) {
         debugPrint('⚠️ Requesting notification permission...');
         final granted = await requestPermissions();
-        debugPrint('📱 Permission granted: $granted');
-
         if (!granted) {
           debugPrint('❌ Permission denied!');
           return;
@@ -503,7 +562,6 @@ class NotificationService {
       );
 
       final notificationId = DateTime.now().millisecondsSinceEpoch % 100000;
-      debugPrint('🔔 Notification ID: $notificationId');
 
       await _notifications.show(
         notificationId,
@@ -513,22 +571,49 @@ class NotificationService {
         payload: payload,
       );
 
-      debugPrint('✅ Immediate notification shown successfully!');
-
-      // Save to notification history with userId
-      await NotificationHistoryService.addNotification(
-        title: title,
-        body: body,
-        billId: billId,
-        billTitle: billTitle,
-        userId: userId, // Pass userId
-      );
-
-      debugPrint('💾 Saved to notification history');
+      debugPrint('✅ Immediate device notification shown successfully!');
     } catch (e, stackTrace) {
       debugPrint('❌ Error showing immediate notification: $e');
       debugPrint('Stack trace: $stackTrace');
     }
+  }
+
+  /// Centralized method to handle all bill events (Requirement 6)
+  /// Handles: Overdue, Recurring Created, Paid
+  Future<void> sendNotification({
+    required BillHive bill,
+    required String type, // 'overdue', 'recurring', 'paid'
+  }) async {
+    String title;
+    String body;
+
+    switch (type) {
+      case 'overdue':
+        title = 'Bill Overdue: ${bill.title}';
+        body =
+            'Ensure payment of \$${bill.amount} to ${bill.vendor} to avoid fees.';
+        break;
+      case 'recurring':
+        title = 'New Bill Generated: ${bill.title}';
+        body = 'A new bill for \$${bill.amount} has been created.';
+        break;
+      case 'paid':
+        title = 'Bill Paid: ${bill.title}';
+        body = 'Payment of \$${bill.amount} to ${bill.vendor} recorded.';
+        break;
+      default:
+        title = 'Bill Update: ${bill.title}';
+        body = 'Check your bill status.';
+    }
+
+    await showImmediateNotification(
+      title,
+      body,
+      billId: bill.id,
+      billTitle: bill.title,
+      userId: bill.userId,
+      payload: bill.id,
+    );
   }
 
   /// Schedule test notification (10 seconds from now)

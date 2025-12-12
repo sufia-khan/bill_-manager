@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/bill.dart';
-import '../models/bill_hive.dart';
+// BillHive import removed (unused)
 import '../providers/bill_provider.dart';
 import '../providers/currency_provider.dart';
 import '../providers/notification_badge_provider.dart';
@@ -12,7 +12,7 @@ import '../widgets/expandable_bill_card.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
-import '../utils/bill_status_helper.dart';
+// BillStatusHelper removed (unused)
 import '../services/trial_service.dart';
 import 'add_bill_screen.dart';
 import 'notification_screen.dart';
@@ -129,55 +129,6 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     });
   }
 
-  // Sort bills based on status
-  List<Bill> _sortBillsByStatus(List<Bill> bills, String status) {
-    final sortedBills = List<Bill>.from(bills);
-
-    switch (status) {
-      case 'upcoming':
-        // Ascending: Earliest due date first (e.g., Tomorrow, then Day After)
-        sortedBills.sort((a, b) {
-          final dateCompare = a.dueAt.compareTo(b.dueAt);
-          if (dateCompare != 0) return dateCompare;
-          // Tie-breaker: Title
-          return a.title.compareTo(b.title);
-        });
-        break;
-
-      case 'overdue':
-        // Descending: Most recently overdue first (e.g., Yesterday, then 2 days ago)
-        // This ensures the bills that 'just' became overdue are at the top
-        sortedBills.sort((a, b) {
-          final dateCompare = b.dueAt.compareTo(a.dueAt); // Descending
-          if (dateCompare != 0) return dateCompare;
-          // Tie-breaker: Title
-          return a.title.compareTo(b.title);
-        });
-        break;
-
-      case 'paid':
-        // Descending: Most recently paid first
-        sortedBills.sort((a, b) {
-          // Use paidAt if available, otherwise fall back to dueAt as proxy
-          final dateA = a.paidAt ?? a.dueAt;
-          final dateB = b.paidAt ?? b.dueAt;
-          final dateCompare = dateB.compareTo(dateA); // Descending
-          if (dateCompare != 0) return dateCompare;
-          // Tie-breaker: Title
-          return a.title.compareTo(b.title);
-        });
-        break;
-
-      default:
-        // Default to ascending due date
-        sortedBills.sort((a, b) {
-          return a.dueAt.compareTo(b.dueAt);
-        });
-    }
-
-    return sortedBills;
-  }
-
   @override
   void dispose() {
     _recurringBillTimer?.cancel();
@@ -203,107 +154,26 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
-        // Convert BillHive to legacy Bill format for UI
-        // Show unpaid bills AND paid bills that haven't been archived yet (within 2 days)
-        // Remove TRUE duplicates (same title + same sequence number)
-        final now = DateTime.now();
-
-        // First, filter out archived and deleted bills
-        final activeBillsHive = billProvider.bills
-            .where((billHive) => !billHive.isArchived && !billHive.isDeleted)
-            .toList();
-
-        // Remove true duplicates: same title + same sequence number
-        // Keep only one bill per (title, sequence) combination
-        final Map<String, BillHive> uniqueBills = {};
-        for (var billHive in activeBillsHive) {
-          // Create a unique key based on title and sequence
-          final seq = billHive.recurringSequence ?? 0;
-          final key = '${billHive.title}_seq_$seq';
-
-          // If we already have this (title, sequence), keep the one with later due date
-          if (uniqueBills.containsKey(key)) {
-            final existing = uniqueBills[key]!;
-            // Keep the one with later due date (more recent)
-            if (billHive.dueAt.isAfter(existing.dueAt)) {
-              uniqueBills[key] = billHive;
-            }
-          } else {
-            uniqueBills[key] = billHive;
-          }
+        // Optimizing: Use pre-processed lists from Provider
+        List<Bill> statusBills;
+        switch (selectedStatus) {
+          case 'upcoming':
+            statusBills = billProvider.upcomingBills;
+            break;
+          case 'overdue':
+            statusBills = billProvider.overdueBills;
+            break;
+          case 'paid':
+            statusBills = billProvider.paidBills;
+            break;
+          default:
+            statusBills = billProvider.upcomingBills;
         }
 
-        // Convert to Bill format
-        final bills = uniqueBills.values.map((billHive) {
-          final dueString = billHive.dueAt.toIso8601String().split('T')[0];
-          debugPrint(
-            '📋 Converting bill "${billHive.title}": dueAt=${billHive.dueAt}, due=$dueString',
-          );
-          return Bill(
-            id: billHive.id,
-            title: billHive.title,
-            vendor: billHive.vendor,
-            amount: billHive.amount,
-            due: dueString,
-            dueAt: billHive.dueAt, // Full datetime for precise sorting
-            repeat: billHive.repeat,
-            category: billHive.category,
-            status: BillStatusHelper.calculateStatus(billHive),
-            paidAt: billHive.paidAt,
-          );
-        }).toList();
-
-        // Filter by status first, then by category
-        final statusFilteredBills = bills
-            .where((b) => b.status == selectedStatus)
-            .toList();
-
-        var filteredBills = selectedCategory == 'All'
-            ? statusFilteredBills
-            : statusFilteredBills
-                  .where((b) => b.category == selectedCategory)
-                  .toList();
-
-        // Sort bills based on status
-        filteredBills = _sortBillsByStatus(filteredBills, selectedStatus);
-
-        final thisMonthTotal = billProvider.getThisMonthTotal();
-        final next7DaysTotal = billProvider.getNext7DaysTotal();
-
-        // Calculate counts (reuse 'now' from above)
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-        final startOfToday = DateTime(now.year, now.month, now.day);
-        final endOf7Days = startOfToday.add(
-          const Duration(days: 7, hours: 23, minutes: 59, seconds: 59),
-        );
-
-        // Filter for UPCOMING bills only (not paid, not overdue)
-        final thisMonthBills = bills.where((bill) {
-          final dueDate = DateTime.parse('${bill.due}T00:00:00');
-          final isInRange =
-              !dueDate.isBefore(startOfMonth) && !dueDate.isAfter(endOfMonth);
-          final isUpcoming = bill.status == 'upcoming';
-          return isInRange && isUpcoming;
-        }).toList();
-        final thisMonthCount = thisMonthBills.length;
-        final thisMonthUpcomingTotal = thisMonthBills.fold(
-          0.0,
-          (sum, bill) => sum + bill.amount,
-        );
-
-        final next7DaysBills = bills.where((bill) {
-          final dueDate = DateTime.parse('${bill.due}T00:00:00');
-          final isInRange =
-              !dueDate.isBefore(startOfToday) && !dueDate.isAfter(endOf7Days);
-          final isUpcoming = bill.status == 'upcoming';
-          return isInRange && isUpcoming;
-        }).toList();
-        final next7DaysCount = next7DaysBills.length;
-        final next7DaysUpcomingTotal = next7DaysBills.fold(
-          0.0,
-          (sum, bill) => sum + bill.amount,
-        );
+        // Filter by category (fast operation on smaller list)
+        final filteredBills = selectedCategory == 'All'
+            ? statusBills
+            : statusBills.where((b) => b.category == selectedCategory).toList();
 
         final filteredCount = filteredBills.length;
         final filteredAmount = filteredBills.fold(
@@ -311,13 +181,23 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           (sum, bill) => sum + bill.amount,
         );
 
+        // Get pre-calculated totals from provider
+        final thisMonthTotal = billProvider.totalUpcomingThisMonth;
+        final thisMonthCount = billProvider.countUpcomingThisMonth;
+        final next7DaysTotal = billProvider.totalUpcomingNext7Days;
+        final next7DaysCount = billProvider.countUpcomingNext7Days;
+
+        // Use allProcessedBills for the "all bills" argument if needed,
+        // though it seems unused in _buildScaffold based on analysis
+        final allBills = billProvider.allProcessedBills;
+
         return _buildScaffold(
           context,
-          bills,
+          allBills,
           filteredBills,
-          thisMonthUpcomingTotal,
+          thisMonthTotal,
           thisMonthCount,
-          next7DaysUpcomingTotal,
+          next7DaysTotal,
           next7DaysCount,
           filteredCount,
           filteredAmount,

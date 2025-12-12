@@ -76,6 +76,15 @@ class BillHive extends HiveObject {
   @HiveField(23)
   bool? createdDuringProTrial; // True if created while user had Pro/Trial access
 
+  @HiveField(24)
+  String? userId; // Owner of the bill
+
+  @HiveField(25)
+  String? status; // 'upcoming', 'overdue', 'paid' - persisted for Firestore queries
+
+  @HiveField(26)
+  bool processing; // Transaction lock to prevent duplicate handling
+
   BillHive({
     required this.id,
     required this.title,
@@ -101,6 +110,9 @@ class BillHive extends HiveObject {
     this.isPinned = false,
     this.createdAt,
     this.createdDuringProTrial,
+    this.userId,
+    this.status,
+    this.processing = false,
   });
 
   // Convert to Firestore format
@@ -129,6 +141,9 @@ class BillHive extends HiveObject {
       'isPinned': isPinned,
       'createdAt': createdAt?.toIso8601String(),
       'createdDuringProTrial': createdDuringProTrial,
+      'userId': userId,
+      'status': status,
+      'processing': processing,
     };
   }
 
@@ -165,6 +180,9 @@ class BillHive extends HiveObject {
           ? DateTime.parse(data['createdAt'] as String)
           : null,
       createdDuringProTrial: data['createdDuringProTrial'] as bool?,
+      userId: data['userId'] as String?,
+      status: data['status'] as String?,
+      processing: data['processing'] as bool? ?? false,
     );
   }
 
@@ -239,6 +257,9 @@ class BillHive extends HiveObject {
     bool? isPinned,
     DateTime? createdAt,
     bool? createdDuringProTrial,
+    String? userId,
+    String? status,
+    bool? processing,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -266,6 +287,9 @@ class BillHive extends HiveObject {
       createdAt: createdAt ?? this.createdAt,
       createdDuringProTrial:
           createdDuringProTrial ?? this.createdDuringProTrial,
+      userId: userId ?? this.userId,
+      status: status ?? this.status,
+      processing: processing ?? this.processing,
     );
   }
 }

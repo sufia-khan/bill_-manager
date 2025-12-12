@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/notification_history.dart';
 import '../providers/notification_badge_provider.dart';
 import '../providers/currency_provider.dart';
 import '../services/notification_history_service.dart';
 import '../services/pending_notification_service.dart';
-import '../services/hive_service.dart';
 
 class NotificationScreen extends StatefulWidget {
   final String? highlightNotificationId;
@@ -25,48 +26,24 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  List<NotificationHistory> _notifications = [];
-  bool _isLoading = false;
-  bool _hasMore = true;
-  int _currentPage = 0;
-  static const int _pageSize = 20;
   String? _highlightedId;
   Timer? _highlightTimer;
-  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _initializeNotifications();
-    // Refresh every 30 seconds to pick up new notifications
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _refreshNotifications();
-    });
   }
 
   @override
   void dispose() {
     _highlightTimer?.cancel();
-    _refreshTimer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _refreshNotifications() async {
-    await PendingNotificationService.processPendingNotifications();
-    if (mounted) {
-      await _loadNotifications();
-    }
   }
 
   Future<void> _initializeNotifications() async {
     await PendingNotificationService.processPendingNotifications();
     await _checkTriggeredNotifications();
-    // Remove duplicates before loading
-    final removedCount = await NotificationHistoryService.removeDuplicates();
-    if (removedCount > 0) {
-      debugPrint('🧹 Removed $removedCount duplicate notifications on init');
-    }
-    await _loadNotifications();
     await _markAllAsReadSilently();
 
     if (widget.highlightNotificationId != null) {
@@ -81,10 +58,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _markAllAsReadSilently() async {
     try {
-      await NotificationHistoryService.markAllAsRead();
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      await NotificationHistoryService.markAllAsRead(userId: currentUserId);
       if (mounted) {
         context.read<NotificationBadgeProvider>().forceRefresh();
-        setState(() {});
       }
     } catch (e) {
       debugPrint('Error marking notifications as read: $e');
@@ -93,76 +70,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _checkTriggeredNotifications() async {
     try {
-      final currentUserId = HiveService.getUserData('currentUserId') as String?;
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       await NotificationHistoryService.checkAndAddTriggeredNotifications(
         currentUserId: currentUserId,
       );
     } catch (e) {
       debugPrint('Error checking triggered notifications: $e');
     }
-  }
-
-  Future<void> _loadNotifications({bool loadMore = false}) async {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
-
-    try {
-      if (!loadMore) {
-        _currentPage = 0;
-        _notifications.clear();
-      } else {
-        _currentPage++;
-      }
-
-      final offset = _currentPage * _pageSize;
-      final currentUserId = HiveService.getUserData('currentUserId') as String?;
-      final newNotifications = NotificationHistoryService.getNotifications(
-        offset: offset,
-        limit: _pageSize,
-        userId: currentUserId,
-      );
-
-      // Remove duplicates from the list (same billId on same day)
-      final uniqueNotifications = _removeDuplicatesFromList(newNotifications);
-
-      setState(() {
-        if (uniqueNotifications.isNotEmpty) {
-          _notifications.addAll(uniqueNotifications);
-        }
-        _hasMore = newNotifications.length == _pageSize;
-        _isLoading = false;
-      });
-    } catch (e) {
-      debugPrint('Error loading notifications: $e');
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  // Remove duplicates from the loaded list (client-side dedup)
-  List<NotificationHistory> _removeDuplicatesFromList(
-    List<NotificationHistory> notifications,
-  ) {
-    final seen = <String>{};
-    final unique = <NotificationHistory>[];
-
-    for (final n in notifications) {
-      // Create a unique key based on billId + day
-      final dayKey = n.billId != null
-          ? '${n.billId}_${n.sentAt.year}_${n.sentAt.month}_${n.sentAt.day}'
-          : '${n.title}_${n.body}_${n.sentAt.year}_${n.sentAt.month}_${n.sentAt.day}';
-
-      if (!seen.contains(dayKey)) {
-        seen.add(dayKey);
-        unique.add(n);
-      }
-    }
-
-    return unique;
   }
 
   Future<void> _clearAllNotifications() async {
@@ -221,8 +135,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
 
     if (confirm == true) {
-      await NotificationHistoryService.clearAll();
-      _loadNotifications();
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      await NotificationHistoryService.clearAll(userId: currentUserId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -245,31 +159,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _deleteNotification(String id) async {
-    await NotificationHistoryService.deleteNotification(id);
-    setState(() {
-      _notifications.removeWhere((n) => n.id == id);
-    });
-  }
-
-  String _getTimeAgo(DateTime dateTime) {
-    return timeago.format(dateTime, locale: 'en_short');
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final notificationDate = DateTime(
-      dateTime.year,
-      dateTime.month,
-      dateTime.day,
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    await NotificationHistoryService.deleteNotification(
+      id,
+      userId: currentUserId,
     );
-
-    if (notificationDate == today) {
-      return 'Today at ${DateFormat('h:mm a').format(dateTime)}';
-    } else if (notificationDate == today.subtract(const Duration(days: 1))) {
-      return 'Yesterday at ${DateFormat('h:mm a').format(dateTime)}';
-    }
-    return DateFormat('MMM d, h:mm a').format(dateTime);
   }
 
   IconData _getIconForNotification(NotificationHistory notification) {
@@ -336,7 +230,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = HiveService.getUserData('currentUserId') as String?;
+    // Use FirebaseAuth for the source of truth for Firestore permissions
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     final unreadCount = NotificationHistoryService.getUnreadCount(
       userId: currentUserId,
     );
@@ -369,26 +264,25 @@ class _NotificationScreenState extends State<NotificationScreen> {
               ),
             ),
             actions: [
-              if (_notifications.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: IconButton(
-                    onPressed: _clearAllNotifications,
-                    icon: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.delete_sweep_outlined,
-                        color: Color(0xFF6B7280),
-                        size: 20,
-                      ),
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: IconButton(
+                  onPressed: _clearAllNotifications,
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    tooltip: 'Clear All',
+                    child: const Icon(
+                      Icons.delete_sweep_outlined,
+                      color: Color(0xFF6B7280),
+                      size: 20,
+                    ),
                   ),
+                  tooltip: 'Clear All',
                 ),
+              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.only(left: 60, bottom: 16),
@@ -449,22 +343,137 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
           ),
 
-          // Content
-          _notifications.isEmpty && !_isLoading
-              ? SliverFillRemaining(child: _buildEmptyState())
-              : SliverPadding(
+          // Content using Firestore Stream
+          if (currentUserId == null)
+            SliverFillRemaining(child: _buildEmptyState())
+          else
+            StreamBuilder<QuerySnapshot>(
+              stream:
+                  NotificationHistoryService.getFirestoreNotificationsStream(
+                    currentUserId,
+                  ),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  final error = snapshot.error.toString();
+                  final isPermissionError =
+                      error.contains('permission-denied') ||
+                      error.contains('PERMISSION_DENIED');
+
+                  return SliverFillRemaining(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: Colors.red.shade400,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              isPermissionError
+                                  ? 'Access Denied'
+                                  : 'Something went wrong',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              isPermissionError
+                                  ? 'Please try logging out and logging back in to refresh your session.\nIf the issue persists, ensure Firestore rules are deployed.'
+                                  : 'Error: $error',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                                height: 1.5,
+                              ),
+                            ),
+                            if (isPermissionError) ...[
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  await FirebaseAuth.instance.signOut();
+                                  if (context.mounted) {
+                                    Navigator.of(
+                                      context,
+                                    ).popUntil((route) => route.isFirst);
+                                  }
+                                },
+                                icon: const Icon(Icons.logout),
+                                label: const Text('Log Out'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF97316),
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFF97316),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return SliverFillRemaining(child: _buildEmptyState());
+                }
+
+                // Convert snapshots to NotificationHistory objects
+                final notifications = snapshot.data!.docs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  // Handle both 'timestamp' (int/long) and Firestore Timestamp
+                  final rawTimestamp = data['timestamp'];
+                  DateTime sentAt;
+                  if (rawTimestamp is Timestamp) {
+                    sentAt = rawTimestamp.toDate();
+                  } else if (rawTimestamp is int) {
+                    sentAt = DateTime.fromMillisecondsSinceEpoch(rawTimestamp);
+                  } else {
+                    sentAt = DateTime.now(); // Fallback
+                  }
+
+                  return NotificationHistory(
+                    id: doc.id,
+                    title: data['title'] as String,
+                    body: data['body'] as String,
+                    billId: data['billId'] as String?,
+                    billTitle: data['billTitle'] as String?,
+                    isRead:
+                        (data['status'] == 'read') || (data['isRead'] == true),
+                    sentAt: sentAt,
+                    createdAt: sentAt,
+                    userId: currentUserId,
+                  );
+                }).toList();
+
+                return SliverPadding(
                   padding: const EdgeInsets.all(16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      if (index == _notifications.length) {
-                        return _hasMore
-                            ? _buildLoadMoreButton()
-                            : const SizedBox.shrink();
-                      }
-                      return _buildNotificationCard(_notifications[index]);
-                    }, childCount: _notifications.length + 1),
+                      return _buildNotificationCard(notifications[index]);
+                    }, childCount: notifications.length),
                   ),
-                ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -518,70 +527,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildLoadMoreButton() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Center(
-        child: _isLoading
-            ? const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF97316)),
-                ),
-              )
-            : Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFF97316), Color(0xFFEA580C)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFF97316).withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => _loadNotifications(loadMore: true),
-                    borderRadius: BorderRadius.circular(12),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.expand_more,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Load More',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -659,8 +604,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
             child: InkWell(
               onTap: () async {
                 if (!notification.isRead) {
-                  await NotificationHistoryService.markAsRead(notification.id);
-                  _loadNotifications();
+                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                  await NotificationHistoryService.markAsRead(
+                    notification.id,
+                    userId: currentUserId,
+                  );
                 }
               },
               borderRadius: BorderRadius.circular(20),
@@ -798,70 +746,32 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                       color: const Color(
                                         0xFF8B5CF6,
                                       ).withOpacity(0.3),
-                                      width: 1,
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.repeat_rounded,
-                                        size: 12,
-                                        color: Color(0xFF8B5CF6),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        billDetails['isUnlimited'] == true
-                                            ? '#${billDetails['currentSequence']}'
-                                            : '${billDetails['currentSequence']} of ${billDetails['totalSequence']}',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF8B5CF6),
-                                        ),
-                                      ),
-                                    ],
+                                  child: Text(
+                                    billDetails['isUnlimited'] == true
+                                        ? '#${billDetails['currentSequence']}'
+                                        : '${billDetails['currentSequence']} of ${billDetails['totalSequence']}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF8B5CF6),
+                                    ),
                                   ),
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          // Time row
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.access_time_rounded,
-                                size: 14,
-                                color: Colors.grey.shade400,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _formatDateTime(notification.sentAt),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade400,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _getTimeAgo(notification.sentAt),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade400,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 8),
+                          // Time
+                          Text(
+                            timeago.format(
+                              notification.sentAt,
+                              locale: 'en_short',
+                            ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade400,
+                            ),
                           ),
                         ],
                       ),

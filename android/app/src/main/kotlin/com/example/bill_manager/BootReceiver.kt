@@ -53,9 +53,12 @@ class BootReceiver : BroadcastReceiver() {
                     val repeatCount = bill.getInt("repeatCount")
                     var dueTime = bill.getLong("dueTime")
                     
-                    // If due time is in the past, calculate next due time
+                    // CRITICAL FIX: If due time is in the past, do NOT reschedule
+                    // Past-due bills should remain overdue, not be rescheduled to future
+                    // The Flutter app will handle creating proper next instances for recurring bills
                     if (dueTime <= now) {
-                        dueTime = calculateNextDueTime(now, recurringType)
+                        Log.d("BootReceiver", "Skipping past-due bill: $title (due: $dueTime, now: $now)")
+                        continue
                     }
                     
                     val notificationId = (billId + sequence.toString()).hashCode()

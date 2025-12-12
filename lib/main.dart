@@ -356,6 +356,13 @@ class _AuthWrapperState extends State<AuthWrapper>
 
         // If not authenticated, reset flags and show login
         if (!authProvider.isAuthenticated) {
+          // CRITICAL: Reset BillProvider to clear cached data from previous user
+          // This prevents bills from Account A showing up for Account B
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              context.read<BillProvider>().reset();
+            }
+          });
           // Reset all flags when user logs out
           _hasLoadedCurrency = false;
           _hasShownPermissionDialog = false;
