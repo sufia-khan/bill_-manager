@@ -14,6 +14,51 @@ class SyncService {
   // Track if initial sync was done this session (to avoid repeated full syncs)
   static bool _initialSyncDoneThisSession = false;
 
+  // CRITICAL: Track which user the sync service is bound to
+  // This prevents syncing data to wrong account after account switch
+  static String? _boundUserId;
+
+  /// Start sync service bound to a specific user.
+  /// MUST be called after login before any sync operations.
+  static void start(String userId) {
+    print('🔄 SyncService.start() for user: $userId');
+    _boundUserId = userId;
+    _initialSyncDoneThisSession = false;
+    startPeriodicSync();
+  }
+
+  /// Stop sync service completely.
+  /// MUST be called on logout before clearing data.
+  static void stop() {
+    print('🛑 SyncService.stop() - Clearing user binding');
+    _boundUserId = null;
+    _initialSyncDoneThisSession = false;
+    stopPeriodicSync();
+  }
+
+  /// Validate that sync can proceed for current user.
+  /// Returns false and logs warning if user mismatch detected.
+  static bool _validateUserBinding() {
+    final currentUserId = FirebaseService.currentUserId;
+
+    // No user logged in
+    if (currentUserId == null) {
+      print('❌ Sync rejected: No user logged in');
+      return false;
+    }
+
+    // User mismatch - sync bound to different user
+    if (_boundUserId != null && _boundUserId != currentUserId) {
+      print('⚠️ SYNC REJECTED: User mismatch!');
+      print('   Bound to: $_boundUserId');
+      print('   Current:  $currentUserId');
+      print('   This prevents data leak between accounts.');
+      return false;
+    }
+
+    return true;
+  }
+
   // Start periodic sync (every 30 minutes - ONLY pushes local changes, no reads)
   // Full sync only happens on login, not periodically
   static void startPeriodicSync() {
@@ -66,7 +111,8 @@ class SyncService {
   static Future<void> _pushOnlySync() async {
     if (_isSyncing) return;
     if (!await isOnline()) return;
-    if (FirebaseService.currentUserId == null) return;
+    // CRITICAL: Validate user binding to prevent data leak
+    if (!_validateUserBinding()) return;
 
     _isSyncing = true;
     try {
@@ -110,8 +156,9 @@ class SyncService {
       return;
     }
 
-    if (FirebaseService.currentUserId == null) {
-      print('❌ User not authenticated, skipping sync');
+    // CRITICAL: Validate user binding to prevent data leak
+    if (!_validateUserBinding()) {
+      print('========================================\n');
       return;
     }
 

@@ -89,8 +89,14 @@ class HiveService {
   }
 
   // Get user box
-  static Box getUserBox() {
-    return Hive.box(userBoxName);
+  static Box? getUserBox() {
+    try {
+      if (!Hive.isBoxOpen(userBoxName)) return null;
+      return Hive.box(userBoxName);
+    } catch (e) {
+      print('⚠️ getUserBox failed: $e');
+      return null;
+    }
   }
 
   // Add or update bill
@@ -203,10 +209,25 @@ class HiveService {
     }
   }
 
-  // Get bills that need sync
+  // Get bills that need sync - ONLY for current user and non-deleted
   static List<BillHive> getBillsNeedingSync() {
     final box = getBillsBox();
-    return box.values.where((bill) => bill.needsSync).toList();
+    final currentUserId = _currentUserId;
+
+    return box.values.where((bill) {
+      // Must need sync
+      if (!bill.needsSync) return false;
+
+      // CRITICAL FIX: Only count bills for current user
+      // This prevents showing wrong count on logout
+      if (currentUserId != null &&
+          bill.userId != null &&
+          bill.userId != currentUserId) {
+        return false;
+      }
+
+      return true;
+    }).toList();
   }
 
   // Mark bill as synced
@@ -224,18 +245,30 @@ class HiveService {
     // Step 1: Clear box contents
     final billBox = getBillsBox();
     final userBox = getUserBox();
-    await billBox.clear();
-    await userBox.clear();
-    _invalidateCache();
+    if (userBox != null) {
+      // Check if userBox is available
+      await billBox.clear();
+      await userBox.clear();
+      _invalidateCache();
 
-    // Step 2: Close boxes to release any memory references
-    await billBox.close();
-    await userBox.close();
+      // Step 2: Close boxes to release any memory references
+      await billBox.close();
+      await userBox.close();
 
-    // Step 3: Reopen boxes fresh for next session
-    // This ensures no stale data remains in memory
-    await Hive.openBox<BillHive>(billBoxName);
-    await Hive.openBox(userBoxName);
+      // Step 3: Reopen boxes fresh for next session
+      // This ensures no stale data remains in memory
+      await Hive.openBox<BillHive>(billBoxName);
+      await Hive.openBox(userBoxName);
+    } else {
+      // If userBox was null, we can't clear it, but we can still clear billBox
+      await billBox.clear();
+      _invalidateCache();
+      await billBox.close();
+      await Hive.openBox<BillHive>(billBoxName);
+      print(
+        '⚠️ HiveService.clearAllData() - User box not available, only bill box cleared.',
+      );
+    }
 
     // CRITICAL: Clear the current user tracking to prevent data leaks
     _currentUserId = null;
@@ -268,7 +301,9 @@ class HiveService {
 
     // Also clear last sync time so we do a fresh pull
     final userBox = getUserBox();
-    await userBox.delete('last_sync_time');
+    if (userBox != null) {
+      await userBox.delete('last_sync_time');
+    }
   }
 
   // Hard delete all soft-deleted bills (permanently remove from database)
@@ -320,13 +355,23 @@ class HiveService {
   // Save user data
   static Future<void> saveUserData(String key, dynamic value) async {
     final box = getUserBox();
-    await box.put(key, value);
+    if (box != null) {
+      await box.put(key, value);
+    } else {
+      print('⚠️ saveUserData($key) failed: User box not available.');
+    }
   }
 
   // Get user data
   static dynamic getUserData(String key) {
-    final box = getUserBox();
-    return box.get(key);
+    try {
+      final box = getUserBox();
+      if (box == null) return null;
+      return box.get(key);
+    } catch (e) {
+      print('⚠️ getUserData($key) failed: $e');
+      return null;
+    }
   }
 
   // Migration: Add new fields to existing bills

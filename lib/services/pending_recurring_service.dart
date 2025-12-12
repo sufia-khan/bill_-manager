@@ -42,8 +42,8 @@ class PendingRecurringService {
           final title = billData['title'] as String;
           final amount = (billData['amount'] as num).toDouble();
           final vendor = billData['vendor'] as String;
-          // userId is stored but not used currently - kept for future user filtering
-          // final userId = billData['userId'] as String?;
+          // CRITICAL: Extract userId to prevent cross-account data access
+          final userId = billData['userId'] as String?;
           final recurringType = billData['recurringType'] as String;
           final sequence = billData['sequence'] as int;
           final repeatCount = billData['repeatCount'] as int;
@@ -52,7 +52,10 @@ class PendingRecurringService {
           final dueAt = DateTime.fromMillisecondsSinceEpoch(dueTime);
 
           // Check if this bill instance already exists
-          final existingBills = HiveService.getAllBills();
+          // CRITICAL FIX: Filter by userId to prevent data leak between accounts
+          final existingBills = userId != null && userId.isNotEmpty
+              ? HiveService.getBillsForUser(userId)
+              : HiveService.getAllBills();
           final alreadyExists = existingBills.any(
             (b) =>
                 b.parentBillId == billId &&
@@ -88,6 +91,24 @@ class PendingRecurringService {
 
           // Create new bill instance
           final now = DateTime.now();
+
+          // CRITICAL FIX: Calculate notificationTime from dueAt for 1-minute testing
+          // For 1-minute testing, the notificationTime must match the dueAt time
+          // For regular bills, keep the parent's notification time
+          String? newNotificationTime;
+          if (recurringType.toLowerCase() == '1 minute (testing)') {
+            // Extract hour:minute from dueAt for 1-minute testing
+            final h = dueAt.hour.toString().padLeft(2, '0');
+            final m = dueAt.minute.toString().padLeft(2, '0');
+            newNotificationTime = '$h:$m';
+            debugPrint(
+              '📌 Calculated notificationTime for 1-min testing: $newNotificationTime (from dueAt: $dueAt)',
+            );
+          } else {
+            // For regular recurring bills, keep the same notification time as parent
+            newNotificationTime = parentBill.notificationTime;
+          }
+
           final newBill = BillHive(
             id: const Uuid().v4(),
             title: title,
@@ -109,7 +130,7 @@ class PendingRecurringService {
             recurringSequence: sequence,
             repeatCount: repeatCount > 0 ? repeatCount : null,
             reminderTiming: parentBill.reminderTiming ?? 'Same Day',
-            notificationTime: parentBill.notificationTime,
+            notificationTime: newNotificationTime, // FIXED: Use calculated time
           );
 
           await HiveService.saveBill(newBill);

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/bill_hive.dart';
+import 'hive_service.dart';
 
 /// Singleton GoogleSignIn instance for consistent state management
 /// This prevents issues with multiple instances having different cached states
@@ -79,8 +80,19 @@ class FirebaseService {
 
   /// Complete sign out from Google and Firebase
   /// This ensures account picker appears next time
+  /// CRITICAL: Clears local bills to prevent data leak between accounts
   static Future<void> signOutGoogle() async {
     debugPrint('[Auth] Starting complete sign out');
+
+    // 0. CRITICAL: Clear local bills BEFORE signing out to prevent data leak
+    // This ensures no bills from this account remain in local storage
+    try {
+      await HiveService.clearBillsOnly();
+      debugPrint('[Auth] Local bills cleared');
+    } catch (e) {
+      debugPrint('[Auth] Failed to clear local bills: $e');
+      // Continue with sign out even if clearing fails
+    }
 
     // 1. Disconnect Google (removes app authorization, forces account picker)
     try {

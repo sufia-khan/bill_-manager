@@ -121,9 +121,11 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
   void _startRecurringBillTimer() {
     _recurringBillTimer?.cancel();
-    // Check every 15 seconds for 1-minute testing mode
-    _recurringBillTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    // CRITICAL FIX: Changed from 15 seconds to 60 seconds to reduce duplicate triggers
+    // The status refresh timer handles immediate overdue detection
+    _recurringBillTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) {
+        // Only run if not already being processed elsewhere
         context.read<BillProvider>().runRecurringBillMaintenance();
       }
     });
@@ -154,6 +156,17 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
+        // CRITICAL FIX: Show loading indicator FIRST before any data
+        // This prevents flash of previous account's bills
+        if (!billProvider.isInitialized || billProvider.isLoading) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: const Center(
+              child: CircularProgressIndicator(color: Color(0xFFF97316)),
+            ),
+          );
+        }
+
         // Optimizing: Use pre-processed lists from Provider
         List<Bill> statusBills;
         switch (selectedStatus) {

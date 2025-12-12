@@ -109,7 +109,8 @@ class BillArchivalService {
   /// Returns the count of bills that were archived
   /// Optimized with batch processing and early filtering
   /// PRO FEATURE: Auto-archival only works for Pro/Trial users
-  static Future<int> processArchival() async {
+  /// [userId] - Optional user ID to filter bills (recommended to prevent cross-account access)
+  static Future<int> processArchival({String? userId}) async {
     try {
       // Check if user has Pro access for auto-archival
       if (!TrialService.canArchiveBills()) {
@@ -128,7 +129,10 @@ class BillArchivalService {
       final now = DateTime.now();
 
       // Get all paid bills that are not archived - use cached version
-      final allBills = HiveService.getAllBills();
+      // CRITICAL FIX: Filter by userId to prevent cross-account archival
+      final allBills = userId != null && userId.isNotEmpty
+          ? HiveService.getBillsForUser(userId)
+          : HiveService.getAllBills();
       final paidBills = allBills
           .where(
             (bill) => bill.isPaid && !bill.isArchived && bill.paidAt != null,

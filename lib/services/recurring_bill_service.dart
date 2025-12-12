@@ -3,15 +3,23 @@ import 'package:uuid/uuid.dart';
 import '../models/bill_hive.dart';
 import '../utils/logger.dart';
 import 'hive_service.dart';
-import 'notification_service.dart';
 
 /// Service for managing recurring bill operations
 /// Handles automatic creation of recurring bill instances
 class RecurringBillService {
   static const String _tag = 'RecurringBillService';
 
-  // Lock to prevent concurrent processing
+  // CRITICAL: Global lock to prevent concurrent processing from ANY source
+  // This prevents race conditions between:
+  // - processRecurringBills()
+  // - createNextInstance()
+  // - checkOverdueRecurringBills()
   static bool _isProcessing = false;
+
+  // CRITICAL: Track recently created instances to prevent duplicates
+  // Key: parentBillId:sequence, cleared after 60 seconds
+  static final Set<String> _recentlyCreatedInstances = {};
+  static DateTime? _lastCleanupTime;
 
   /// Calculate the next due date based on recurring type
   /// Handles weekly, monthly, quarterly, and yearly calculations
@@ -106,42 +114,48 @@ class RecurringBillService {
 
   /// Check if next instance of a recurring bill already exists
   /// Returns true if a bill with matching parentBillId and due date exists
+  /// [seriesParentId] - The root parent ID of the recurring series
   /// [excludeBillId] - ID of the bill being processed (to exclude from check)
   /// [userId] - Optional user ID to filter bills (prevents cross-account checks)
   /// Returns false on error to prevent duplicate creation
   static Future<bool> hasNextInstance(
-    String parentBillId,
+    String seriesParentId,
     DateTime nextDueDate, {
     String? excludeBillId,
     String? userId,
   }) async {
     try {
       // Validate input
-      if (parentBillId.isEmpty) {
-        throw ArgumentError('Parent bill ID cannot be empty');
+      if (seriesParentId.isEmpty) {
+        throw ArgumentError('Series parent ID cannot be empty');
       }
 
       // CRITICAL: Use user-filtered bills if userId is provided to prevent cross-account checks
       final List<BillHive> allBills;
       if (userId != null && userId.isNotEmpty) {
-        allBills = HiveService.getBillsForUser(userId);
+        allBills = HiveService.getBillsForUser(userId, forceRefresh: true);
       } else {
-        allBills = HiveService.getAllBills();
+        allBills = HiveService.getAllBills(forceRefresh: true);
       }
 
-      // Check if any bill has this parentBillId and a due date close to nextDueDate
+      // Check if any bill has this seriesParentId and a due date close to nextDueDate
       // Using 30-second tolerance for 1-minute testing, works for all intervals
       final startRange = nextDueDate.subtract(const Duration(seconds: 30));
       final endRange = nextDueDate.add(const Duration(seconds: 30));
 
-      return allBills.any(
-        (bill) =>
-            bill.id != excludeBillId && // Exclude the source bill
-            bill.parentBillId == parentBillId &&
-            bill.dueAt.isAfter(startRange) &&
-            bill.dueAt.isBefore(endRange) &&
-            !bill.isDeleted,
-      );
+      return allBills.any((bill) {
+        if (bill.id == excludeBillId) return false; // Exclude the source bill
+        if (bill.isDeleted) return false; // Skip deleted bills
+
+        // CRITICAL FIX: A bill belongs to this series if:
+        // 1. Its parentBillId matches the seriesParentId, OR
+        // 2. Its own ID is the seriesParentId (it's the original bill)
+        final billSeriesId = bill.parentBillId ?? bill.id;
+        if (billSeriesId != seriesParentId) return false;
+
+        // Check if due date is within range
+        return bill.dueAt.isAfter(startRange) && bill.dueAt.isBefore(endRange);
+      });
     } catch (e, stackTrace) {
       Logger.error(
         'Failed to check for next instance',
@@ -154,10 +168,54 @@ class RecurringBillService {
     }
   }
 
+  /// Clean up old entries from recently created tracking set
+  static void _cleanupRecentlyCreated() {
+    final now = DateTime.now();
+    if (_lastCleanupTime == null ||
+        now.difference(_lastCleanupTime!).inSeconds > 60) {
+      _recentlyCreatedInstances.clear();
+      _lastCleanupTime = now;
+    }
+  }
+
   /// Create the next instance of a recurring bill
   /// Copies data from parent bill and sets new due date
   /// Returns the created bill or null if creation fails
+  /// CRITICAL: Uses global lock and tracking to prevent duplicates
   static Future<BillHive?> createNextInstance(BillHive parentBill) async {
+    // CRITICAL: Clean up old tracking entries periodically
+    _cleanupRecentlyCreated();
+
+    // Calculate seriesParentId and sequence FIRST for tracking
+    final seriesParentId = parentBill.parentBillId ?? parentBill.id;
+    final nextSequence = (parentBill.recurringSequence ?? 1) + 1;
+    final trackingKey = '$seriesParentId:$nextSequence';
+
+    // CRITICAL: Check if this instance was recently created (prevents duplicates)
+    if (_recentlyCreatedInstances.contains(trackingKey)) {
+      Logger.info(
+        'Instance $trackingKey was recently created - skipping duplicate',
+        _tag,
+      );
+      return null;
+    }
+
+    // CRITICAL: Wait if another creation is in progress
+    // This prevents race conditions from multiple trigger sources
+    int waitCount = 0;
+    while (_isProcessing && waitCount < 10) {
+      Logger.info('Waiting for lock to create instance...', _tag);
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitCount++;
+    }
+
+    if (_isProcessing) {
+      Logger.warning('Lock timeout - skipping to prevent deadlock', _tag);
+      return null;
+    }
+
+    _isProcessing = true;
+
     try {
       // Validate parent bill
       if (parentBill.repeat == 'none') {
@@ -195,19 +253,24 @@ class RecurringBillService {
       );
 
       // Validate next due date is in the future
-      if (nextDueDate.isBefore(DateTime.now())) {
+      final now = DateTime.now();
+      if (nextDueDate.isBefore(now)) {
         Logger.warning(
-          'Calculated next due date is in the past for ${parentBill.title}',
+          'Calculated next due date is in the past for ${parentBill.title}: $nextDueDate',
           _tag,
         );
       }
 
-      // Check if next instance already exists (exclude current bill from check)
+      // CRITICAL FIX: Use the series parent ID (not the current bill's ID)
+      // This ensures we check for duplicates across the entire series
+      final seriesParentId = parentBill.parentBillId ?? parentBill.id;
+
+      // Check if next instance already exists
       final exists = await hasNextInstance(
-        parentBill.id,
+        seriesParentId,
         nextDueDate,
         excludeBillId: parentBill.id,
-        userId: parentBill.userId, // Pass userId for user-specific filtering
+        userId: parentBill.userId,
       );
       if (exists) {
         Logger.info(
@@ -217,12 +280,48 @@ class RecurringBillService {
         return null;
       }
 
-      // Determine parent ID and sequence
-      final parentId = parentBill.parentBillId ?? parentBill.id;
-      final sequence = (parentBill.recurringSequence ?? 1) + 1;
+      // CRITICAL FIX: Calculate status for the new bill
+      // For 1-minute testing, compare exact DateTime
+      String newStatus;
+      if (parentBill.repeat.toLowerCase() == '1 minute (testing)') {
+        newStatus = now.isBefore(nextDueDate) ? 'upcoming' : 'overdue';
+      } else {
+        // For regular bills, compare dates
+        final todayDate = DateTime(now.year, now.month, now.day);
+        final dueDate = DateTime(
+          nextDueDate.year,
+          nextDueDate.month,
+          nextDueDate.day,
+        );
+        if (todayDate.isBefore(dueDate)) {
+          newStatus = 'upcoming';
+        } else if (todayDate.isAfter(dueDate)) {
+          newStatus = 'overdue';
+        } else {
+          // Same day - check time
+          newStatus = now.isBefore(nextDueDate) ? 'upcoming' : 'overdue';
+        }
+      }
+
+      // CRITICAL FIX (BUG 2): Calculate correct notificationTime for new instance
+      // For 1-minute testing, the notificationTime must match the nextDueDate time
+      // For regular bills, keep the parent's notification time (same time each day/week/month)
+      String? newNotificationTime;
+      if (parentBill.repeat.toLowerCase() == '1 minute (testing)') {
+        // Extract hour:minute from nextDueDate for 1-minute testing
+        final h = nextDueDate.hour.toString().padLeft(2, '0');
+        final m = nextDueDate.minute.toString().padLeft(2, '0');
+        newNotificationTime = '$h:$m';
+        Logger.info(
+          'Calculated new notificationTime for 1-min testing: $newNotificationTime',
+          _tag,
+        );
+      } else {
+        // For regular recurring bills, keep the same notification time as parent
+        newNotificationTime = parentBill.notificationTime;
+      }
 
       // Create new bill instance
-      final now = DateTime.now();
       final newBill = BillHive(
         id: const Uuid().v4(),
         title: parentBill.title,
@@ -240,22 +339,28 @@ class RecurringBillService {
         paidAt: null,
         isArchived: false,
         archivedAt: null,
-        parentBillId: parentId,
-        recurringSequence: sequence,
+        parentBillId: seriesParentId, // Use series parent ID
+        recurringSequence: nextSequence, // Use calculated sequence
         repeatCount: parentBill.repeatCount, // Copy repeat count limit
         reminderTiming: parentBill.reminderTiming, // Copy notification settings
-        notificationTime: parentBill.notificationTime,
+        notificationTime:
+            newNotificationTime, // CRITICAL FIX: Use calculated time
         userId: parentBill.userId, // Propagate user ID
         createdDuringProTrial:
             parentBill.createdDuringProTrial, // Propagate pro trial status
+        status: newStatus, // Set status explicitly
+        processing: false,
       );
 
       // Save to Hive
       await HiveService.saveBill(newBill);
 
+      // CRITICAL: Track this instance to prevent duplicates
+      _recentlyCreatedInstances.add(trackingKey);
+
       Logger.info(
         'Created next instance for ${parentBill.title}: '
-        'Due ${nextDueDate.toString().split(' ')[0]}, Sequence: $sequence',
+        'Due $nextDueDate, Sequence: $nextSequence, Status: $newStatus, NotificationTime: $newNotificationTime',
         _tag,
       );
 
@@ -268,6 +373,9 @@ class RecurringBillService {
         tag: _tag,
       );
       return null;
+    } finally {
+      // CRITICAL: Always release the lock
+      _isProcessing = false;
     }
   }
 
@@ -345,17 +453,17 @@ class RecurringBillService {
       int errorCount = 0;
 
       // Get all bills with recurring enabled - force refresh to get latest data
-      final allBills = HiveService.getAllBills(forceRefresh: true);
+      // CRITICAL FIX: Filter by userId upfront to prevent cross-account data processing
+      final allBills = userId != null && userId.isNotEmpty
+          ? HiveService.getBillsForUser(userId, forceRefresh: true)
+          : HiveService.getAllBills(forceRefresh: true);
 
-      // CRITICAL: Filter by user ID if provided to prevent cross-account processing
+      // Filter for recurring bills that are not deleted
       var recurringBillsQuery = allBills.where(
         (bill) => bill.repeat != 'none' && !bill.isDeleted,
       );
 
       if (userId != null) {
-        recurringBillsQuery = recurringBillsQuery.where(
-          (bill) => bill.userId == userId,
-        );
         Logger.info('Processing recurring bills for user: $userId', _tag);
       } else {
         Logger.warning(
@@ -575,34 +683,18 @@ class RecurringBillService {
               parentBillId: parentId,
             );
 
-            // SAVE and SCHEDULE IMMEDIATELY
+            // SAVE IMMEDIATELY
             await HiveService.saveBill(newBill);
             createdCount++;
 
-            // Schedule notification
-            final notificationService = NotificationService();
-            if (newBill.repeat.toLowerCase() == '1 minute (testing)') {
-              await notificationService.scheduleBillNotification(
-                newBill,
-                daysBeforeDue: 0,
-                notificationHour: newBill.dueAt.hour,
-                notificationMinute: newBill.dueAt.minute,
-                userId: newBill.userId,
-              );
-            } else {
-              // ... existing regular logic simplified for brevity but correct ...
-              await notificationService.scheduleBillNotification(
-                newBill,
-                daysBeforeDue: 0, // Simplified default
-                notificationHour: 9,
-                notificationMinute: 0,
-                userId: newBill.userId,
-              );
-            }
-
-            // NOTE: Removed "New Bill Generated" notification per user request
-            // The user does not want notifications for auto-generated recurring instances
-            // Only schedule the reminder notification for the new bill's due date
+            // NOTE: Notification scheduling is REMOVED from here
+            // The notification will be scheduled by BillProvider._scheduleNotificationForBill()
+            // which is called from checkOverdueRecurringBills() after createNextInstance()
+            // Having it in BOTH places was causing duplicate notifications!
+            Logger.info(
+              'Created instance ${newBill.recurringSequence} - notification will be scheduled by BillProvider',
+              _tag,
+            );
 
             // RECURSION CHECK:
             // If this NEW bill is ALREADY OVERDUE, we must loop again to create the *next* one

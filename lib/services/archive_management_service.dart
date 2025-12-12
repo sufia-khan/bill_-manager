@@ -31,13 +31,17 @@ class ArchiveManagementService {
   }
 
   /// Get bills eligible for auto-deletion
-  static List<BillHive> getBillsEligibleForDeletion() {
+  /// [userId] - Optional user ID to filter bills (recommended to prevent cross-account access)
+  static List<BillHive> getBillsEligibleForDeletion({String? userId}) {
     if (!isAutoDeleteEnabled()) return [];
 
     final now = DateTime.now();
     final cutoffDate = now.subtract(const Duration(days: autoDeleteDays));
 
-    final allBills = HiveService.getAllBills();
+    // CRITICAL FIX: Filter by userId to prevent cross-account auto-deletion
+    final allBills = userId != null && userId.isNotEmpty
+        ? HiveService.getBillsForUser(userId)
+        : HiveService.getAllBills();
 
     return allBills.where((bill) {
       // Must be archived
@@ -55,10 +59,11 @@ class ArchiveManagementService {
   }
 
   /// Perform auto-cleanup of old archived bills
-  static Future<int> performAutoCleanup() async {
+  /// [userId] - Optional user ID to filter bills (recommended to prevent cross-account access)
+  static Future<int> performAutoCleanup({String? userId}) async {
     if (!isAutoDeleteEnabled()) return 0;
 
-    final eligibleBills = getBillsEligibleForDeletion();
+    final eligibleBills = getBillsEligibleForDeletion(userId: userId);
     if (eligibleBills.isEmpty) return 0;
 
     int deletedCount = 0;

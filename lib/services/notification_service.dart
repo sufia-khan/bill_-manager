@@ -78,6 +78,17 @@ class NotificationService {
   // Callback for when notification is tapped
   static void Function(String?)? onNotificationTapped;
 
+  // CRITICAL FIX: Track recently scheduled notifications to prevent duplicates
+  // Key: billId (or billId:sequence for recurring), Value: timestamp of last schedule
+  // Clears entries older than 5 minutes
+  static final Map<String, DateTime> _recentlyScheduled = {};
+
+  // CRITICAL FIX: Lock to prevent concurrent scheduling for the same bill
+  static final Set<String> _currentlyScheduling = {};
+
+  // CRITICAL FIX: Track shown notification IDs to prevent duplicate shows
+  static final Map<int, DateTime> _recentlyShownNotificationIds = {};
+
   /// Initialize notification service
   Future<void> init() async {
     debugPrint('🔔 Initializing NotificationService...');
@@ -273,6 +284,12 @@ class NotificationService {
     bool forceReschedule =
         false, // Only cancel and reschedule if explicitly requested
   }) async {
+    // CRITICAL FIX: Create a tracking key that includes sequence for recurring bills
+    // This ensures each recurring instance is tracked separately
+    final trackingKey = bill.recurringSequence != null
+        ? '${bill.id}:seq${bill.recurringSequence}'
+        : bill.id;
+
     try {
       // Don't schedule if already paid or deleted
       if (bill.isPaid || bill.isDeleted) {
@@ -281,6 +298,46 @@ class NotificationService {
         await cancelBillNotification(bill.id);
         return;
       }
+
+      // CRITICAL FIX: Use lock to prevent concurrent scheduling
+      if (_currentlyScheduling.contains(trackingKey)) {
+        debugPrint(
+          '⏭️ Already scheduling notification for ${bill.title} (lock held) - skipping',
+        );
+        return;
+      }
+
+      // Acquire lock
+      _currentlyScheduling.add(trackingKey);
+
+      // CRITICAL FIX: Prevent duplicate notifications for same bill within 5 minutes
+      // This catches any remaining duplicates from multiple trigger sources
+      final now = DateTime.now();
+
+      // Clean up old entries (older than 5 minutes)
+      _recentlyScheduled.removeWhere(
+        (_, timestamp) => now.difference(timestamp).inMinutes > 5,
+      );
+
+      // Also clean up old notification IDs
+      _recentlyShownNotificationIds.removeWhere(
+        (_, timestamp) => now.difference(timestamp).inMinutes > 5,
+      );
+
+      // Check if this bill was recently scheduled
+      if (_recentlyScheduled.containsKey(trackingKey) && !forceReschedule) {
+        final lastScheduled = _recentlyScheduled[trackingKey]!;
+        final secondsSince = now.difference(lastScheduled).inSeconds;
+        debugPrint(
+          '⏭️ Skipping duplicate notification for ${bill.title} (seq: ${bill.recurringSequence}) '
+          '(scheduled ${secondsSince}s ago)',
+        );
+        _currentlyScheduling.remove(trackingKey); // Release lock
+        return;
+      }
+
+      // Track this scheduling attempt
+      _recentlyScheduled[trackingKey] = now;
 
       // Calculate notification date
       final notificationDate = bill.dueAt.subtract(
@@ -296,22 +353,22 @@ class NotificationService {
       );
 
       // Only schedule if in the future
-      final now = tz.TZDateTime.now(tz.local);
-      if (scheduledTime.isBefore(now)) {
+      final tzNow = tz.TZDateTime.now(tz.local);
+      if (scheduledTime.isBefore(tzNow)) {
         debugPrint(
           '⚠️ NOTIFICATION NOT SCHEDULED - Time is in the past!\n'
           '   Bill: ${bill.title}\n'
           '   Scheduled Time: $scheduledTime\n'
-          '   Current Time: $now\n'
-          '   Difference: ${now.difference(scheduledTime).inMinutes} minutes ago\n'
+          '   Current Time: $tzNow\n'
+          '   Difference: ${tzNow.difference(scheduledTime).inMinutes} minutes ago\n'
           '   TIP: Set due date further in future or use "Same Day" reminder',
         );
         debugPrint(
           '⚠️ NOTIFICATION NOT SCHEDULED - Time is in the past!\n'
           '   Bill: ${bill.title}\n'
           '   Scheduled Time: $scheduledTime\n'
-          '   Current Time: $now\n'
-          '   Difference: ${now.difference(scheduledTime).inMinutes} minutes ago\n'
+          '   Current Time: $tzNow\n'
+          '   Difference: ${tzNow.difference(scheduledTime).inMinutes} minutes ago\n'
           '   📝 Adding to notification history as missed notification',
         );
 
@@ -371,8 +428,8 @@ class NotificationService {
         '   Due Date: ${bill.dueAt}\n'
         '   Days Before: $daysBeforeDue\n'
         '   Scheduled Time: $scheduledTime\n'
-        '   Current Time: $now\n'
-        '   Time Until Notification: ${scheduledTime.difference(now).inHours}h ${scheduledTime.difference(now).inMinutes % 60}m',
+        '   Current Time: $tzNow\n'
+        '   Time Until Notification: ${scheduledTime.difference(tzNow).inHours}h ${scheduledTime.difference(tzNow).inMinutes % 60}m',
       );
 
       // Determine notification title
@@ -395,8 +452,8 @@ class NotificationService {
         '🔧 EXACT SCHEDULING DETAILS:\n'
         '   ID: ${bill.id.hashCode}\n'
         '   Scheduled: $scheduledTime\n'
-        '   Current: $now\n'
-        '   Seconds until trigger: ${(scheduledTime.millisecondsSinceEpoch - now.millisecondsSinceEpoch) / 1000}\n'
+        '   Current: $tzNow\n'
+        '   Seconds until trigger: ${(scheduledTime.millisecondsSinceEpoch - tzNow.millisecondsSinceEpoch) / 1000}\n'
         '   Timezone: ${tz.local.name}',
       );
 
@@ -475,8 +532,8 @@ class NotificationService {
         '   Bill: ${bill.title}\n'
         '   ID: ${bill.id.hashCode}\n'
         '   Scheduled Time: $scheduledTime\n'
-        '   Current Time: $now\n'
-        '   Will trigger in: ${scheduledTime.difference(now).inMinutes} minutes\n'
+        '   Current Time: $tzNow\n'
+        '   Will trigger in: ${scheduledTime.difference(tzNow).inMinutes} minutes\n'
         '   Title: $title\n'
         '   Body: $body\n'
         '   📝 Tracked for notification history\n'
@@ -484,6 +541,9 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('❌ Error scheduling notification for ${bill.title}: $e');
+    } finally {
+      // CRITICAL: Always release the lock
+      _currentlyScheduling.remove(trackingKey);
     }
   }
 

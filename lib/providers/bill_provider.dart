@@ -388,17 +388,46 @@ class BillProvider with ChangeNotifier {
       return;
     }
 
-    // If user changed, reset state first
+    // CRITICAL FIX: If user changed, clear ALL cached state IMMEDIATELY
+    // This prevents flash of old user's bills before new data loads
     if (needsReinit) {
-      print('🔄 User changed, reinitializing BillProvider...');
+      print('🔄 User changed, clearing ALL cached state IMMEDIATELY...');
       _bills = [];
+      _allProcessedBills = [];
+      _upcomingBills = [];
+      _overdueBills = [];
+      _paidBills = [];
+      _totalUpcomingThisMonth = 0;
+      _totalUpcomingNext7Days = 0;
+      _countUpcomingThisMonth = 0;
+      _countUpcomingNext7Days = 0;
       _isInitialized = false;
+      _initializedForUserId = null;
+      // Notify immediately to update UI with empty lists
+      notifyListeners();
     }
 
     _isLoading = true;
     notifyListeners();
 
     try {
+      // CRITICAL FIX: If this is first initialization but we have cached bills in memory,
+      // clear them IMMEDIATELY to prevent flash of stale data
+      // This handles the case where app restarts with different user
+      if (_initializedForUserId == null && _bills.isNotEmpty) {
+        print('⚠️ First init but have cached bills - clearing immediately');
+        _bills = [];
+        _allProcessedBills = [];
+        _upcomingBills = [];
+        _overdueBills = [];
+        _paidBills = [];
+        _totalUpcomingThisMonth = 0;
+        _totalUpcomingNext7Days = 0;
+        _countUpcomingThisMonth = 0;
+        _countUpcomingNext7Days = 0;
+        notifyListeners();
+      }
+
       // CRITICAL FIX: Check for user change and clear stale data BEFORE loading bills
       // This prevents bills from Account A appearing in Account B
       final storedUserId = HiveService.getUserData('currentUserId') as String?;
@@ -1580,14 +1609,36 @@ class BillProvider with ChangeNotifier {
       }
 
       print(
-        '⏰ Found ${overdueRecurringBills.length} overdue recurring bills - creating next instances IMMEDIATELY...',
+        '⏰ Found ${overdueRecurringBills.length} overdue recurring bills - processing IMMEDIATELY...',
       );
 
       int createdCount = 0;
+      int statusUpdatedCount = 0;
       final currentUserId = FirebaseService.currentUserId;
 
       for (final overdueBill in overdueRecurringBills) {
         try {
+          // CRITICAL FIX (BUG 1): Update the overdue bill's status in Hive immediately
+          // This ensures it appears in the Overdue tab right away
+          if (overdueBill.status != 'overdue') {
+            final updatedOverdueBill = overdueBill.copyWith(
+              status: 'overdue',
+              updatedAt: DateTime.now(),
+              clientUpdatedAt: DateTime.now(),
+              needsSync: true,
+            );
+            await HiveService.saveBill(updatedOverdueBill);
+            statusUpdatedCount++;
+            print('   📌 Updated status to OVERDUE: ${overdueBill.title}');
+
+            // Sync status update to Firestore in background
+            if (currentUserId != null) {
+              FirebaseService.saveBill(updatedOverdueBill).catchError((e) {
+                print('   ⚠️ Failed to sync status update: $e');
+              });
+            }
+          }
+
           // Check if repeat count limit reached
           if (overdueBill.repeatCount != null) {
             final currentSequence = overdueBill.recurringSequence ?? 1;
@@ -1607,7 +1658,7 @@ class BillProvider with ChangeNotifier {
           if (nextInstance != null) {
             createdCount++;
             print(
-              '   ✅ Created next instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence}) due ${nextInstance.dueAt}',
+              '   ✅ Created next instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence}) due ${nextInstance.dueAt} notificationTime: ${nextInstance.notificationTime}',
             );
 
             // Schedule notification for the new instance
@@ -1642,8 +1693,11 @@ class BillProvider with ChangeNotifier {
         }
       }
 
-      if (createdCount > 0) {
-        print('⏰ Created $createdCount new recurring instances');
+      // CRITICAL FIX (BUG 1): Always refresh UI if any status was updated OR new instances created
+      if (createdCount > 0 || statusUpdatedCount > 0) {
+        print(
+          '⏰ Created $createdCount new instances, updated $statusUpdatedCount statuses',
+        );
 
         // Reload bills and update UI IMMEDIATELY
         _bills = _loadCurrentUsersBills(forceRefresh: true);

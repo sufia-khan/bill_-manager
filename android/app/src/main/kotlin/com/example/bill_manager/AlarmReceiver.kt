@@ -83,7 +83,53 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
         
+        // CRITICAL FIX: Prevent duplicate notifications using billId + sequence
+        val notificationKey = if (isRecurring) "${billId}_seq_$currentSequence" else billId
+        if (isDuplicateNotification(context, notificationKey)) {
+            Log.d("AlarmReceiver", "Skipping duplicate notification: $notificationKey")
+            return
+        }
+        
+        // Mark this notification as shown
+        markNotificationShown(context, notificationKey)
+        
         showNotification(context, title, displayBody, notificationId, billId)
+    }
+    
+    private fun isDuplicateNotification(context: Context, notificationKey: String): Boolean {
+        try {
+            val prefs = context.getSharedPreferences("shown_notifications", Context.MODE_PRIVATE)
+            val lastShownTime = prefs.getLong(notificationKey, 0)
+            val now = System.currentTimeMillis()
+            
+            // Consider duplicate if shown within the last 30 seconds
+            if (lastShownTime > 0 && now - lastShownTime < 30000) {
+                return true
+            }
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Error checking duplicate: ${e.message}")
+        }
+        return false
+    }
+    
+    private fun markNotificationShown(context: Context, notificationKey: String) {
+        try {
+            val prefs = context.getSharedPreferences("shown_notifications", Context.MODE_PRIVATE)
+            prefs.edit().putLong(notificationKey, System.currentTimeMillis()).apply()
+            
+            // Clean up old entries (older than 5 minutes)
+            val now = System.currentTimeMillis()
+            val allEntries = prefs.all
+            val editor = prefs.edit()
+            for ((key, value) in allEntries) {
+                if (value is Long && now - value > 300000) {
+                    editor.remove(key)
+                }
+            }
+            editor.apply()
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Error marking notification: ${e.message}")
+        }
     }
     
     private fun scheduleNextRecurringInstance(
@@ -150,12 +196,27 @@ class AlarmReceiver : BroadcastReceiver() {
         )
         
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // CRITICAL: Use setAlarmClock for highest reliability on Android 12+
+            // AlarmClock alarms are exempt from battery restrictions
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val showIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(nextDueTime, showIntent),
+                    pendingIntent
+                )
+                Log.d("AlarmReceiver", "✅ Used setAlarmClock (highest reliability)")
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     nextDueTime,
                     pendingIntent
                 )
+                Log.d("AlarmReceiver", "✅ Used setExactAndAllowWhileIdle")
             } else {
                 alarmManager.setExact(
                     AlarmManager.RTC_WAKEUP,
@@ -163,13 +224,14 @@ class AlarmReceiver : BroadcastReceiver() {
                     pendingIntent
                 )
             }
-            Log.d("AlarmReceiver", "Next recurring alarm scheduled successfully")
+            Log.d("AlarmReceiver", "✅ Next recurring alarm scheduled for ${java.util.Date(nextDueTime)}")
             
             // Save pending recurring bill info for Flutter to pick up
             savePendingRecurringBill(context, billId, billTitle, billAmount, billVendor, 
                 userId, recurringType, nextSequence, repeatCount, nextDueTime)
         } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed to schedule next alarm: ${e.message}")
+            Log.e("AlarmReceiver", "❌ Failed to schedule next alarm: ${e.message}")
+            e.printStackTrace()
         }
     }
     

@@ -145,13 +145,28 @@ class MainActivity : FlutterActivity() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Use setExactAndAllowWhileIdle for reliable delivery
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        // CRITICAL: Use setAlarmClock for highest reliability on Android 12+
+        // AlarmClock alarms are EXEMPT from battery restrictions and GUARANTEED to fire
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Create show intent for alarm clock info
+            val showIntent = PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(timeInMillis, showIntent),
+                pendingIntent
+            )
+            Log.d("MainActivity", "✅ Alarm scheduled using setAlarmClock at ${java.util.Date(timeInMillis)}")
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 timeInMillis,
                 pendingIntent
             )
+            Log.d("MainActivity", "✅ Alarm scheduled using setExactAndAllowWhileIdle")
         } else {
             alarmManager.setExact(
                 AlarmManager.RTC_WAKEUP,

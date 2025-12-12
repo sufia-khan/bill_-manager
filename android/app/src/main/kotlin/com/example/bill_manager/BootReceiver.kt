@@ -87,7 +87,19 @@ class BootReceiver : BroadcastReceiver() {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                     
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    // CRITICAL: Use setAlarmClock for highest reliability on Android 12+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val showIntent = PendingIntent.getActivity(
+                            context,
+                            0,
+                            Intent(context, MainActivity::class.java),
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        alarmManager.setAlarmClock(
+                            AlarmManager.AlarmClockInfo(dueTime, showIntent),
+                            pendingIntent
+                        )
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         alarmManager.setExactAndAllowWhileIdle(
                             AlarmManager.RTC_WAKEUP,
                             dueTime,
@@ -102,13 +114,13 @@ class BootReceiver : BroadcastReceiver() {
                     }
                     
                     rescheduledCount++
-                    Log.d("BootReceiver", "Rescheduled alarm for $title at $dueTime")
+                    Log.d("BootReceiver", "✅ Rescheduled alarm for $title at ${java.util.Date(dueTime)}")
                 } catch (e: Exception) {
                     Log.e("BootReceiver", "Error rescheduling alarm: ${e.message}")
                 }
             }
             
-            Log.d("BootReceiver", "Rescheduled $rescheduledCount alarms after boot")
+            Log.d("BootReceiver", "✅ Rescheduled $rescheduledCount alarms after boot")
         } catch (e: Exception) {
             Log.e("BootReceiver", "Error in reschedulePendingAlarms: ${e.message}")
         }
