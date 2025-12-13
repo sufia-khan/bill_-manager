@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../models/bill_hive.dart';
+import '../models/notification_hive.dart';
 import '../utils/logger.dart';
 import 'hive_service.dart';
+import 'offline_first_notification_service.dart';
 
 /// Service for managing recurring bill operations
 /// Handles automatic creation of recurring bill instances
@@ -204,6 +206,9 @@ class RecurringBillService {
         await HiveService.saveBill(instance);
         instances.add(instance);
 
+        // Create notification for this instance
+        await _createNotificationForBill(instance);
+
         Logger.info(
           '  Created instance $sequence/${effectiveCount}: due ${currentDueAt.toIso8601String()}, status: $status',
           _tag,
@@ -279,7 +284,33 @@ class RecurringBillService {
         tag: _tag,
       );
       // Return false to prevent duplicate creation on error
-      return false;
+      return false; // Max instances reached
+    }
+  }
+
+  /// Create notification for a bill
+  /// Helper method called when generating new recurring instances
+  static Future<void> _createNotificationForBill(BillHive bill) async {
+    try {
+      // Only create notifications for overdue bills
+      if (bill.status == 'overdue' && !bill.isPaid) {
+        await OfflineFirstNotificationService.createNotification(
+          billId: bill.id,
+          billTitle: bill.title,
+          type: NotificationType.overdue,
+          scheduledFor: bill.dueAt,
+          isRecurring: bill.repeat != 'none',
+          recurringSequence: bill.recurringSequence,
+          amount: bill.amount,
+          vendor: bill.vendor,
+        );
+      }
+    } catch (e) {
+      Logger.error(
+        'Error creating notification for bill ${bill.id}',
+        error: e,
+        tag: _tag,
+      );
     }
   }
 
@@ -474,6 +505,9 @@ class RecurringBillService {
 
       // CRITICAL: Track this instance to prevent duplicates
       _recentlyCreatedInstances.add(trackingKey);
+
+      // Create notification for new instance
+      await _createNotificationForBill(newBill);
 
       Logger.info(
         'Created next instance for ${parentBill.title}: '

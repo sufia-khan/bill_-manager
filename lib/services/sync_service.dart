@@ -5,6 +5,7 @@ import 'hive_service.dart';
 import 'firebase_service.dart';
 import 'notification_history_service.dart';
 import '../models/bill_hive.dart';
+import '../utils/bill_status_helper.dart';
 
 /// Callback type for when remote changes are received from Firestore
 typedef OnRemoteChangesCallback = void Function();
@@ -161,6 +162,21 @@ class SyncService {
     if (hasChanges && _onRemoteChanges != null) {
       print('📢 Notifying UI of remote changes');
       _onRemoteChanges!();
+
+      // Regenerate notifications from synced bills
+      _regenerateNotificationsFromBills(userId);
+    }
+  }
+
+  /// Regenerate notifications from bills after sync
+  /// This ensures notification history is complete across devices
+  static Future<void> _regenerateNotificationsFromBills(String userId) async {
+    try {
+      final bills = HiveService.getBillsForUser(userId);
+      await BillStatusHelper.syncAllBillNotifications(bills);
+      print('✅ Regenerated notifications from ${bills.length} bills');
+    } catch (e) {
+      print('⚠️ Error regenerating notifications: $e');
     }
   }
 

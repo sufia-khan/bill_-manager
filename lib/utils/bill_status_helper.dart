@@ -1,4 +1,6 @@
 import '../models/bill_hive.dart';
+import '../models/notification_hive.dart';
+import '../services/offline_first_notification_service.dart';
 
 class BillStatusHelper {
   static String calculateStatus(BillHive bill) {
@@ -66,5 +68,49 @@ class BillStatusHelper {
       reminderHour,
       reminderMinute,
     );
+  }
+
+  /// Create notification if bill became overdue
+  /// Called automatically when status is calculated
+  static Future<void> checkAndCreateNotification(BillHive bill) async {
+    final status = calculateStatus(bill);
+
+    // Create notification for overdue bills
+    if (status == 'overdue' && !bill.isPaid) {
+      await OfflineFirstNotificationService.createNotification(
+        billId: bill.id,
+        billTitle: bill.title,
+        type: NotificationType.overdue,
+        scheduledFor: bill.dueAt,
+        isRecurring: bill.repeat != 'none',
+        recurringSequence: bill.recurringSequence,
+        amount: bill.amount,
+        vendor: bill.vendor,
+      );
+    }
+  }
+
+  /// Sync all bills and create missing notifications
+  /// Called after login or bill sync to regenerate notification history
+  static Future<void> syncAllBillNotifications(List<BillHive> bills) async {
+    for (final bill in bills) {
+      if (bill.isPaid || bill.isDeleted) continue;
+
+      final status = calculateStatus(bill);
+
+      // Create notification based on status
+      if (status == 'overdue') {
+        await OfflineFirstNotificationService.createNotification(
+          billId: bill.id,
+          billTitle: bill.title,
+          type: NotificationType.overdue,
+          scheduledFor: bill.dueAt,
+          isRecurring: bill.repeat != 'none',
+          recurringSequence: bill.recurringSequence,
+          amount: bill.amount,
+          vendor: bill.vendor,
+        );
+      }
+    }
   }
 }

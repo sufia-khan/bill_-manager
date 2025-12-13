@@ -438,37 +438,12 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                     },
                   ),
 
-                // Summary Cards
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildSummaryCard(
-                        'This ${DateFormat('MMM').format(DateTime.now())}',
-                        thisMonthTotal,
-                        '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''} due',
-                        const Icon(
-                          Icons.calendar_today_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        thisMonthCount,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildSummaryCard(
-                        'Next 7 days',
-                        next7DaysTotal,
-                        '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}',
-                        const Icon(
-                          Icons.access_time_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        next7DaysCount,
-                      ),
-                    ),
-                  ],
+                // Unified Summary Card with Two Color Sections
+                _buildUnifiedSummaryCard(
+                  thisMonthTotal,
+                  thisMonthCount,
+                  next7DaysTotal,
+                  next7DaysCount,
                 ),
               ],
             ),
@@ -563,168 +538,269 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     );
   }
 
-  Widget _buildSummaryCard(
-    String title,
-    double amount,
-    String subtitle,
-    Widget icon,
-    int billCount,
+  /// Builds a unified summary card with two color sections
+  Widget _buildUnifiedSummaryCard(
+    double thisMonthTotal,
+    int thisMonthCount,
+    double next7DaysTotal,
+    int next7DaysCount,
   ) {
-    // Check if amount is formatted (shortened) - only >= 1000 gets shortened
-    final isFormatted = amount >= 1000;
+    final thisMonthTitle = 'This ${DateFormat('MMM').format(DateTime.now())}';
+    final thisMonthSubtitle =
+        '$thisMonthCount bill${thisMonthCount != 1 ? 's' : ''} due';
+    final next7DaysSubtitle =
+        '$next7DaysCount upcoming bill${next7DaysCount != 1 ? 's' : ''}';
 
-    final cardContent = AnimatedScale(
-      scale: 1.0,
-      duration: const Duration(milliseconds: 300),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: title != 'Next 7 days'
-                ? [
-                    const Color(0xFFFED7AA), // orange-100
-                    const Color(0xFFFDE68A), // amber-100
-                    const Color(0xFFFEF08A), // yellow-100
-                  ]
-                : [
-                    const Color(0xFFDBEAFE), // blue-100
-                    const Color(0xFFE0F2FE), // sky-100
-                    const Color(0xFFCFFAFE), // cyan-100
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    final isThisMonthFormatted = thisMonthTotal >= 1000;
+    final isNext7DaysFormatted = next7DaysTotal >= 1000;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFB923C).withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 0,
           ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: title != 'Next 7 days'
-                ? const Color(0xFFFED7AA).withValues(alpha: 0.6) // orange-200
-                : const Color(0xFFBFDBFE).withValues(alpha: 0.6), // blue-200
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color:
-                  (title != 'Next 7 days'
-                          ? const Color(0xFFFB923C) // orange-400
-                          : const Color(0xFF3B82F6)) // blue-500
-                      .withValues(alpha: 0.25),
-              blurRadius: 30,
-              offset: const Offset(0, 8),
-              spreadRadius: 0,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
+            // Left Section - This Month (Orange/Amber)
+            Expanded(
+              child: GestureDetector(
+                onTap: isThisMonthFormatted
+                    ? () {
+                        AmountInfoBottomSheet.show(
+                          context,
+                          amount: thisMonthTotal,
+                          billCount: thisMonthCount,
+                          title: thisMonthTitle,
+                        );
+                      }
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: title != 'Next 7 days'
-                          ? [
-                              const Color(0xFFFB923C), // orange-400
-                              const Color(0xFFF97316), // orange-500
-                            ]
-                          : [
-                              const Color(0xFF60A5FA), // blue-400
-                              const Color(0xFF3B82F6), // blue-500
-                            ],
+                      colors: [
+                        Color(0xFFFED7AA), // orange-100
+                        Color(0xFFFDE68A), // amber-100
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            (title != 'Next 7 days'
-                                    ? const Color(0xFFFB923C) // orange-400
-                                    : const Color(0xFF60A5FA)) // blue-400
-                                .withValues(alpha: 0.5),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFFB923C), // orange-400
+                                  Color(0xFFF97316), // orange-500
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFFFB923C,
+                                  ).withValues(alpha: 0.5),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.calendar_today_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                          Flexible(
+                            child: Text(
+                              thisMonthTitle.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFC2410C), // orange-700
+                                letterSpacing: 0.8,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              formatCurrencyShort(thisMonthTotal),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1E293B), // slate-800
+                                height: 1.1,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isThisMonthFormatted) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 14,
+                              color: Color(0xFFC2410C), // orange-700
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        thisMonthSubtitle,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF334155), // slate-700
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ],
                   ),
-                  child: icon,
                 ),
-                Flexible(
-                  child: Text(
-                    title.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: title != 'Next 7 days'
-                          ? const Color(0xFFC2410C) // orange-700
-                          : const Color(0xFF1D4ED8), // blue-700
-                      letterSpacing: 0.8,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  formatCurrencyShort(amount),
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B), // slate-800
-                    height: 1.1,
-                  ),
-                ),
-                // Only show info icon when amount is formatted (shortened)
-                if (isFormatted) ...[
-                  const SizedBox(width: 6),
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: title != 'Next 7 days'
-                        ? const Color(0xFFC2410C) // orange-700
-                        : const Color(0xFF1D4ED8), // blue-700
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF334155), // slate-700
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+            ),
+            // Right Section - Next 7 Days (Blue/Cyan)
+            Expanded(
+              child: GestureDetector(
+                onTap: isNext7DaysFormatted
+                    ? () {
+                        AmountInfoBottomSheet.show(
+                          context,
+                          amount: next7DaysTotal,
+                          billCount: next7DaysCount,
+                          title: 'Next 7 days',
+                        );
+                      }
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFFDBEAFE), // blue-100
+                        Color(0xFFCFFAFE), // cyan-100
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFF60A5FA), // blue-400
+                                  Color(0xFF3B82F6), // blue-500
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF60A5FA,
+                                  ).withValues(alpha: 0.5),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.access_time_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                          const Text(
+                            'NEXT 7 DAYS',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1D4ED8), // blue-700
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              formatCurrencyShort(next7DaysTotal),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1E293B), // slate-800
+                                height: 1.1,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isNext7DaysFormatted) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 14,
+                              color: Color(0xFF1D4ED8), // blue-700
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        next7DaysSubtitle,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF334155), // slate-700
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
-
-    // Only make tappable when amount is formatted
-    if (isFormatted) {
-      return GestureDetector(
-        onTap: () {
-          AmountInfoBottomSheet.show(
-            context,
-            amount: amount,
-            billCount: billCount,
-            title: title,
-          );
-        },
-        child: cardContent,
-      );
-    }
-
-    return cardContent;
   }
 
   Widget _buildFilterSection() {

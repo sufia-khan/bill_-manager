@@ -17,6 +17,7 @@ import 'services/notification_service.dart';
 import 'services/pending_notification_service.dart';
 import 'services/pending_recurring_service.dart';
 import 'services/notification_history_service.dart';
+import 'services/offline_first_notification_service.dart';
 import 'services/user_preferences_service.dart';
 import 'services/archive_management_service.dart';
 import 'providers/bill_provider.dart';
@@ -61,6 +62,9 @@ Future<void> _initializeBackgroundTasks() async {
   try {
     // Initialize notification service
     await NotificationService().init();
+
+    // Initialize offline-first notification service
+    await OfflineFirstNotificationService.init();
 
     // Initialize notification history
     await NotificationHistoryService.init();

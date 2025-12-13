@@ -2,6 +2,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/bill_hive.dart';
 import '../models/notification_history.dart';
+import '../models/notification_hive.dart';
 
 class HiveService {
   static const String billBoxName = 'bills';
@@ -10,7 +11,7 @@ class HiveService {
       'localBills'; // Track bills created on this device
   static const String deviceIdKey = 'deviceId'; // Unique device identifier
   static const String migrationKey =
-      'localBillsMigrationDone'; // Migration flag
+      'localBillsMigrationDone'; // Migration flag;
 
   // Track current user for data isolation
   static String? _currentUserId;
@@ -37,6 +38,9 @@ class HiveService {
     // Register adapters
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(BillHiveAdapter());
+    }
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(NotificationHiveAdapter());
     }
     if (!Hive.isAdapterRegistered(3)) {
       Hive.registerAdapter(NotificationHistoryAdapter());
