@@ -12,6 +12,7 @@ import '../services/bill_archival_service.dart';
 import '../services/notification_service.dart';
 import '../services/notification_history_service.dart';
 import '../services/trial_service.dart';
+import '../services/device_id_service.dart';
 import '../models/bill.dart';
 import '../utils/bill_status_helper.dart';
 import '../providers/notification_settings_provider.dart';
@@ -684,6 +685,10 @@ class BillProvider with ChangeNotifier {
       }
 
       final now = DateTime.now();
+
+      // CRITICAL: Get device ID for multi-device notification architecture
+      final currentDeviceId = await DeviceIdService.getDeviceId();
+
       final bill = BillHive(
         id: const Uuid().v4(),
         title: title,
@@ -706,6 +711,7 @@ class BillProvider with ChangeNotifier {
             TrialService.canAccessProFeatures(), // Store trial status
         userId: FirebaseService.currentUserId, // Associate with current user
         processing: false,
+        createdDeviceId: currentDeviceId, // Device that created this bill
       );
 
       // Calculate initial status using the helper

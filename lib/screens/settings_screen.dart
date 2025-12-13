@@ -912,6 +912,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (!mounted) return;
 
                 if (logoutChoice == 'logout_only') {
+                  // Show blur loading overlay
+                  _showBlurLoadingOverlay(
+                    title: 'Logging out...',
+                    subtitle: 'Please wait',
+                  );
+
                   // Logout without syncing - just clear and sign out
                   try {
                     // Cancel all notifications for this user
@@ -926,6 +932,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await FirebaseService.signOutGoogle();
 
                     if (mounted) {
+                      // Close loading overlay
+                      Navigator.pop(context);
+
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
                           builder: (context) => const LoginScreen(),
@@ -935,6 +944,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   } catch (e) {
                     if (mounted) {
+                      // Close loading overlay
+                      Navigator.pop(context);
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Logout failed: $e'),
@@ -1030,29 +1042,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   }
 
-                  // Show syncing dialog
-                  if (mounted && unsyncedCount > 0) {
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => const AlertDialog(
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircularProgressIndicator(color: Color(0xFFF97316)),
-                            SizedBox(height: 16),
-                            Text('Syncing bills to cloud...'),
-                            SizedBox(height: 8),
-                            Text(
-                              'Please wait',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  // Show blur loading overlay
+                  if (mounted) {
+                    _showBlurLoadingOverlay(
+                      title: unsyncedCount > 0
+                          ? 'Syncing & Logging out...'
+                          : 'Logging out...',
+                      subtitle: unsyncedCount > 0
+                          ? 'Syncing $unsyncedCount bill${unsyncedCount == 1 ? '' : 's'} to cloud'
+                          : 'Please wait',
                     );
                   }
 
@@ -1062,10 +1060,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await authProvider.signOut();
 
                     if (mounted) {
-                      // Close syncing dialog if shown
-                      if (unsyncedCount > 0) {
-                        Navigator.pop(context);
-                      }
+                      // Close loading overlay
+                      Navigator.pop(context);
 
                       // Navigate to login
                       Navigator.of(context).pushAndRemoveUntil(
@@ -1077,10 +1073,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   } catch (e) {
                     if (mounted) {
-                      // Close syncing dialog if shown
-                      if (unsyncedCount > 0) {
-                        Navigator.pop(context);
-                      }
+                      // Close loading overlay
+                      Navigator.pop(context);
 
                       // Show error
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -2493,6 +2487,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return time24;
   }
 
+  /// Show a full-screen blur loading overlay with a message
+  /// Displays loading indicator and text directly on blurred background
+  void _showBlurLoadingOverlay({
+    required String title,
+    String? subtitle,
+    Color? progressColor,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.5),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    progressColor ?? Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                      decoration: TextDecoration.none,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showReminderTimePicker() async {
     final currentTime = UserPreferencesService.getDefaultReminderTime();
     final parts = currentTime.split(':');
@@ -2629,29 +2682,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.red),
-            SizedBox(height: 16),
-            Text(
-              'Deleting account...',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Please wait while we remove all your data.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    // Show blur loading overlay
+    _showBlurLoadingOverlay(
+      title: 'Deleting account...',
+      subtitle: 'Please wait while we remove all your data',
+      progressColor: Colors.red,
     );
 
     // Perform account deletion
@@ -2659,7 +2694,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (!mounted) return;
 
-    // Close loading dialog
+    // Close loading overlay
     Navigator.pop(context);
 
     if (result.success) {

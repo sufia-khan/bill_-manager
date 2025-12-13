@@ -196,6 +196,8 @@ class RecurringBillService {
           createdDuringProTrial: parentBill.createdDuringProTrial,
           status: status,
           processing: false,
+          createdDeviceId:
+              parentBill.createdDeviceId, // Preserve device ownership
         );
 
         // Save to Hive immediately
@@ -463,6 +465,8 @@ class RecurringBillService {
             parentBill.createdDuringProTrial, // Propagate pro trial status
         status: newStatus, // Set status explicitly
         processing: false,
+        createdDeviceId:
+            parentBill.createdDeviceId, // Preserve device ownership
       );
 
       // Save to Hive

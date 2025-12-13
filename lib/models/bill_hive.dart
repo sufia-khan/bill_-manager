@@ -85,6 +85,9 @@ class BillHive extends HiveObject {
   @HiveField(26)
   bool processing; // Transaction lock to prevent duplicate handling
 
+  @HiveField(27)
+  String? createdDeviceId; // Device that created this bill (for device-local notifications)
+
   BillHive({
     required this.id,
     required this.title,
@@ -113,6 +116,7 @@ class BillHive extends HiveObject {
     this.userId,
     this.status,
     this.processing = false,
+    this.createdDeviceId,
   });
 
   // Convert to Firestore format
@@ -144,6 +148,7 @@ class BillHive extends HiveObject {
       'userId': userId,
       'status': status,
       'processing': processing,
+      'createdDeviceId': createdDeviceId,
     };
   }
 
@@ -183,6 +188,7 @@ class BillHive extends HiveObject {
       userId: data['userId'] as String?,
       status: data['status'] as String?,
       processing: data['processing'] as bool? ?? false,
+      createdDeviceId: data['createdDeviceId'] as String?,
     );
   }
 
@@ -260,6 +266,7 @@ class BillHive extends HiveObject {
     String? userId,
     String? status,
     bool? processing,
+    String? createdDeviceId,
   }) {
     return BillHive(
       id: id ?? this.id,
@@ -290,6 +297,7 @@ class BillHive extends HiveObject {
       userId: userId ?? this.userId,
       status: status ?? this.status,
       processing: processing ?? this.processing,
+      createdDeviceId: createdDeviceId ?? this.createdDeviceId,
     );
   }
 }

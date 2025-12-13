@@ -42,13 +42,16 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       createdAt: fields[22] as DateTime?,
       createdDuringProTrial: fields[23] as bool?,
       userId: fields[24] as String?,
+      status: fields[25] as String?,
+      processing: fields[26] as bool,
+      createdDeviceId: fields[27] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BillHive obj) {
     writer
-      ..writeByte(25)
+      ..writeByte(28)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -98,7 +101,13 @@ class BillHiveAdapter extends TypeAdapter<BillHive> {
       ..writeByte(23)
       ..write(obj.createdDuringProTrial)
       ..writeByte(24)
-      ..write(obj.userId);
+      ..write(obj.userId)
+      ..writeByte(25)
+      ..write(obj.status)
+      ..writeByte(26)
+      ..write(obj.processing)
+      ..writeByte(27)
+      ..write(obj.createdDeviceId);
   }
 
   @override

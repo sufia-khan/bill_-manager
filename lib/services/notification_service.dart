@@ -7,6 +7,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/bill_hive.dart';
 import 'notification_history_service.dart';
 import 'native_alarm_service.dart';
+import 'device_id_service.dart';
+import 'hive_service.dart';
 
 // Top-level callback for background notification taps
 @pragma('vm:entry-point')
@@ -291,6 +293,48 @@ class NotificationService {
         : bill.id;
 
     try {
+      // CRITICAL: Device-local notification check
+      // Only schedule system notifications for bills created on this device
+      final currentDeviceId = await DeviceIdService.getDeviceId();
+
+      // Handle legacy bills without device ID (migration)
+      if (bill.createdDeviceId == null) {
+        debugPrint(
+          '🔄 Legacy bill detected without device ID - assigning to current device',
+        );
+        // Assign current device ID to this bill (migration)
+        final updatedBill = bill.copyWith(createdDeviceId: currentDeviceId);
+        await HiveService.saveBill(updatedBill);
+        debugPrint('✅ Bill migrated with device ID: $currentDeviceId');
+        // Continue with scheduling since we just claimed this bill
+      }
+      // Skip if bill was created on a different device
+      else if (bill.createdDeviceId != currentDeviceId) {
+        debugPrint(
+          '⏭️ SKIPPING NOTIFICATION - Bill created on different device\n'
+          '   Bill: ${bill.title}\n'
+          '   Bill Device: ${bill.createdDeviceId}\n'
+          '   Current Device: $currentDeviceId\n'
+          '   ✅ Bill will sync and show in UI, but NO system notification',
+        );
+
+        // Save to history for in-app display but don't schedule system notification
+        await NotificationHistoryService.addNotification(
+          title: 'Remote Bill Synced',
+          body: '${bill.title} - \$${bill.amount.toStringAsFixed(2)}',
+          billId: bill.id,
+          billTitle: bill.title,
+          userId: userId,
+        );
+        return;
+      }
+
+      debugPrint(
+        '✅ Bill created on this device - proceeding with notification\n'
+        '   Bill: ${bill.title}\n'
+        '   Device ID: $currentDeviceId',
+      );
+
       // Don't schedule if already paid or deleted
       if (bill.isPaid || bill.isDeleted) {
         debugPrint('⏭️ Skipping notification for ${bill.title} (paid/deleted)');
