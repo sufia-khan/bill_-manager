@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -168,16 +169,48 @@ class AccountService {
   /// Cancel all scheduled notifications and clear notification history
   static Future<void> _cancelAllNotifications() async {
     try {
+      // Get current user ID for proper cleanup
+      final userId = _auth.currentUser?.uid;
+
       // Cancel all scheduled notifications (both native alarms and flutter notifications)
       await NotificationService().cancelAllNotifications();
       debugPrint('  ✓ Scheduled notifications cancelled');
 
-      // Clear notification history
-      await NotificationHistoryService.clearAll();
-      debugPrint('  ✓ Notification history cleared');
+      // Clear notification history (both Hive and Firestore)
+      await NotificationHistoryService.clearAll(userId: userId);
+      debugPrint('  ✓ Notification history cleared from Hive and Firestore');
+
+      // Clear native Android SharedPreferences
+      try {
+        await _clearNativeSharedPreferences();
+        debugPrint('  ✓ Native SharedPreferences cleared');
+      } catch (e) {
+        debugPrint('  ⚠️ Error clearing native SharedPreferences: $e');
+        // Continue - this is best effort
+      }
     } catch (e) {
       debugPrint('  ⚠️ Error cancelling notifications: $e');
       // Continue with deletion even if notification cancellation fails
+    }
+  }
+
+  /// Clear native Android SharedPreferences used by AlarmReceiver
+  static Future<void> _clearNativeSharedPreferences() async {
+    try {
+      const platform = MethodChannel('com.example.bill_manager/prefs');
+
+      // Clear notification_history (pending notifications)
+      await platform.invokeMethod('clearPendingNotifications');
+
+      // Clear pending_recurring_bills
+      await platform.invokeMethod('clearPendingRecurringBills');
+
+      debugPrint(
+        '    ✓ Cleared notification_history and pending_recurring_bills',
+      );
+    } catch (e) {
+      debugPrint('    ⚠️ Error clearing native prefs: $e');
+      rethrow;
     }
   }
 
