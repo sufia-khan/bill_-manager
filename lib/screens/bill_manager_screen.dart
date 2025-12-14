@@ -233,7 +233,9 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     bool isLoading,
   ) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(
+        0xFFF8F9FA,
+      ), // Soft grey for better card contrast
       appBar: null,
       body: Column(
         children: [
@@ -588,8 +590,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Color(0xFFFED7AA), // orange-100
-                        Color(0xFFFDE68A), // amber-100
+                        Color(0xFFFFDDB7), // soft peach
+                        Color(0xFFFFE5CC), // light apricot
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -607,8 +609,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                 colors: [
-                                  Color(0xFFFB923C), // orange-400
-                                  Color(0xFFF97316), // orange-500
+                                  Color(0xFFFF9F66), // soft orange
+                                  Color(0xFFFF8A5B), // coral
                                 ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -636,7 +638,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                               style: const TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFFC2410C), // orange-700
+                                color: Color(0xFFD97706), // warm orange-600
                                 letterSpacing: 0.8,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -664,7 +666,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                             const Icon(
                               Icons.info_outline_rounded,
                               size: 14,
-                              color: Color(0xFFC2410C), // orange-700
+                              color: Color(0xFFD97706), // warm orange-600
                             ),
                           ],
                         ],
@@ -703,8 +705,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Color(0xFFDBEAFE), // blue-100
-                        Color(0xFFCFFAFE), // cyan-100
+                        Color(0xFFD4E8FF), // soft sky blue
+                        Color(0xFFBFDDFF), // light blue
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -722,8 +724,8 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                 colors: [
-                                  Color(0xFF60A5FA), // blue-400
-                                  Color(0xFF3B82F6), // blue-500
+                                  Color(0xFF5B9BFF), // soft blue
+                                  Color(0xFF4A8EFF), // medium blue
                                 ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -750,7 +752,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF1D4ED8), // blue-700
+                              color: Color(0xFF2563EB), // bright blue-600
                               letterSpacing: 0.8,
                             ),
                           ),
@@ -776,7 +778,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                             const Icon(
                               Icons.info_outline_rounded,
                               size: 14,
-                              color: Color(0xFF1D4ED8), // blue-700
+                              color: Color(0xFF2563EB), // bright blue-600
                             ),
                           ],
                         ],

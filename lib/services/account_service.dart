@@ -156,13 +156,32 @@ class AccountService {
       debugPrint('Stack trace: $stackTrace');
       debugPrint('================================================\n');
 
-      // Even if deletion failed, try to sign out to prevent stuck state
-      try {
-        await _signOutFromGoogle();
-        await _auth.signOut();
-      } catch (_) {}
+      // Check if this is a network/timeout error - DON'T sign out so user can retry
+      final errorStr = e.toString().toLowerCase();
+      final isNetworkError =
+          errorStr.contains('timeout') ||
+          errorStr.contains('network') ||
+          errorStr.contains('connection') ||
+          errorStr.contains('socket') ||
+          errorStr.contains('timed out');
 
-      return AccountDeletionResult(success: false, error: e.toString());
+      if (!isNetworkError) {
+        // Only sign out for non-network errors to prevent stuck state
+        try {
+          await _signOutFromGoogle();
+          await _auth.signOut();
+        } catch (_) {}
+      } else {
+        debugPrint(
+          '⚠️ Network error detected - keeping user signed in for retry',
+        );
+      }
+
+      return AccountDeletionResult(
+        success: false,
+        error: e.toString(),
+        wasOffline: isNetworkError,
+      );
     }
   }
 

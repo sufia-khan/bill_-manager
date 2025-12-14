@@ -2724,6 +2724,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     } else {
+      // Check if user is no longer logged in - navigate to login immediately
+      final isNoUserError =
+          result.error?.toLowerCase().contains('no user logged in') ?? false;
+
+      if (isNoUserError) {
+        // User was signed out - navigate to login screen
+        if (mounted) {
+          // Reset BillProvider state
+          final billProvider = Provider.of<BillProvider>(
+            context,
+            listen: false,
+          );
+          billProvider.reset();
+
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (route) => false,
+          );
+
+          // Show info message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('Session expired. Please log in again.'),
+                ],
+              ),
+              backgroundColor: Color(0xFF3B82F6),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
       // Show error dialog with retry option
       final shouldRetry = await showDialog<bool>(
         context: context,

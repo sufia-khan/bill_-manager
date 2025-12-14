@@ -1,82 +1,94 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/notification_history.dart';
+import '../models/notification_hive.dart';
 import '../providers/notification_badge_provider.dart';
 import '../providers/currency_provider.dart';
-import '../services/notification_history_service.dart';
-import '../services/pending_notification_service.dart';
+import '../services/offline_first_notification_service.dart';
 
 class NotificationScreen extends StatefulWidget {
-  final String? highlightNotificationId;
-  final bool openOverdueTab;
-
-  const NotificationScreen({
-    super.key,
-    this.highlightNotificationId,
-    this.openOverdueTab = false,
-  });
+  const NotificationScreen({super.key});
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  String? _highlightedId;
-  Timer? _highlightTimer;
+  final Set<String> _selectedIds = {};
+  bool _isSelectionMode = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeNotifications();
+    // Mark all as seen when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      OfflineFirstNotificationService.markAllAsSeen();
+      context.read<NotificationBadgeProvider>().forceRefresh();
+    });
   }
 
-  @override
-  void dispose() {
-    _highlightTimer?.cancel();
-    super.dispose();
-  }
+  Future<void> _deleteSelectedNotifications() async {
+    final count = _selectedIds.length;
+    if (count == 0) return;
 
-  Future<void> _initializeNotifications() async {
-    await PendingNotificationService.processPendingNotifications();
-    await _checkTriggeredNotifications();
-    await _markAllAsReadSilently();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Notifications?'),
+        content: Text(
+          'Are you sure you want to delete these $count selected notifications? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
 
-    if (widget.highlightNotificationId != null) {
-      _highlightedId = widget.highlightNotificationId;
-      _highlightTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() => _highlightedId = null);
-        }
+    if (confirm == true) {
+      final idsToDelete = _selectedIds.toList();
+
+      // Clear selection first UI-wise
+      setState(() {
+        _isSelectionMode = false;
+        _selectedIds.clear();
       });
-    }
-  }
 
-  Future<void> _markAllAsReadSilently() async {
-    try {
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      await NotificationHistoryService.markAllAsRead(userId: currentUserId);
+      await OfflineFirstNotificationService.deleteNotifications(idsToDelete);
+
       if (mounted) {
-        context.read<NotificationBadgeProvider>().forceRefresh();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$count notifications deleted'),
+            backgroundColor: const Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
-    } catch (e) {
-      debugPrint('Error marking notifications as read: $e');
     }
   }
 
-  Future<void> _checkTriggeredNotifications() async {
-    try {
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      await NotificationHistoryService.checkAndAddTriggeredNotifications(
-        currentUserId: currentUserId,
-      );
-    } catch (e) {
-      debugPrint('Error checking triggered notifications: $e');
-    }
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+        if (_selectedIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedIds.add(id);
+      }
+    });
   }
 
   Future<void> _clearAllNotifications() async {
@@ -84,50 +96,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.delete_sweep,
-                color: Colors.red.shade600,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Clear All Notifications',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
+        title: const Text('Clear All Notifications'),
         content: const Text(
-          'Are you sure you want to clear all notification history? This action cannot be undone.',
-          style: TextStyle(fontSize: 15, color: Color(0xFF4B5563)),
+          'Are you sure you want to clear all notification history?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Clear All'),
           ),
         ],
@@ -135,346 +115,109 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
 
     if (confirm == true) {
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      await NotificationHistoryService.clearAll(userId: currentUserId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('All notifications cleared'),
-              ],
-            ),
-            backgroundColor: const Color(0xFF059669),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+      // Clear notifications from service
+      await OfflineFirstNotificationService.clearAllForUser();
     }
   }
 
-  Future<void> _deleteNotification(String id) async {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    await NotificationHistoryService.deleteNotification(
-      id,
-      userId: currentUserId,
-    );
-  }
-
-  IconData _getIconForNotification(NotificationHistory notification) {
-    final title = notification.title.toLowerCase();
-    if (title.contains('paid')) return Icons.check_circle_rounded;
-    if (title.contains('overdue')) return Icons.warning_rounded;
-    if (title.contains('today')) return Icons.calendar_today_rounded;
-    if (title.contains('tomorrow')) return Icons.event_rounded;
-    if (title.contains('week')) return Icons.date_range_rounded;
-    return Icons.notifications_active_rounded;
-  }
-
-  Color _getColorForNotification(NotificationHistory notification) {
-    final title = notification.title.toLowerCase();
-    if (title.contains('paid')) return const Color(0xFF059669);
-    if (title.contains('overdue')) return const Color(0xFFDC2626);
-    if (title.contains('today')) return const Color(0xFFF97316);
-    if (title.contains('tomorrow')) return const Color(0xFF3B82F6);
-    return const Color(0xFF8B5CF6);
-  }
-
-  // Parse bill details from notification body
-  Map<String, dynamic> _parseBillDetails(String body) {
-    final result = <String, dynamic>{};
-    try {
-      // Pattern: "BillTitle - $Amount due to Vendor (X of Y)" or "(#X)"
-      final dashIndex = body.indexOf(' - ');
-      if (dashIndex > 0) {
-        result['billName'] = body.substring(0, dashIndex).trim();
-        String remaining = body.substring(dashIndex + 3);
-
-        // Check for sequence pattern at the end
-        final sequenceMatch = RegExp(
-          r'\((\d+)\s*of\s*(\d+)\)$',
-        ).firstMatch(remaining);
-        final unlimitedMatch = RegExp(r'\(#(\d+)\)$').firstMatch(remaining);
-
-        if (sequenceMatch != null) {
-          result['currentSequence'] = int.parse(sequenceMatch.group(1)!);
-          result['totalSequence'] = int.parse(sequenceMatch.group(2)!);
-          remaining = remaining.substring(0, sequenceMatch.start).trim();
-        } else if (unlimitedMatch != null) {
-          result['currentSequence'] = int.parse(unlimitedMatch.group(1)!);
-          result['isUnlimited'] = true;
-          remaining = remaining.substring(0, unlimitedMatch.start).trim();
-        }
-
-        // Parse amount and vendor
-        final dueToIndex = remaining.indexOf(' due to ');
-        if (dueToIndex > 0) {
-          result['amount'] = remaining.substring(0, dueToIndex).trim();
-          result['vendor'] = remaining.substring(dueToIndex + 8).trim();
-        } else {
-          result['amount'] = remaining.trim();
-        }
-      } else {
-        result['billName'] = body;
-      }
-    } catch (e) {
-      result['billName'] = body;
+  IconData _getIconForType(String type) {
+    switch (type) {
+      case 'OVERDUE':
+        return Icons.warning_rounded;
+      case 'DUE':
+        return Icons.calendar_today_rounded;
+      case 'PAID':
+        return Icons.check_circle_rounded;
+      case 'REMINDER':
+        return Icons.notifications_active_rounded;
+      default:
+        return Icons.notifications_rounded;
     }
-    return result;
+  }
+
+  Color _getColorForType(String type) {
+    switch (type) {
+      case 'OVERDUE':
+        return const Color(0xFFDC2626); // Red
+      case 'DUE':
+        return const Color(0xFFF97316); // Orange
+      case 'PAID':
+        return const Color(0xFF059669); // Green
+      case 'REMINDER':
+        return const Color(0xFF3B82F6); // Blue
+      default:
+        return const Color(0xFF8B5CF6); // Purple
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Use FirebaseAuth for the source of truth for Firestore permissions
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final unreadCount = NotificationHistoryService.getUnreadCount(
-      userId: currentUserId,
-    );
+    final currencyProvider = context.watch<CurrencyProvider>();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: CustomScrollView(
-        slivers: [
-          // Modern App Bar
-          SliverAppBar(
-            expandedHeight: 120,
-            floating: false,
-            pinned: true,
-            stretch: true,
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.white,
-            leading: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(10),
+      appBar: AppBar(
+        title: _isSelectionMode
+            ? Text(
+                '${_selectedIds.length} Selected',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
                 ),
-                child: const Icon(
-                  Icons.arrow_back_ios_new,
-                  color: Color(0xFF374151),
-                  size: 18,
-                ),
+              )
+            : const Text(
+                'Notifications',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: IconButton(
-                  onPressed: _clearAllNotifications,
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.delete_sweep_outlined,
-                      color: Color(0xFF6B7280),
-                      size: 20,
-                    ),
-                  ),
-                  tooltip: 'Clear All',
-                ),
-              ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(left: 60, bottom: 16),
-              title: Row(
-                children: [
-                  const Text(
-                    'Notifications',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                    ),
-                  ),
-                  if (unreadCount > 0) ...[
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFF97316), Color(0xFFEA580C)],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFF97316).withOpacity(0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        '$unreadCount',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white,
-                      const Color(0xFFF97316).withOpacity(0.05),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Content using Firestore Stream
-          if (currentUserId == null)
-            SliverFillRemaining(child: _buildEmptyState())
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: _isSelectionMode
+            ? IconButton(
+                onPressed: () {
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedIds.clear();
+                  });
+                },
+                icon: const Icon(Icons.close),
+              )
+            : const BackButton(),
+        actions: [
+          if (_isSelectionMode)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: _deleteSelectedNotifications,
+              tooltip: 'Delete Selected',
+            )
           else
-            StreamBuilder<QuerySnapshot>(
-              stream:
-                  NotificationHistoryService.getFirestoreNotificationsStream(
-                    currentUserId,
-                  ),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  final error = snapshot.error.toString();
-                  final isPermissionError =
-                      error.contains('permission-denied') ||
-                      error.contains('PERMISSION_DENIED');
-
-                  return SliverFillRemaining(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline_rounded,
-                              color: Colors.red.shade400,
-                              size: 48,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              isPermissionError
-                                  ? 'Access Denied'
-                                  : 'Something went wrong',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              isPermissionError
-                                  ? 'Please try logging out and logging back in to refresh your session.\nIf the issue persists, ensure Firestore rules are deployed.'
-                                  : 'Error: $error',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                                height: 1.5,
-                              ),
-                            ),
-                            if (isPermissionError) ...[
-                              const SizedBox(height: 24),
-                              ElevatedButton.icon(
-                                onPressed: () async {
-                                  await FirebaseAuth.instance.signOut();
-                                  if (context.mounted) {
-                                    Navigator.of(
-                                      context,
-                                    ).popUntil((route) => route.isFirst);
-                                  }
-                                },
-                                icon: const Icon(Icons.logout),
-                                label: const Text('Log Out'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFF97316),
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const SliverFillRemaining(
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFFF97316),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return SliverFillRemaining(child: _buildEmptyState());
-                }
-
-                // Convert snapshots to NotificationHistory objects
-                final notifications = snapshot.data!.docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  // Handle both 'timestamp' (int/long) and Firestore Timestamp
-                  final rawTimestamp = data['timestamp'];
-                  DateTime sentAt;
-                  if (rawTimestamp is Timestamp) {
-                    sentAt = rawTimestamp.toDate();
-                  } else if (rawTimestamp is int) {
-                    sentAt = DateTime.fromMillisecondsSinceEpoch(rawTimestamp);
-                  } else {
-                    sentAt = DateTime.now(); // Fallback
-                  }
-
-                  return NotificationHistory(
-                    id: doc.id,
-                    title: data['title'] as String,
-                    body: data['body'] as String,
-                    billId: data['billId'] as String?,
-                    billTitle: data['billTitle'] as String?,
-                    isRead:
-                        (data['status'] == 'read') || (data['isRead'] == true),
-                    sentAt: sentAt,
-                    createdAt: sentAt,
-                    userId: currentUserId,
-                  );
-                }).toList();
-
-                return SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      return _buildNotificationCard(notifications[index]);
-                    }, childCount: notifications.length),
-                  ),
-                );
-              },
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_outlined),
+              onPressed: _clearAllNotifications,
+              tooltip: 'Clear All',
             ),
         ],
+      ),
+      body: ValueListenableBuilder(
+        valueListenable: Hive.box<NotificationHive>(
+          'notifications',
+        ).listenable(),
+        builder: (context, Box<NotificationHive> box, _) {
+          final notifications =
+              OfflineFirstNotificationService.getNotifications();
+
+          if (notifications.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: notifications.length,
+            itemBuilder: (context, index) {
+              final notification = notifications[index];
+              return _buildNotificationCard(notification, currencyProvider);
+            },
+          );
+        },
       ),
     );
   }
@@ -514,15 +257,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              'Bill reminders and updates will appear here when scheduled',
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.grey.shade500,
-                height: 1.5,
-              ),
+              'Bill reminders will appear here',
+              style: TextStyle(fontSize: 15, color: Color(0xFF9CA3AF)),
               textAlign: TextAlign.center,
             ),
           ),
@@ -531,254 +270,172 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildNotificationCard(NotificationHistory notification) {
-    final isHighlighted = _highlightedId == notification.id;
-    final color = _getColorForNotification(notification);
-    final icon = _getIconForNotification(notification);
-    final billDetails = _parseBillDetails(notification.body);
-    final currencyProvider = context.watch<CurrencyProvider>();
+  Widget _buildNotificationCard(
+    NotificationHive notification,
+    CurrencyProvider currencyProvider,
+  ) {
+    final color = _getColorForType(notification.type);
+    final icon = _getIconForType(notification.type);
+    final amount = notification.message.contains('\$')
+        ? currencyProvider.formatCurrency(
+            double.tryParse(
+                  notification.message
+                      .split('\$')[1]
+                      .split(' ')[0]
+                      .replaceAll(',', ''),
+                ) ??
+                0,
+          )
+        : '';
 
-    // Format amount with currency
-    String formattedAmount = billDetails['amount'] ?? '';
-    if (formattedAmount.isNotEmpty) {
-      // Try to parse and reformat with user's currency
-      final amountStr = formattedAmount.replaceAll(RegExp(r'[^\d.]'), '');
-      final amount = double.tryParse(amountStr);
-      if (amount != null) {
-        formattedAmount = currencyProvider.formatCurrency(amount);
-      }
-    }
+    final isSelected = _selectedIds.contains(notification.id);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 12),
-      child: Dismissible(
-        key: Key(notification.id),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          padding: const EdgeInsets.only(right: 24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.red.shade300, Colors.red.shade500],
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          alignment: Alignment.centerRight,
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28),
-              SizedBox(height: 4),
-              Text(
-                'Delete',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+      decoration: BoxDecoration(
+        color: isSelected ? color.withOpacity(0.05) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected ? color : Colors.transparent,
+          width: 2,
         ),
-        onDismissed: (direction) => _deleteNotification(notification.id),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isHighlighted ? color : Colors.transparent,
-              width: isHighlighted ? 2 : 0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isHighlighted
-                    ? color.withOpacity(0.2)
-                    : Colors.black.withOpacity(0.04),
-                blurRadius: isHighlighted ? 16 : 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        boxShadow: [
+          BoxShadow(
+            color: isSelected
+                ? color.withOpacity(0.1)
+                : Colors.black.withOpacity(0.04),
+            blurRadius: isSelected ? 12 : 10,
+            offset: const Offset(0, 4),
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () async {
-                if (!notification.isRead) {
-                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                  await NotificationHistoryService.markAsRead(
-                    notification.id,
-                    userId: currentUserId,
-                  );
-                }
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Icon with gradient background
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            color.withOpacity(0.15),
-                            color.withOpacity(0.08),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(icon, color: color, size: 26),
-                    ),
-                    const SizedBox(width: 14),
-                    // Content
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Title row with unread indicator
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  notification.title,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: color,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ),
-                              if (!notification.isRead)
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [color, color.withOpacity(0.7)],
-                                    ),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: color.withOpacity(0.4),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Bill name
-                          if (billDetails['billName'] != null)
-                            Text(
-                              billDetails['billName']!,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                          const SizedBox(height: 8),
-                          // Amount, vendor, and sequence row
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              // Amount badge
-                              if (formattedAmount.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        color.withOpacity(0.12),
-                                        color.withOpacity(0.06),
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: color.withOpacity(0.2),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    formattedAmount,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: color,
-                                    ),
-                                  ),
-                                ),
-                              // Vendor
-                              if (billDetails['vendor'] != null)
-                                Text(
-                                  'to ${billDetails['vendor']}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              // Sequence badge for recurring bills
-                              if (billDetails['currentSequence'] != null)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF8B5CF6,
-                                    ).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: const Color(
-                                        0xFF8B5CF6,
-                                      ).withOpacity(0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    billDetails['isUnlimited'] == true
-                                        ? '#${billDetails['currentSequence']}'
-                                        : '${billDetails['currentSequence']} of ${billDetails['totalSequence']}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF8B5CF6),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Time
-                          Text(
-                            timeago.format(
-                              notification.sentAt,
-                              locale: 'en_short',
-                            ),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onLongPress: () {
+            if (!_isSelectionMode) {
+              setState(() {
+                _isSelectionMode = true;
+                _selectedIds.add(notification.id);
+              });
+            }
+          },
+          onTap: () {
+            if (_isSelectionMode) {
+              _toggleSelection(notification.id);
+            } else {
+              // Handle normal tap (maybe show details or mark as read)
+              // For now, it just doesn't do anything other than ripple
+            }
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color, size: 24),
                 ),
-              ),
+                const SizedBox(width: 12),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title: "Water Bill Overdue"
+                      Text(
+                        notification.title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+
+                      // Subtitle: "Occurrence 3 of 5"
+                      if (notification.isRecurring &&
+                          notification.recurringSequence != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Occurrence ${notification.recurringSequence}${notification.repeatCount != null ? ' of ${notification.repeatCount}' : ''}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 6),
+
+                      // Message: "Drinking Water bill of $234 was due on 12 Nov"
+                      Text(
+                        notification.message,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1F2937),
+                          height: 1.4,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Timestamp - use scheduledFor to show when bill was actually due
+                      Text(
+                        timeago.format(notification.scheduledFor),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Selection Checkbox
+                // Selection Checkbox with smooth animation
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    width: _isSelectionMode ? 32 : 0,
+                    alignment: Alignment.centerRight,
+                    child: _isSelectionMode
+                        ? Container(
+                            width: 24,
+                            height: 24,
+                            margin: const EdgeInsets.only(left: 8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isSelected ? color : Colors.transparent,
+                              border: Border.all(
+                                color: isSelected
+                                    ? color
+                                    : Colors.grey.shade300,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

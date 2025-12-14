@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/notification_hive.dart';
 import '../models/bill_hive.dart';
@@ -39,6 +40,7 @@ class OfflineFirstNotificationService {
   /// Create notification (local Hive only, NO Firestore)
   ///
   /// Returns true if created, false if duplicate
+  /// Set skipDeviceNotification to true for missed/historical notifications
   static Future<bool> createNotification({
     required String billId,
     required String billTitle,
@@ -47,8 +49,11 @@ class OfflineFirstNotificationService {
     String? userId,
     bool isRecurring = false,
     int? recurringSequence,
+    int? repeatCount,
     double? amount,
     String? vendor,
+    bool skipDeviceNotification =
+        false, // For missed notifications - don't send device alert
   }) async {
     try {
       await init();
@@ -78,12 +83,13 @@ class OfflineFirstNotificationService {
         billId: billId,
         billTitle: billTitle,
         type: type.displayName,
-        title: _generateTitle(type),
-        message: _generateMessage(billTitle, type, amount, vendor),
+        title: _generateTitle(billTitle, type),
+        message: _generateMessage(billTitle, type, amount, scheduledFor),
         scheduledFor: scheduledFor,
         createdAt: DateTime.now(),
         isRecurring: isRecurring,
         recurringSequence: recurringSequence,
+        repeatCount: repeatCount,
         seen: false,
         userId: userId,
       );
@@ -91,8 +97,14 @@ class OfflineFirstNotificationService {
       await _box!.add(notification);
       debugPrint('✅ Notification created in Hive: $occurrenceId');
 
-      // Send device notification (if this device owns the bill)
-      await _sendDeviceNotification(billId, notification);
+      // Send device notification only if not skipped (e.g., for real-time notifications)
+      if (!skipDeviceNotification) {
+        await _sendDeviceNotification(billId, notification);
+      } else {
+        debugPrint(
+          '⏭️ Skipping device notification for missed bill: $billTitle',
+        );
+      }
 
       return true;
     } catch (e, stackTrace) {
@@ -119,13 +131,15 @@ class OfflineFirstNotificationService {
   static Future<void> markAsSeen(String notificationId) async {
     if (_box == null) return;
 
-    final notification = _box!.values.firstWhere(
-      (n) => n.id == notificationId,
-      orElse: () => throw Exception('Notification not found'),
-    );
-
-    notification.seen = true;
-    await notification.save();
+    try {
+      final notification = _box!.values.firstWhere(
+        (n) => n.id == notificationId,
+      );
+      notification.seen = true;
+      await notification.save();
+    } catch (e) {
+      debugPrint('Notification not found: $notificationId');
+    }
   }
 
   /// Mark all notifications as seen
@@ -165,8 +179,11 @@ class OfflineFirstNotificationService {
   }
 
   /// Clear all notifications for a user (e.g., on logout)
-  static Future<void> clearAllForUser(String userId) async {
+  static Future<void> clearAllForUser({String? userId}) async {
     if (_box == null) return;
+
+    userId ??= FirebaseService.currentUserId;
+    if (userId == null) return;
 
     final toDelete = <dynamic>[];
 
@@ -178,6 +195,24 @@ class OfflineFirstNotificationService {
 
     await _box!.deleteAll(toDelete);
     debugPrint('🗑️ Cleared ${toDelete.length} notifications for user');
+  }
+
+  /// Delete specific notifications by ID
+  static Future<void> deleteNotifications(List<String> ids) async {
+    if (_box == null) return;
+
+    final toDelete = <dynamic>[];
+
+    for (final notification in _box!.values) {
+      if (ids.contains(notification.id)) {
+        toDelete.add(notification.key);
+      }
+    }
+
+    if (toDelete.isNotEmpty) {
+      await _box!.deleteAll(toDelete);
+      debugPrint('🗑️ Deleted ${toDelete.length} selected notifications');
+    }
   }
 
   /// Get unread notification count
@@ -236,18 +271,18 @@ class OfflineFirstNotificationService {
   }
 
   /// Generate notification title based on type
-  static String _generateTitle(NotificationType type) {
+  static String _generateTitle(String billTitle, NotificationType type) {
     switch (type) {
       case NotificationType.due:
-        return 'Bill Due Today';
+        return '$billTitle Due Today';
       case NotificationType.overdue:
-        return 'Bill Overdue';
+        return '$billTitle Overdue';
       case NotificationType.reminder:
-        return 'Bill Reminder';
+        return '$billTitle Reminder';
       case NotificationType.paid:
-        return 'Bill Paid';
+        return '$billTitle Paid';
       case NotificationType.recurringCreated:
-        return 'New Bill Generated';
+        return 'New Bill: $billTitle';
     }
   }
 
@@ -256,22 +291,22 @@ class OfflineFirstNotificationService {
     String billTitle,
     NotificationType type,
     double? amount,
-    String? vendor,
+    DateTime date,
   ) {
-    final amountStr = amount != null ? '\$${amount.toStringAsFixed(2)}' : '';
-    final vendorStr = vendor != null ? ' to $vendor' : '';
+    final amountStr = amount != null ? '\$${amount.toStringAsFixed(0)}' : '';
+    final dateStr = DateFormat('d MMM').format(date);
 
     switch (type) {
       case NotificationType.due:
-        return '$billTitle - $amountStr due today$vendorStr';
+        return '$billTitle of $amountStr is due today ($dateStr)';
       case NotificationType.overdue:
-        return '$billTitle - $amountStr is overdue$vendorStr';
+        return '$billTitle of $amountStr was due on $dateStr';
       case NotificationType.reminder:
-        return '$billTitle - $amountStr reminder$vendorStr';
+        return '$billTitle of $amountStr is due on $dateStr';
       case NotificationType.paid:
         return 'Payment of $amountStr recorded for $billTitle';
       case NotificationType.recurringCreated:
-        return 'New recurring bill: $billTitle - $amountStr';
+        return 'New recurring bill created for $dateStr';
     }
   }
 }

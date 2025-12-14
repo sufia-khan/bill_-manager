@@ -1,6 +1,7 @@
 import '../models/bill_hive.dart';
 import '../models/notification_hive.dart';
 import '../services/offline_first_notification_service.dart';
+import '../services/hive_service.dart';
 
 class BillStatusHelper {
   static String calculateStatus(BillHive bill) {
@@ -84,6 +85,7 @@ class BillStatusHelper {
         scheduledFor: bill.dueAt,
         isRecurring: bill.repeat != 'none',
         recurringSequence: bill.recurringSequence,
+        repeatCount: bill.repeatCount,
         amount: bill.amount,
         vendor: bill.vendor,
       );
@@ -109,8 +111,46 @@ class BillStatusHelper {
           recurringSequence: bill.recurringSequence,
           amount: bill.amount,
           vendor: bill.vendor,
+          skipDeviceNotification:
+              true, // Don't send device notifications for missed bills
         );
       }
+    }
+  }
+
+  /// Catch up on missed notifications (called on login/app open)
+  /// This ensures notification history is complete even if user was logged out
+  static Future<void> catchUpMissedNotifications(String userId) async {
+    try {
+      final bills = HiveService.getBillsForUser(userId);
+      final now = DateTime.now();
+
+      for (final bill in bills) {
+        if (bill.isPaid || bill.isDeleted) continue;
+
+        // Check if bill's reminder time has passed (OVERDUE only)
+        final overdueTime = getOverdueTime(bill);
+
+        if (now.isAfter(overdueTime)) {
+          // Bill is overdue - create notification
+          // (occurrenceId will prevent duplicates if it already exists)
+          await OfflineFirstNotificationService.createNotification(
+            billId: bill.id,
+            billTitle: bill.title,
+            type: NotificationType.overdue,
+            scheduledFor: bill.dueAt,
+            isRecurring: bill.repeat != 'none',
+            recurringSequence: bill.recurringSequence,
+            amount: bill.amount,
+            vendor: bill.vendor,
+          );
+        }
+        // REMOVED: No notification for "due today" or upcoming bills
+      }
+
+      print('✅ Caught up on missed notifications for ${bills.length} bills');
+    } catch (e) {
+      print('⚠️ Error catching up on notifications: $e');
     }
   }
 }

@@ -43,6 +43,9 @@ class NotificationHive extends HiveObject {
   @HiveField(12)
   late String userId; // For multi-user filtering
 
+  @HiveField(13)
+  int? repeatCount; // Total occurrences for recurring bills
+
   NotificationHive({
     required this.id,
     required this.occurrenceId,
@@ -55,6 +58,7 @@ class NotificationHive extends HiveObject {
     required this.createdAt,
     required this.isRecurring,
     this.recurringSequence,
+    this.repeatCount,
     this.seen = false,
     required this.userId,
   });
@@ -72,6 +76,7 @@ class NotificationHive extends HiveObject {
     DateTime? createdAt,
     bool? isRecurring,
     int? recurringSequence,
+    int? repeatCount,
     bool? seen,
     String? userId,
   }) {
@@ -87,6 +92,7 @@ class NotificationHive extends HiveObject {
       createdAt: createdAt ?? this.createdAt,
       isRecurring: isRecurring ?? this.isRecurring,
       recurringSequence: recurringSequence ?? this.recurringSequence,
+      repeatCount: repeatCount ?? this.repeatCount,
       seen: seen ?? this.seen,
       userId: userId ?? this.userId,
     );

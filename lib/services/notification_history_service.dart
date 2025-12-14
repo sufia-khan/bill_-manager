@@ -528,6 +528,38 @@ class NotificationHistoryService {
     }
   }
 
+  // Delete multiple notifications
+  static Future<void> deleteNotifications(
+    List<String> ids, {
+    String? userId,
+  }) async {
+    try {
+      await init();
+      if (_box == null) return;
+
+      // Delete from Hive
+      await _box!.deleteAll(ids);
+
+      // Sync with Firestore
+      if (userId != null) {
+        // Firestore batch delete
+        final batch = FirebaseFirestore.instance.batch();
+        final collection = FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('notifications');
+
+        for (final id in ids) {
+          batch.delete(collection.doc(id));
+        }
+
+        await batch.commit();
+      }
+    } catch (e) {
+      print('Error deleting multiple notifications: $e');
+    }
+  }
+
   // Clear all notifications
   static Future<void> clearAll({String? userId}) async {
     try {

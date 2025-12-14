@@ -238,6 +238,14 @@ class BillProvider with ChangeNotifier {
         .toList();
     _paidBills = _allProcessedBills.where((b) => b.status == 'paid').toList();
 
+    // 4.5. Create notifications for overdue bills (real-time)
+    for (final bill in _overdueBills) {
+      final billHive = HiveService.getBillById(bill.id);
+      if (billHive != null && !billHive.isPaid) {
+        BillStatusHelper.checkAndCreateNotification(billHive);
+      }
+    }
+
     // 5. Sort lists
     // Upcoming: Ascending
     _upcomingBills.sort((a, b) {
@@ -814,10 +822,13 @@ class BillProvider with ChangeNotifier {
         status: calculatedStatus, // Update status
       );
 
-      // CRITICAL FIX: If this is a recurring bill, delete and regenerate all instances
+      // CRITICAL FIX: If this is a recurring bill PARENT, delete and regenerate all instances
+      // Only regenerate when editing the parent bill (sequence 1), not later instances
       if (updatedBill.repeat.toLowerCase() != 'none' &&
           updatedBill.repeatCount != null &&
-          updatedBill.repeatCount! > 1) {
+          updatedBill.repeatCount! > 1 &&
+          (updatedBill.recurringSequence == null ||
+              updatedBill.recurringSequence == 1)) {
         print('\n🔄 ═══════════════════════════════════════════════════════');
         print('🔄 UPDATING RECURRING BILL - REGENERATING INSTANCES');
         print('🔄 ═══════════════════════════════════════════════════════');
@@ -970,11 +981,7 @@ class BillProvider with ChangeNotifier {
           // Mark as needing sync so it gets picked up later
         });
 
-        // Send paid notification
-        await NotificationService().sendNotification(
-          bill: updatedBill,
-          type: 'paid',
-        );
+        // REMOVED: No device notification when marking bill as paid
       }
     } catch (e) {
       _error = e.toString();

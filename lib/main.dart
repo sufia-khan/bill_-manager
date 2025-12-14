@@ -13,6 +13,7 @@ import 'screens/archived_bills_screen.dart';
 // import 'screens/export_screen.dart'; // Hidden for MVP - will add later
 import 'package:google_fonts/google_fonts.dart';
 import 'services/hive_service.dart';
+import 'services/firebase_service.dart';
 import 'services/notification_service.dart';
 import 'services/pending_notification_service.dart';
 import 'services/pending_recurring_service.dart';
@@ -20,6 +21,7 @@ import 'services/notification_history_service.dart';
 import 'services/offline_first_notification_service.dart';
 import 'services/user_preferences_service.dart';
 import 'services/archive_management_service.dart';
+import 'utils/bill_status_helper.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/currency_provider.dart';
@@ -71,6 +73,12 @@ Future<void> _initializeBackgroundTasks() async {
 
     // Run data migration
     await HiveService.migrateExistingBills();
+
+    // CRITICAL: Catch up on missed notifications (e.g., during logout)
+    final userId = FirebaseService.currentUserId;
+    if (userId != null) {
+      await BillStatusHelper.catchUpMissedNotifications(userId);
+    }
 
     // Process pending notifications
     await PendingNotificationService.processPendingNotifications();

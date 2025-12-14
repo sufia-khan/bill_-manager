@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/bill.dart';
 import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
 import 'bill_details_bottom_sheet.dart';
-import 'amount_info_bottom_sheet.dart';
 
 class ExpandableBillCard extends StatelessWidget {
   final Bill bill;
@@ -28,9 +28,6 @@ class ExpandableBillCard extends StatelessWidget {
       final today = DateTime(now.year, now.month, now.day);
       final dueDay = DateTime(date.year, date.month, date.day);
       final difference = dueDay.difference(today).inDays;
-      debugPrint(
-        '🔍 Bill "${bill.title}": due="${bill.due}", today=$today, dueDay=$dueDay, diff=$difference',
-      );
 
       final months = [
         'Jan',
@@ -52,90 +49,86 @@ class ExpandableBillCard extends StatelessWidget {
 
       String prefix = '';
       String dateText = '';
+      Color dateColor;
 
       // For paid bills
       if (bill.status == 'paid') {
-        prefix = 'Paid on: ';
+        prefix = 'Paid on ';
         final paidDate = bill.paidAt ?? date;
         final pDay = paidDate.day;
         final pMonth = months[paidDate.month - 1];
-        final pYear = paidDate.year;
-        dateText = '$pDay $pMonth $pYear';
+        dateText = '$pDay $pMonth';
+        dateColor = const Color(0xFF059669); // Green
       }
       // For overdue bills
       else if (bill.status == 'overdue') {
+        dateColor = const Color(0xFFEF4444); // Red
         final daysPast = -difference;
         if (daysPast <= 7) {
           if (daysPast == 0) {
             return Text(
               'Due today',
-              style: AppTextStyles.dueDate(color: const Color(0xFFEF4444)),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: dateColor,
+              ),
             );
-          } else if (daysPast == 1) {
-            prefix = 'Overdue by: ';
-            dateText = '1 day';
           } else {
-            prefix = 'Overdue by: ';
+            prefix = 'Overdue by ';
             dateText = '$daysPast days';
           }
         } else {
-          prefix = 'Overdue on: ';
-          dateText = '$day $month $year';
+          prefix = 'Overdue ';
+          dateText = '$day $month';
         }
       }
       // For upcoming bills
       else {
+        dateColor = const Color(0xFFF97316); // Orange
         if (difference >= 0 && difference <= 7) {
           if (difference == 0) {
             return Text(
               'Due today',
-              style: AppTextStyles.dueDate(color: const Color(0xFFF97316)),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: dateColor,
+              ),
             );
           } else if (difference == 1) {
-            prefix = 'Due in: ';
+            prefix = 'Due in ';
             dateText = '1 day';
           } else {
-            prefix = 'Due in: ';
+            prefix = 'Due in ';
             dateText = '$difference days';
           }
         } else {
-          prefix = 'Due on: ';
+          prefix = 'Due ';
           dateText = '$day $month $year';
+          // Use grey for non-urgent upcoming dates
+          dateColor = const Color(0xFF6B7280);
         }
-      }
-
-      // Get color based on status
-      Color dateColor;
-      if (bill.status == 'paid') {
-        dateColor = const Color(0xFF059669); // Green
-      } else if (bill.status == 'overdue') {
-        dateColor = const Color(0xFFEF4444); // Red
-      } else {
-        dateColor = const Color(0xFFF97316); // Orange
-      }
-
-      // For paid bills, no icon here (icon is next to status)
-      if (bill.status == 'paid') {
-        return RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(text: prefix, style: AppTextStyles.dueDatePrefix()),
-              TextSpan(
-                text: dateText,
-                style: AppTextStyles.dueDate(color: dateColor),
-              ),
-            ],
-          ),
-        );
       }
 
       return RichText(
         text: TextSpan(
           children: [
-            TextSpan(text: prefix, style: AppTextStyles.dueDatePrefix()),
+            TextSpan(
+              text: prefix,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: dateColor,
+              ),
+            ),
             TextSpan(
               text: dateText,
-              style: AppTextStyles.dueDate(color: dateColor),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: dateColor,
+              ),
             ),
           ],
         ),
@@ -221,13 +214,13 @@ class ExpandableBillCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isHighlighted ? const Color(0xFFFFF7ED) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: isHighlighted
             ? Border.all(color: const Color(0xFFF97316), width: 2)
-            : null,
+            : Border.all(color: Colors.transparent, width: 0),
         boxShadow: isHighlighted
             ? [
                 BoxShadow(
@@ -239,120 +232,115 @@ class ExpandableBillCard extends StatelessWidget {
               ]
             : [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+                  color: const Color(0xFF000000).withValues(alpha: 0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 0,
                 ),
               ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Emoji Icon in container
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF97316).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _getCategoryEmoji(),
-                style: const TextStyle(fontSize: 24),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Left Side - Bill Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.start,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _showManageBottomSheet(context),
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    bill.title,
-                    style: AppTextStyles.billTitle(),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(bill.category, style: AppTextStyles.label()),
-                  const SizedBox(height: 8),
-                  Row(children: [Flexible(child: _buildDueDateText())]),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            // Right Side - Amount, Status, Manage
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      bill.amount >= 1000
-                          ? formatCurrencyShort(bill.amount)
-                          : formatCurrencyFull(bill.amount),
-                      style: AppTextStyles.amount(),
+                  // Icon
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED), // Very light orange
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    if (bill.amount >= 1000) ...[
-                      const SizedBox(width: 6),
-                      GestureDetector(
-                        onTap: () {
-                          AmountInfoBottomSheet.show(
-                            context,
-                            amount: bill.amount,
-                            billCount: 1,
-                            title: bill.title,
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFF97316,
-                            ).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _getCategoryEmoji(),
+                      style: const TextStyle(fontSize: 28),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+
+                  // Middle Section: Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          bill.title,
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1F2937), // Grey 900
                           ),
-                          child: const Icon(
-                            Icons.info_outline,
-                            size: 14,
-                            color: Color(0xFFF97316),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          bill.category,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: const Color(0xFF9CA3AF), // Grey 400
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        _buildDueDateText(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Right Section: Amount & Button
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        bill.amount >= 1000
+                            ? formatCurrencyShort(bill.amount)
+                            : formatCurrencyFull(bill.amount),
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1F2937),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 32,
+                        child: ElevatedButton(
+                          onPressed: () => _showManageBottomSheet(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3B82F6), // Blue
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            elevation: 0,
+                            shape: const StadiumBorder(),
+                            textStyle: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          child: const Text('Manage'),
                         ),
                       ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => _showManageBottomSheet(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    elevation: 0,
                   ),
-                  child: Text('Manage', style: AppTextStyles.button()),
-                ),
-              ],
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );

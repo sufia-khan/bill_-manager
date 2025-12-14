@@ -28,6 +28,8 @@ class _AddBillScreenState extends State<AddBillScreen> {
   int _repeatCount = 12; // Default to 12 times
   String? _reminderTiming; // Will be set from provider default
   TimeOfDay? _notificationTime; // Will be set from provider default
+  int _minRepeatCount =
+      1; // Minimum allowed repeat count (based on executed occurrences)
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Subscriptions', 'emoji': '📋'},
@@ -163,6 +165,21 @@ class _AddBillScreenState extends State<AddBillScreen> {
           _reminderTiming =
               billHive.reminderTiming ?? notificationProvider.reminderTiming;
           _notificationTime = timeToUse;
+
+          // Calculate minRepeatCount based on executed occurrences in the series
+          // Find the maximum sequence number in the recurring series
+          final seriesId = billHive.parentBillId ?? billHive.id;
+          int maxSequence = 1;
+          for (final b in billProvider.bills) {
+            final bSeriesId = b.parentBillId ?? b.id;
+            if (bSeriesId == seriesId && !b.isDeleted) {
+              final seq = b.recurringSequence ?? 1;
+              if (seq > maxSequence) {
+                maxSequence = seq;
+              }
+            }
+          }
+          _minRepeatCount = maxSequence;
         });
       } catch (e) {
         // Bill not found, use defaults
@@ -1784,35 +1801,66 @@ class _AddBillScreenState extends State<AddBillScreen> {
 
   Widget _buildRepeatChip(String label, int count, String emoji) {
     final isSelected = _repeatCount == count;
-    return InkWell(
-      onTap: () {
-        setState(() => _repeatCount = count);
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF97316) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? const Color(0xFFF97316) : Colors.grey.shade300,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? Colors.white : const Color(0xFF1F2937),
+    // Only enforce minRepeatCount when editing an existing bill
+    final isDisabled = widget.billToEdit != null && count < _minRepeatCount;
+    return Opacity(
+      opacity: isDisabled ? 0.5 : 1.0,
+      child: InkWell(
+        onTap: () {
+          if (isDisabled) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'This bill has already occurred $_minRepeatCount times.\n'
+                  "You can't reduce the total occurrences below this.\n"
+                  'You can add a new bill if needed.',
+                ),
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
               ),
+            );
+            return;
+          }
+          setState(() => _repeatCount = count);
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFFF97316)
+                : isDisabled
+                ? Colors.grey.shade200
+                : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFFF97316)
+                  : isDisabled
+                  ? Colors.grey.shade400
+                  : Colors.grey.shade300,
+              width: 1.5,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 14)),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: isDisabled
+                      ? Colors.grey.shade500
+                      : isSelected
+                      ? Colors.white
+                      : const Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

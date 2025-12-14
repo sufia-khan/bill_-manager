@@ -28,6 +28,7 @@ class NotificationHiveAdapter extends TypeAdapter<NotificationHive> {
       createdAt: fields[8] as DateTime,
       isRecurring: fields[9] as bool,
       recurringSequence: fields[10] as int?,
+      repeatCount: fields[13] as int?,
       seen: fields[11] as bool,
       userId: fields[12] as String,
     );
@@ -36,7 +37,7 @@ class NotificationHiveAdapter extends TypeAdapter<NotificationHive> {
   @override
   void write(BinaryWriter writer, NotificationHive obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +63,9 @@ class NotificationHiveAdapter extends TypeAdapter<NotificationHive> {
       ..writeByte(11)
       ..write(obj.seen)
       ..writeByte(12)
-      ..write(obj.userId);
+      ..write(obj.userId)
+      ..writeByte(13)
+      ..write(obj.repeatCount);
   }
 
   @override
