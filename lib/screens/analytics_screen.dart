@@ -298,28 +298,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget build(BuildContext context) {
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
-        final bills = billProvider.bills
-            .where(
-              (billHive) => !billHive.isArchived,
-            ) // Filter out archived bills
-            .map(
-              (billHive) => Bill(
-                id: billHive.id,
-                title: billHive.title,
-                vendor: billHive.vendor,
-                amount: billHive.amount,
-                due: billHive.dueAt.toIso8601String().split('T')[0],
-                dueAt: billHive.dueAt,
-                repeat: billHive.repeat,
-                category: billHive.category,
-                status: billHive.isPaid
-                    ? 'paid'
-                    : (billHive.dueAt.isBefore(DateTime.now())
-                          ? 'overdue'
-                          : 'upcoming'),
-              ),
-            )
-            .toList();
+        final bills = billProvider.allProcessedBills;
 
         final monthlyData = _calculateMonthlyData(bills, _showingSecondHalf);
 
