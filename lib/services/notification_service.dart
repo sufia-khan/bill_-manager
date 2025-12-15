@@ -416,17 +416,8 @@ class NotificationService {
           '   📝 Adding to notification history as missed notification',
         );
 
-        // Determine notification title for history
-        String historyTitle;
-        if (daysBeforeDue == 0) {
-          historyTitle = 'Bill Due Today';
-        } else if (daysBeforeDue == 1) {
-          historyTitle = 'Bill Due Tomorrow';
-        } else if (daysBeforeDue == 7) {
-          historyTitle = 'Bill Due in 1 Week';
-        } else {
-          historyTitle = 'Bill Due in $daysBeforeDue Days';
-        }
+        // ONLY overdue notifications - no reminder notifications
+        String historyTitle = 'Bill Overdue';
 
         final historyBody =
             '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
@@ -476,17 +467,8 @@ class NotificationService {
         '   Time Until Notification: ${scheduledTime.difference(tzNow).inHours}h ${scheduledTime.difference(tzNow).inMinutes % 60}m',
       );
 
-      // Determine notification title
-      String title;
-      if (daysBeforeDue == 0) {
-        title = 'Bill Due Today';
-      } else if (daysBeforeDue == 1) {
-        title = 'Bill Due Tomorrow';
-      } else if (daysBeforeDue == 7) {
-        title = 'Bill Due in 1 Week';
-      } else {
-        title = 'Bill Due in $daysBeforeDue Days';
-      }
+      // ONLY overdue notifications - no reminder notifications
+      String title = 'Bill Overdue';
 
       final body =
           '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';

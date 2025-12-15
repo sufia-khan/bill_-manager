@@ -164,9 +164,9 @@ class AlarmReceiver : BroadcastReceiver() {
         // Generate new notification ID for next instance
         val nextNotificationId = (billId + nextSequence.toString()).hashCode()
         
-        // Create notification title and body
-        val nextTitle = "Bill Due Today"
-        val nextBody = "$billTitle - \$${"%.2f".format(billAmount)} due to $billVendor"
+        // Create notification title and body - matches notification screen format
+        val nextTitle = "$billTitle Overdue"
+        val nextBody = "$billTitle of \$${"%.0f".format(billAmount)} is overdue"
         
         Log.d("AlarmReceiver", "Scheduling next recurring instance: seq=$nextSequence, time=$nextDueTime")
         

@@ -238,6 +238,24 @@ class BillProvider with ChangeNotifier {
         .toList();
     _paidBills = _allProcessedBills.where((b) => b.status == 'paid').toList();
 
+    // DEBUG: Log bill status distribution
+    print(
+      '📊 _processBills: Total=${_allProcessedBills.length}, Upcoming=${_upcomingBills.length}, Overdue=${_overdueBills.length}, Paid=${_paidBills.length}',
+    );
+
+    // DEBUG: For 1-minute testing bills, log details
+    for (final bill in _allProcessedBills.take(10)) {
+      final billHive = _bills.firstWhere(
+        (b) => b.id == bill.id,
+        orElse: () => _bills.first,
+      );
+      if (billHive.repeat.toLowerCase() == '1 minute (testing)') {
+        print(
+          '   📝 ${bill.title} seq=${billHive.recurringSequence}: dueAt=${billHive.dueAt}, notifTime=${billHive.notificationTime}, status=${bill.status}',
+        );
+      }
+    }
+
     // 4.5. Create notifications for overdue bills (real-time)
     for (final bill in _overdueBills) {
       final billHive = HiveService.getBillById(bill.id);
@@ -397,6 +415,18 @@ class BillProvider with ChangeNotifier {
     // Check if we need to reinitialize for a different user
     final needsReinit =
         _initializedForUserId != null && _initializedForUserId != currentUserId;
+
+    // CRITICAL FIX: Also check if bills list is empty - this happens after cleanLogin()
+    // where HiveService.clearBillsOnly() is called but BillProvider state isn't reset
+    final needsReload =
+        _isInitialized && _bills.isEmpty && currentUserId != null;
+
+    if (needsReload) {
+      print(
+        '⚠️ Bills list is empty after clean login - forcing re-initialization',
+      );
+      _isInitialized = false;
+    }
 
     // Prevent multiple initializations for the same user
     if ((_isInitialized && !needsReinit) || _isLoading) {
@@ -1723,113 +1753,145 @@ class BillProvider with ChangeNotifier {
   // 3. Bills are refreshed
   Future<void> checkOverdueRecurringBills() async {
     try {
-      // Find all overdue recurring bills that haven't been paid
-      final overdueRecurringBills = _bills
-          .where(
-            (bill) =>
-                bill.repeat != 'none' &&
-                !bill.isDeleted &&
-                !bill.isPaid &&
-                BillStatusHelper.calculateStatus(bill) == 'overdue',
-          )
-          .toList();
-
-      if (overdueRecurringBills.isEmpty) {
-        return;
-      }
-
-      print(
-        '⏰ Found ${overdueRecurringBills.length} overdue recurring bills - processing IMMEDIATELY...',
-      );
-
-      int createdCount = 0;
-      int statusUpdatedCount = 0;
+      int totalCreatedCount = 0;
+      int totalStatusUpdatedCount = 0;
       final currentUserId = FirebaseService.currentUserId;
 
-      for (final overdueBill in overdueRecurringBills) {
-        try {
-          // CRITICAL FIX (BUG 1): Update the overdue bill's status in Hive immediately
-          // This ensures it appears in the Overdue tab right away
-          if (overdueBill.status != 'overdue') {
-            final updatedOverdueBill = overdueBill.copyWith(
-              status: 'overdue',
-              updatedAt: DateTime.now(),
-              clientUpdatedAt: DateTime.now(),
-              needsSync: true,
-            );
-            await HiveService.saveBill(updatedOverdueBill);
-            statusUpdatedCount++;
-            print('   📌 Updated status to OVERDUE: ${overdueBill.title}');
+      // CRITICAL FIX: Loop until ALL missed instances are created
+      // This handles the case where user was logged out and multiple instances became overdue
+      // Without the loop, only one instance would be created per call
+      const int maxIterations = 100; // Safety limit for 1-minute testing mode
 
-            // Sync status update to Firestore in background
-            if (currentUserId != null) {
-              FirebaseService.saveBill(updatedOverdueBill).catchError((e) {
-                print('   ⚠️ Failed to sync status update: $e');
-              });
-            }
+      for (int iteration = 0; iteration < maxIterations; iteration++) {
+        // Refresh bill list on subsequent iterations to see newly created instances
+        if (iteration > 0) {
+          _bills = _loadCurrentUsersBills(forceRefresh: true);
+        }
+
+        // Find all overdue recurring bills that haven't been paid
+        final overdueRecurringBills = _bills
+            .where(
+              (bill) =>
+                  bill.repeat != 'none' &&
+                  !bill.isDeleted &&
+                  !bill.isPaid &&
+                  BillStatusHelper.calculateStatus(bill) == 'overdue',
+            )
+            .toList();
+
+        if (overdueRecurringBills.isEmpty) {
+          if (iteration > 0) {
+            print('⏰ Iteration $iteration: No more overdue bills to process');
           }
+          break; // No more overdue bills, exit loop
+        }
 
-          // Check if repeat count limit reached
-          if (overdueBill.repeatCount != null) {
-            final currentSequence = overdueBill.recurringSequence ?? 1;
-            if (currentSequence >= overdueBill.repeatCount!) {
-              print(
-                '   ⏭️ ${overdueBill.title}: Repeat limit reached, skipping',
-              );
-              continue;
-            }
-          }
-
-          // Create next instance IMMEDIATELY
-          final nextInstance = await RecurringBillService.createNextInstance(
-            overdueBill,
-          );
-
-          if (nextInstance != null) {
-            createdCount++;
-            print(
-              '   ✅ Created next instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence}) due ${nextInstance.dueAt} notificationTime: ${nextInstance.notificationTime}',
-            );
-
-            // Schedule notification for the new instance
-            await _scheduleNotificationForBill(
-              nextInstance,
-              forceReschedule: true,
-            );
-
-            // NOTE: Removed "New Bill Generated" notification per user request
-            // The user does not want notifications for auto-generated recurring instances
-
-            // Sync the new instance to Firestore in background
-            if (currentUserId != null) {
-              FirebaseService.saveBill(nextInstance)
-                  .then((_) {
-                    HiveService.markBillAsSynced(nextInstance.id);
-                    print('   ☁️ Synced ${nextInstance.title} to Firestore');
-                  })
-                  .catchError((e) {
-                    print('   ⚠️ Failed to sync to Firestore (will retry): $e');
-                  });
-            }
-          } else {
-            print(
-              '   ⏭️ ${overdueBill.title}: Next instance already exists or limit reached',
-            );
-          }
-        } catch (e) {
+        if (iteration == 0) {
           print(
-            '   ❌ Error creating next instance for ${overdueBill.title}: $e',
+            '⏰ Found ${overdueRecurringBills.length} overdue recurring bills - processing ALL missed instances...',
           );
+        } else {
+          print(
+            '⏰ Iteration $iteration: Found ${overdueRecurringBills.length} more overdue bills',
+          );
+        }
+
+        int createdThisRound = 0;
+        int statusUpdatedThisRound = 0;
+
+        for (final overdueBill in overdueRecurringBills) {
+          try {
+            // Update the overdue bill's status in Hive immediately
+            if (overdueBill.status != 'overdue') {
+              final updatedOverdueBill = overdueBill.copyWith(
+                status: 'overdue',
+                updatedAt: DateTime.now(),
+                clientUpdatedAt: DateTime.now(),
+                needsSync: true,
+              );
+              await HiveService.saveBill(updatedOverdueBill);
+              statusUpdatedThisRound++;
+              print('   📌 Updated status to OVERDUE: ${overdueBill.title}');
+
+              // Sync status update to Firestore in background
+              if (currentUserId != null) {
+                FirebaseService.saveBill(updatedOverdueBill).catchError((e) {
+                  print('   ⚠️ Failed to sync status update: $e');
+                });
+              }
+            }
+
+            // Check if repeat count limit reached
+            if (overdueBill.repeatCount != null) {
+              final currentSequence = overdueBill.recurringSequence ?? 1;
+              if (currentSequence >= overdueBill.repeatCount!) {
+                print(
+                  '   ⏭️ ${overdueBill.title}: Repeat limit reached, skipping',
+                );
+                continue;
+              }
+            }
+
+            // Create next instance IMMEDIATELY
+            final nextInstance = await RecurringBillService.createNextInstance(
+              overdueBill,
+            );
+
+            if (nextInstance != null) {
+              createdThisRound++;
+              print(
+                '   ✅ Created next instance: ${nextInstance.title} (seq: ${nextInstance.recurringSequence}) due ${nextInstance.dueAt} notificationTime: ${nextInstance.notificationTime}',
+              );
+
+              // Schedule notification for the new instance
+              await _scheduleNotificationForBill(
+                nextInstance,
+                forceReschedule: true,
+              );
+
+              // Sync the new instance to Firestore in background
+              if (currentUserId != null) {
+                FirebaseService.saveBill(nextInstance)
+                    .then((_) {
+                      HiveService.markBillAsSynced(nextInstance.id);
+                      print('   ☁️ Synced ${nextInstance.title} to Firestore');
+                    })
+                    .catchError((e) {
+                      print(
+                        '   ⚠️ Failed to sync to Firestore (will retry): $e',
+                      );
+                    });
+              }
+            } else {
+              print(
+                '   ⏭️ ${overdueBill.title}: Next instance already exists or limit reached',
+              );
+            }
+          } catch (e) {
+            print(
+              '   ❌ Error creating next instance for ${overdueBill.title}: $e',
+            );
+          }
+        }
+
+        totalCreatedCount += createdThisRound;
+        totalStatusUpdatedCount += statusUpdatedThisRound;
+
+        // If no new instances were created this round, exit loop
+        // This means all overdue bills either hit their limit or already have next instances
+        if (createdThisRound == 0) {
+          print('⏰ No new instances created this round, stopping loop');
+          break;
         }
       }
 
-      // CRITICAL FIX (BUG 1): Always refresh UI if any status was updated OR new instances created
-      if (createdCount > 0 || statusUpdatedCount > 0) {
+      // Refresh UI if any changes were made
+      if (totalCreatedCount > 0 || totalStatusUpdatedCount > 0) {
         print(
-          '⏰ Created $createdCount new instances, updated $statusUpdatedCount statuses',
+          '⏰ TOTAL: Created $totalCreatedCount new instances, updated $totalStatusUpdatedCount statuses',
         );
 
-        // Reload bills and update UI IMMEDIATELY
+        // Reload bills and update UI
         _bills = _loadCurrentUsersBills(forceRefresh: true);
         _processBills();
         notifyListeners();

@@ -863,17 +863,8 @@ class NotificationHistoryService {
           );
 
           if (!alreadyExists) {
-            // Determine notification title
-            String title;
-            if (daysOffset == 0) {
-              title = 'Bill Due Today';
-            } else if (daysOffset == 1) {
-              title = 'Bill Due Tomorrow';
-            } else if (daysOffset == 7) {
-              title = 'Bill Due in 1 Week';
-            } else {
-              title = 'Bill Due in $daysOffset Days';
-            }
+            // ONLY overdue notifications - no reminder notifications
+            String title = 'Bill Overdue';
 
             final body =
                 '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';

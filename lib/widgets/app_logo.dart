@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 /// Reusable app logo widget that displays the BillMinder logo
 class AppLogo extends StatelessWidget {
@@ -10,10 +9,13 @@ class AppLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      'assets/images/billminder_logo.svg',
-      width: size,
-      height: size,
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/my_app_logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      ),
     );
   }
 }
@@ -28,10 +30,11 @@ class AppLogoCircular extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final logo = ClipOval(
-      child: SvgPicture.asset(
-        'assets/images/billminder_logo.svg',
+      child: Image.asset(
+        'assets/images/my_app_logo.png',
         width: size,
         height: size,
+        fit: BoxFit.cover,
       ),
     );
 

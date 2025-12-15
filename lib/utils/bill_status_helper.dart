@@ -109,6 +109,7 @@ class BillStatusHelper {
           scheduledFor: bill.dueAt,
           isRecurring: bill.repeat != 'none',
           recurringSequence: bill.recurringSequence,
+          repeatCount: bill.repeatCount,
           amount: bill.amount,
           vendor: bill.vendor,
           skipDeviceNotification:
@@ -141,6 +142,7 @@ class BillStatusHelper {
             scheduledFor: bill.dueAt,
             isRecurring: bill.repeat != 'none',
             recurringSequence: bill.recurringSequence,
+            repeatCount: bill.repeatCount,
             amount: bill.amount,
             vendor: bill.vendor,
           );

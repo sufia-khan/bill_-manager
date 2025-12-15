@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../services/user_preferences_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -253,10 +252,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Center(
               child: page.emoji == '📋'
                   ? ClipOval(
-                      child: SvgPicture.asset(
-                        'assets/images/billminder_logo.svg',
+                      child: Image.asset(
+                        'assets/images/my_app_logo.png',
                         width: 80,
                         height: 80,
+                        fit: BoxFit.cover,
                       ),
                     )
                   : Text(page.emoji, style: const TextStyle(fontSize: 56)),

@@ -301,6 +301,7 @@ class RecurringBillService {
           scheduledFor: bill.dueAt,
           isRecurring: bill.repeat != 'none',
           recurringSequence: bill.recurringSequence,
+          repeatCount: bill.repeatCount,
           amount: bill.amount,
           vendor: bill.vendor,
         );
@@ -883,6 +884,64 @@ class RecurringBillService {
             );
             break;
           }
+        }
+
+        // CRITICAL FIX: After processing all overdue instances, ensure there's one upcoming instance
+        // This handles the case where user logged out and missed several occurrences
+        // Without this, the Upcoming tab would be empty after login
+        try {
+          // Re-fetch fresh data to check current state
+          final freshBills = userId != null && userId.isNotEmpty
+              ? HiveService.getBillsForUser(userId, forceRefresh: true)
+              : HiveService.getAllBills(forceRefresh: true);
+
+          // Check if there's now an active (upcoming) instance in this series
+          final hasActiveNow = _hasActiveInstanceInSeries(parentId, freshBills);
+
+          if (!hasActiveNow) {
+            // Find the latest bill in this series
+            final seriesLatestBills = freshBills
+                .where(
+                  (b) => (b.parentBillId ?? b.id) == parentId && !b.isDeleted,
+                )
+                .toList();
+
+            if (seriesLatestBills.isNotEmpty) {
+              seriesLatestBills.sort((a, b) {
+                final seqA = a.recurringSequence ?? 0;
+                final seqB = b.recurringSequence ?? 0;
+                return seqB.compareTo(seqA);
+              });
+
+              final latestInSeries = seriesLatestBills.first;
+
+              // Check if repeat limit not reached
+              final currentSeq = latestInSeries.recurringSequence ?? 1;
+              final repeatLimit = latestInSeries.repeatCount;
+
+              if (repeatLimit == null || currentSeq < repeatLimit) {
+                // Create the next upcoming instance
+                Logger.info(
+                  'No upcoming instance in series $parentId - creating one now',
+                  _tag,
+                );
+
+                final nextUpcoming = await createNextInstance(latestInSeries);
+                if (nextUpcoming != null) {
+                  createdCount++;
+                  Logger.info(
+                    'Created upcoming instance: ${nextUpcoming.title} seq=${nextUpcoming.recurringSequence} due=${nextUpcoming.dueAt}',
+                    _tag,
+                  );
+                }
+              }
+            }
+          }
+        } catch (e) {
+          Logger.warning(
+            'Error ensuring upcoming instance for series $parentId: $e',
+            _tag,
+          );
         }
       }
 

@@ -134,9 +134,14 @@ class SyncService {
 
           // Update Hive with remote data (marking as from server)
           final remoteBill = BillHive.fromFirestore(data);
+          // CRITICAL FIX: Recalculate status based on current time
+          final recalculatedStatus = BillStatusHelper.calculateStatus(
+            remoteBill,
+          );
           final billWithUser = remoteBill.copyWith(
             needsSync: false,
             userId: userId,
+            status: recalculatedStatus,
           );
           await HiveService.saveBill(billWithUser);
 
@@ -459,10 +464,16 @@ class SyncService {
         for (var serverBill in serverBills) {
           final localBill = HiveService.getBillById(serverBill.id);
           if (localBill == null || !localBill.needsSync) {
-            // CRITICAL FIX: Always set userId to current user to prevent data leak
+            // CRITICAL FIX: Recalculate status based on current time
+            // Bills in Firestore may have stale status if user was logged out
+            final recalculatedStatus = BillStatusHelper.calculateStatus(
+              serverBill,
+            );
+
             final billWithUser = serverBill.copyWith(
               needsSync: false,
               userId: currentUserId, // Ensure userId is set correctly
+              status: recalculatedStatus, // Recalculate status for current time
             );
             await HiveService.saveBill(billWithUser);
           }
@@ -538,10 +549,14 @@ class SyncService {
       for (var serverBill in serverBills) {
         final localBill = HiveService.getBillById(serverBill.id);
         if (localBill == null || !localBill.needsSync) {
-          // CRITICAL FIX: Always set userId to prevent data leak
+          // CRITICAL FIX: Recalculate status based on current time
+          final recalculatedStatus = BillStatusHelper.calculateStatus(
+            serverBill,
+          );
           final billWithUser = serverBill.copyWith(
             needsSync: false,
             userId: currentUserId,
+            status: recalculatedStatus,
           );
           await HiveService.saveBill(billWithUser);
         }

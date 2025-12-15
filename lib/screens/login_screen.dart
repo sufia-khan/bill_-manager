@@ -65,7 +65,7 @@ class LoginScreen extends StatelessWidget {
                     ),
                     child: ClipOval(
                       child: Image.asset(
-                        'assets/images/billminder_app_icon.jpg',
+                        'assets/images/my_app_logo.png',
                         width: 120,
                         height: 120,
                         fit: BoxFit.cover,

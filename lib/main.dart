@@ -269,7 +269,7 @@ class _AuthWrapperState extends State<AuthWrapper>
                   },
                   child: ClipOval(
                     child: Image.asset(
-                      'assets/images/billminder_logo.png',
+                      'assets/images/my_app_logo.png',
                       width: 130,
                       height: 130,
                       fit: BoxFit.cover,

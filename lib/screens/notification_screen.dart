@@ -15,18 +15,62 @@ class NotificationScreen extends StatefulWidget {
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
-class _NotificationScreenState extends State<NotificationScreen> {
+class _NotificationScreenState extends State<NotificationScreen>
+    with SingleTickerProviderStateMixin {
   final Set<String> _selectedIds = {};
   bool _isSelectionMode = false;
+
+  // Blink animation state
+  Set<String> _initiallyUnseenIds = {};
+  bool _isBlinking = false;
+  Timer? _blinkTimer;
+  late AnimationController _blinkController;
 
   @override
   void initState() {
     super.initState();
-    // Mark all as seen when screen opens
+
+    // Set up blink animation controller
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    // Capture initially unseen notifications before marking as seen
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Get unseen notification IDs before marking all as seen
+      final notifications = OfflineFirstNotificationService.getNotifications();
+      _initiallyUnseenIds = notifications
+          .where((n) => !n.seen)
+          .map((n) => n.id)
+          .toSet();
+
+      // Start blinking if there are unseen notifications
+      if (_initiallyUnseenIds.isNotEmpty) {
+        setState(() => _isBlinking = true);
+        _blinkController.repeat(reverse: true);
+
+        // Stop blinking after 2 seconds
+        _blinkTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() => _isBlinking = false);
+            _blinkController.stop();
+            _blinkController.value = 1.0;
+          }
+        });
+      }
+
+      // Mark all as seen and refresh badge
       OfflineFirstNotificationService.markAllAsSeen();
       context.read<NotificationBadgeProvider>().forceRefresh();
     });
+  }
+
+  @override
+  void dispose() {
+    _blinkTimer?.cancel();
+    _blinkController.dispose();
+    super.dispose();
   }
 
   Future<void> _deleteSelectedNotifications() async {
@@ -289,157 +333,174 @@ class _NotificationScreenState extends State<NotificationScreen> {
         : '';
 
     final isSelected = _selectedIds.contains(notification.id);
+    final shouldBlink =
+        _isBlinking && _initiallyUnseenIds.contains(notification.id);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isSelected ? color.withOpacity(0.05) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isSelected ? color : Colors.transparent,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isSelected
-                ? color.withOpacity(0.1)
-                : Colors.black.withOpacity(0.04),
-            blurRadius: isSelected ? 12 : 10,
-            offset: const Offset(0, 4),
+    // Wrap with AnimatedBuilder for blink effect
+    return AnimatedBuilder(
+      animation: _blinkController,
+      builder: (context, child) {
+        // Calculate blink opacity for background highlight
+        final blinkOpacity = shouldBlink
+            ? 0.15 +
+                  (_blinkController.value * 0.15) // Pulse between 0.15 and 0.30
+            : 0.0;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: shouldBlink
+                ? color.withOpacity(blinkOpacity)
+                : (isSelected ? color.withOpacity(0.05) : Colors.white),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? color : Colors.transparent,
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? color.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.04),
+                blurRadius: isSelected ? 12 : 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onLongPress: () {
-            if (!_isSelectionMode) {
-              setState(() {
-                _isSelectionMode = true;
-                _selectedIds.add(notification.id);
-              });
-            }
-          },
-          onTap: () {
-            if (_isSelectionMode) {
-              _toggleSelection(notification.id);
-            } else {
-              // Handle normal tap (maybe show details or mark as read)
-              // For now, it just doesn't do anything other than ripple
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Icon
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const SizedBox(width: 12),
-                // Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title: "Water Bill Overdue"
-                      Text(
-                        notification.title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: color,
-                        ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onLongPress: () {
+                if (!_isSelectionMode) {
+                  setState(() {
+                    _isSelectionMode = true;
+                    _selectedIds.add(notification.id);
+                  });
+                }
+              },
+              onTap: () {
+                if (_isSelectionMode) {
+                  _toggleSelection(notification.id);
+                } else {
+                  // Handle normal tap (maybe show details or mark as read)
+                  // For now, it just doesn't do anything other than ripple
+                }
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Icon
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-
-                      // Subtitle: "Occurrence 3 of 5"
-                      if (notification.isRecurring &&
-                          notification.recurringSequence != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Occurrence ${notification.recurringSequence}${notification.repeatCount != null ? ' of ${notification.repeatCount}' : ''}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF6B7280),
+                      child: Icon(icon, color: color, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    // Content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title: "Water Bill Overdue"
+                          Text(
+                            notification.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
                           ),
-                        ),
-                      ],
 
-                      const SizedBox(height: 6),
-
-                      // Message: "Drinking Water bill of $234 was due on 12 Nov"
-                      Text(
-                        notification.message,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF1F2937),
-                          height: 1.4,
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Timestamp - use scheduledFor to show when bill was actually due
-                      Text(
-                        timeago.format(notification.scheduledFor),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9CA3AF),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Selection Checkbox
-                // Selection Checkbox with smooth animation
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: Container(
-                    width: _isSelectionMode ? 32 : 0,
-                    alignment: Alignment.centerRight,
-                    child: _isSelectionMode
-                        ? Container(
-                            width: 24,
-                            height: 24,
-                            margin: const EdgeInsets.only(left: 8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isSelected ? color : Colors.transparent,
-                              border: Border.all(
-                                color: isSelected
-                                    ? color
-                                    : Colors.grey.shade300,
-                                width: 2,
+                          // Subtitle: "Occurrence 3 of 5"
+                          if (notification.isRecurring &&
+                              notification.recurringSequence != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Occurrence ${notification.recurringSequence}${notification.repeatCount != null ? ' of ${notification.repeatCount}' : ''}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF6B7280),
                               ),
                             ),
-                            child: isSelected
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 16,
-                                    color: Colors.white,
-                                  )
-                                : null,
-                          )
-                        : const SizedBox.shrink(),
-                  ),
+                          ],
+
+                          const SizedBox(height: 6),
+
+                          // Message: "Drinking Water bill of $234 was due on 12 Nov"
+                          Text(
+                            notification.message,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF1F2937),
+                              height: 1.4,
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Timestamp - use scheduledFor to show when bill was actually due
+                          Text(
+                            timeago.format(notification.scheduledFor),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Selection Checkbox with smooth animation
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: Container(
+                        width: _isSelectionMode ? 32 : 0,
+                        alignment: Alignment.centerRight,
+                        child: _isSelectionMode
+                            ? Container(
+                                width: 24,
+                                height: 24,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isSelected
+                                      ? color
+                                      : Colors.transparent,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? color
+                                        : Colors.grey.shade300,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: isSelected
+                                    ? const Icon(
+                                        Icons.check,
+                                        size: 16,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

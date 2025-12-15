@@ -30,6 +30,7 @@ class _AddBillScreenState extends State<AddBillScreen> {
   TimeOfDay? _notificationTime; // Will be set from provider default
   int _minRepeatCount =
       1; // Minimum allowed repeat count (based on executed occurrences)
+  bool _isSaving = false; // Prevents double navigation on double-tap
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Subscriptions', 'emoji': '📋'},
@@ -226,6 +227,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
   }
 
   Future<void> _saveBill() async {
+    // Prevent double-tap causing double navigation
+    if (_isSaving) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -234,6 +238,11 @@ class _AddBillScreenState extends State<AddBillScreen> {
     if (!_validateNotificationTime()) {
       return;
     }
+
+    // Set saving flag to prevent double navigation
+    setState(() {
+      _isSaving = true;
+    });
 
     try {
       final billProvider = context.read<BillProvider>();
@@ -320,7 +329,9 @@ class _AddBillScreenState extends State<AddBillScreen> {
               behavior: SnackBarBehavior.floating,
             ),
           );
-          Navigator.of(context).pop(true);
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(true);
+          }
         }
       } else {
         // Add mode - create new bill
@@ -407,11 +418,17 @@ class _AddBillScreenState extends State<AddBillScreen> {
               behavior: SnackBarBehavior.floating,
             ),
           );
-          Navigator.of(context).pop(true);
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(true);
+          }
         }
       }
     } catch (e) {
+      // Reset saving flag on error so user can retry
       if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error saving bill: $e'),

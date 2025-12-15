@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import '../services/notification_history_service.dart';
+import '../services/offline_first_notification_service.dart';
 import '../services/pending_notification_service.dart';
-import '../services/hive_service.dart';
+import '../services/firebase_service.dart';
 
 /// Provider to manage notification badge count with real-time updates
 class NotificationBadgeProvider extends ChangeNotifier {
@@ -43,10 +43,10 @@ class NotificationBadgeProvider extends ChangeNotifier {
     }
   }
 
-  /// Refresh the unread count
+  /// Refresh the unread count - use OfflineFirstNotificationService
   void refreshCount() {
-    final currentUserId = HiveService.getUserData('currentUserId') as String?;
-    final newCount = NotificationHistoryService.getUnreadCount(
+    final currentUserId = FirebaseService.currentUserId;
+    final newCount = OfflineFirstNotificationService.getUnreadCount(
       userId: currentUserId,
     );
 
@@ -58,7 +58,7 @@ class NotificationBadgeProvider extends ChangeNotifier {
 
   /// Mark all as read and refresh
   Future<void> markAllAsRead() async {
-    await NotificationHistoryService.markAllAsRead();
+    await OfflineFirstNotificationService.markAllAsSeen();
     _unreadCount = 0;
     notifyListeners();
   }

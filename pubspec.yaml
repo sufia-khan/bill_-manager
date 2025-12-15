@@ -81,16 +81,16 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/billminder_app_icon.jpg"
-  adaptive_icon_background: "#F97316"
-  adaptive_icon_foreground: "assets/images/billminder_app_icon.jpg"
+  image_path: "assets/images/my_app_logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/my_app_logo.png"
   min_sdk_android: 21
   web:
     generate: true
-    image_path: "assets/images/billminder_app_icon.jpg"
+    image_path: "assets/images/my_app_logo.png"
   windows:
     generate: true
-    image_path: "assets/images/billminder_app_icon.jpg"
+    image_path: "assets/images/my_app_logo.png"
   macos:
     generate: true
-    image_path: "assets/images/billminder_app_icon.jpg"
+    image_path: "assets/images/my_app_logo.png"

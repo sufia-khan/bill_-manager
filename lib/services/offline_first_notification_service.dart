@@ -3,10 +3,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/notification_hive.dart';
-import '../models/bill_hive.dart';
 import 'firebase_service.dart';
-import 'device_id_service.dart';
-import 'notification_service.dart';
+// NOTE: device_id_service.dart and notification_service.dart imports removed
+// Device notifications are now handled ONLY by native AlarmReceiver
 
 /// Offline-first notification service
 ///
@@ -97,14 +96,12 @@ class OfflineFirstNotificationService {
       await _box!.add(notification);
       debugPrint('✅ Notification created in Hive: $occurrenceId');
 
-      // Send device notification only if not skipped (e.g., for real-time notifications)
-      if (!skipDeviceNotification) {
-        await _sendDeviceNotification(billId, notification);
-      } else {
-        debugPrint(
-          '⏭️ Skipping device notification for missed bill: $billTitle',
-        );
-      }
+      // REMOVED: Device notifications are now handled ONLY by native AlarmReceiver
+      // This prevents duplicate notifications - one from Flutter and one from native
+      // This service only saves to Hive history for the notification screen display
+      debugPrint(
+        '📱 Notification saved to history (device notification via AlarmReceiver only)',
+      );
 
       return true;
     } catch (e, stackTrace) {
@@ -227,54 +224,14 @@ class OfflineFirstNotificationService {
 
   // ==================== HELPER METHODS ====================
 
-  /// Send device notification (only if this device owns the bill)
-  static Future<void> _sendDeviceNotification(
-    String billId,
-    NotificationHive notification,
-  ) async {
-    try {
-      // Check if this device created the bill
-      final currentDeviceId = await DeviceIdService.getDeviceId();
-      final bill = await _getBill(billId);
-
-      if (bill?.createdDeviceId != currentDeviceId) {
-        debugPrint(
-          '⏭️ Skipping device notification - bill from different device',
-        );
-        return;
-      }
-
-      // Send via existing NotificationService
-      await NotificationService().showImmediateNotification(
-        notification.title,
-        notification.message,
-        billId: notification.billId,
-        billTitle: notification.billTitle,
-        userId: notification.userId,
-      );
-
-      debugPrint('📱 Device notification sent: ${notification.billTitle}');
-    } catch (e) {
-      debugPrint('⚠️ Error sending device notification: $e');
-      // Non-critical error - notification already saved to Hive
-    }
-  }
-
-  static Future<BillHive?> _getBill(String billId) async {
-    try {
-      final box = await Hive.openBox<BillHive>('bills');
-      return box.get(billId);
-    } catch (e) {
-      debugPrint('Error getting bill: $e');
-      return null;
-    }
-  }
+  // NOTE: _sendDeviceNotification and _getBill were removed - device notifications
+  // are now handled ONLY by native AlarmReceiver to prevent duplicates
 
   /// Generate notification title based on type
   static String _generateTitle(String billTitle, NotificationType type) {
     switch (type) {
       case NotificationType.due:
-        return '$billTitle Due Today';
+        return '$billTitle Overdue'; // Changed from "Due Today" - only overdue notifications
       case NotificationType.overdue:
         return '$billTitle Overdue';
       case NotificationType.reminder:
@@ -298,7 +255,7 @@ class OfflineFirstNotificationService {
 
     switch (type) {
       case NotificationType.due:
-        return '$billTitle of $amountStr is due today ($dateStr)';
+        return '$billTitle of $amountStr was due on $dateStr'; // Same as overdue
       case NotificationType.overdue:
         return '$billTitle of $amountStr was due on $dateStr';
       case NotificationType.reminder:
