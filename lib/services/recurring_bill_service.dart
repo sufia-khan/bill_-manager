@@ -504,6 +504,9 @@ class RecurringBillService {
       // Save to Hive
       await HiveService.saveBill(newBill);
 
+      // CRITICAL: Mark as local bill so notifications can be scheduled
+      await HiveService.markBillAsLocal(newBill.id);
+
       // CRITICAL: Track this instance to prevent duplicates
       _recentlyCreatedInstances.add(trackingKey);
 
@@ -837,6 +840,9 @@ class RecurringBillService {
 
             // SAVE IMMEDIATELY
             await HiveService.saveBill(newBill);
+            // CRITICAL: Mark as local bill so notifications can be scheduled
+            // Without this, _scheduleNotificationForBill will skip this bill
+            await HiveService.markBillAsLocal(newBill.id);
             createdCount++;
 
             // NOTE: Notification scheduling is REMOVED from here

@@ -610,18 +610,39 @@ class BillProvider with ChangeNotifier {
       if (currentUserId != null) {
         print('🔄 Starting background sync...');
         SyncService.initialSync()
-            .then((_) {
+            .then((_) async {
               // Reload bills after sync completes
               _bills = _loadCurrentUsersBills(forceRefresh: true);
               _processBills();
               print(
                 '✅ Background sync completed, UI updated with ${_bills.length} bills',
               );
-              print(
-                '✅ Background sync completed, UI updated with ${_bills.length} bills',
-              );
-              _processBills(); // Process bills after sync
               notifyListeners();
+
+              // CRITICAL: Process recurring bills IMMEDIATELY after sync
+              // This ensures all missed instances are created right away
+              final createdCount =
+                  await RecurringBillService.processRecurringBills(
+                    userId: currentUserId,
+                  );
+              if (createdCount > 0) {
+                print(
+                  '⚡ Fast batch processing: Created $createdCount instances',
+                );
+                _bills = _loadCurrentUsersBills(forceRefresh: true);
+                _processBills();
+                notifyListeners();
+              }
+
+              // Process any remaining overdue recurring bills
+              await checkOverdueRecurringBills();
+
+              // CRITICAL: Reschedule notifications AFTER all instances are created
+              // This ensures newly created upcoming instances get device alarms
+              print(
+                '🔔 Rescheduling notifications after recurring bill processing...',
+              );
+              await rescheduleAllNotifications();
             })
             .catchError((e) {
               print('⚠️ Background sync failed: $e');
@@ -660,10 +681,8 @@ class BillProvider with ChangeNotifier {
             currentUserId: currentUserId,
           );
 
-          // NOW run maintenance (may create new recurring bill instances)
+          // NOW run maintenance (archival only - recurring bill processing moved to sync handler)
           await runMaintenance();
-          // Check for overdue recurring bills and create next instances
-          await checkOverdueRecurringBills();
 
           // CRITICAL: Re-check for missed notifications AFTER maintenance
           // This catches any newly created recurring bills that were generated as overdue

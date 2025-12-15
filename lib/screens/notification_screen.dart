@@ -195,74 +195,109 @@ class _NotificationScreenState extends State<NotificationScreen>
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final currencyProvider = context.watch<CurrencyProvider>();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: _isSelectionMode
-            ? Text(
-                '${_selectedIds.length} Selected',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+    return ValueListenableBuilder(
+      valueListenable: Hive.box<NotificationHive>('notifications').listenable(),
+      builder: (context, Box<NotificationHive> box, _) {
+        final notifications =
+            OfflineFirstNotificationService.getNotifications();
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          appBar: AppBar(
+            title: _isSelectionMode
+                ? Text(
+                    '${_selectedIds.length} Selected',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (notifications.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFFECACA,
+                            ), // Soft red background
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFEF4444), // Red border
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            '${notifications.length}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFDC2626), // Dark red text
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: _isSelectionMode
+                ? IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSelectionMode = false;
+                        _selectedIds.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.close),
+                  )
+                : const BackButton(),
+            actions: [
+              if (_isSelectionMode)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: _deleteSelectedNotifications,
+                  tooltip: 'Delete Selected',
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                  onPressed: _clearAllNotifications,
+                  tooltip: 'Clear All',
                 ),
-              )
-            : const Text(
-                'Notifications',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-              ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: _isSelectionMode
-            ? IconButton(
-                onPressed: () {
-                  setState(() {
-                    _isSelectionMode = false;
-                    _selectedIds.clear();
-                  });
-                },
-                icon: const Icon(Icons.close),
-              )
-            : const BackButton(),
-        actions: [
-          if (_isSelectionMode)
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: _deleteSelectedNotifications,
-              tooltip: 'Delete Selected',
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.delete_sweep_outlined),
-              onPressed: _clearAllNotifications,
-              tooltip: 'Clear All',
-            ),
-        ],
-      ),
-      body: ValueListenableBuilder(
-        valueListenable: Hive.box<NotificationHive>(
-          'notifications',
-        ).listenable(),
-        builder: (context, Box<NotificationHive> box, _) {
-          final notifications =
-              OfflineFirstNotificationService.getNotifications();
-
-          if (notifications.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: notifications.length,
-            itemBuilder: (context, index) {
-              final notification = notifications[index];
-              return _buildNotificationCard(notification, currencyProvider);
-            },
-          );
-        },
-      ),
+            ],
+          ),
+          body: notifications.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: notifications.length,
+                  itemBuilder: (context, index) {
+                    final notification = notifications[index];
+                    return _buildNotificationCard(
+                      notification,
+                      currencyProvider,
+                    );
+                  },
+                ),
+        );
+      },
     );
   }
 

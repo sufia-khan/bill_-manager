@@ -36,15 +36,13 @@ class AlarmReceiver : BroadcastReceiver() {
         val currentUserId = getCurrentUserId(context)
         Log.d("AlarmReceiver", "Current logged-in user: $currentUserId, Notification for user: $notificationUserId")
         
-        // For recurring bills, create unique billId with sequence and add sequence to body
+        // For recurring bills, create unique billId with sequence
+        // NOTE: Do NOT append sequence to body - Flutter already includes it!
         var uniqueBillId = billId
         var displayBody = body
-        if (isRecurring && repeatCount > 0) {
+        if (isRecurring) {
             uniqueBillId = "${billId}_seq_$currentSequence"
-            displayBody = "$body ($currentSequence of $repeatCount)"
-        } else if (isRecurring) {
-            uniqueBillId = "${billId}_seq_$currentSequence"
-            displayBody = "$body (#$currentSequence)"
+            // displayBody stays as-is - Flutter already added "(X of Y)" to the body
         }
         
         // CRITICAL: Only save to history if notification belongs to a valid user
@@ -53,10 +51,10 @@ class AlarmReceiver : BroadcastReceiver() {
             saveToHistory(context, title, displayBody, uniqueBillId, notificationUserId)
         }
         
-        // CRITICAL: Only schedule next recurring instance if:
-        // 1. The notification user matches the currently logged-in user
-        // 2. A user is actually logged in
-        // This prevents ghost notifications from accumulating after logout
+        // DISABLED: Flutter now pre-generates ALL recurring bill instances with scheduled alarms
+        // AlarmReceiver should NOT schedule next instances - that was causing duplicate notifications
+        // Keep this code commented for reference but don't execute it
+        /*
         if (isRecurring && recurringType.isNotEmpty()) {
             if (currentUserId.isEmpty()) {
                 Log.d("AlarmReceiver", "No user logged in - NOT scheduling next recurring instance")
@@ -69,6 +67,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 Log.d("AlarmReceiver", "User mismatch - NOT scheduling next recurring instance (notification: $notificationUserId, current: $currentUserId)")
             }
         }
+        */
+        Log.d("AlarmReceiver", "Recurring instance scheduling disabled - Flutter pre-generates all instances")
         
         // Check if should show notification on device
         val shouldShowNotification = when {

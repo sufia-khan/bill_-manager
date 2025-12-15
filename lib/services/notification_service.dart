@@ -468,10 +468,13 @@ class NotificationService {
       );
 
       // ONLY overdue notifications - no reminder notifications
-      String title = 'Bill Overdue';
+      // ONLY overdue notifications - no reminder notifications
+      String title = '${bill.title} Overdue';
 
+      // Match notification screen format: "{Title} of ${amount} is overdue"
+      // Note: Sequence info will be appended below for recurring bills
       final body =
-          '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor}';
+          '${bill.title} of \$${bill.amount.toStringAsFixed(0)} is overdue';
 
       // Log exact scheduling details for debugging
       debugPrint(
@@ -500,13 +503,11 @@ class NotificationService {
       // Update body to include sequence number for recurring bills
       String finalBody = body;
       if (isRecurring && repeatCount > 0) {
-        // Include sequence number for recurring bills with a count
-        finalBody =
-            '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} ($currentSequence of $repeatCount)';
+        // Include sequence number: "Title of $X is overdue (3 of 5)"
+        finalBody = '$body ($currentSequence of $repeatCount)';
       } else if (isRecurring && repeatCount == -1) {
-        // Include sequence number for unlimited recurring bills
-        finalBody =
-            '${bill.title} - \$${bill.amount.toStringAsFixed(2)} due to ${bill.vendor} (#$currentSequence)';
+        // Include sequence number for unlimited: "Title of $X is overdue (#3)"
+        finalBody = '$body (#$currentSequence)';
       }
 
       try {

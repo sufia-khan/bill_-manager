@@ -138,9 +138,18 @@ class DeveloperToolsScreen extends StatelessWidget {
             _buildToolItem(
               context,
               icon: Icons.schedule_outlined,
-              title: 'View Scheduled Notifications',
               subtitle: 'See all pending notifications',
               onTap: () => _viewScheduledNotifications(context),
+            ),
+
+            const SizedBox(height: 8),
+
+            _buildToolItem(
+              context,
+              icon: Icons.refresh_rounded,
+              title: 'Reschedule All Notifications',
+              subtitle: 'Cancel and re-schedule all alarms',
+              onTap: () => _rescheduleAllNotifications(context),
             ),
 
             const SizedBox(height: 40),
@@ -424,6 +433,33 @@ class DeveloperToolsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _rescheduleAllNotifications(BuildContext context) async {
+    try {
+      final billProvider = Provider.of<BillProvider>(context, listen: false);
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFF97316)),
+        ),
+      );
+
+      await billProvider.rescheduleAllNotifications();
+
+      if (context.mounted) {
+        Navigator.pop(context); // Dismiss loading
+        _showSnackBar(context, 'All notifications rescheduled successfully!');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Dismiss loading
+        _showSnackBar(context, 'Error: $e', isError: true);
+      }
+    }
   }
 
   void _showPermissionDialog(
