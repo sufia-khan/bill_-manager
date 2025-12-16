@@ -512,12 +512,18 @@ class NotificationService {
       //   finalBody = '$body (#$currentSequence)';
       // }
 
+      // CRITICAL FIX: Generate unique notification ID for recurring instances
+      // Prevents overwriting valid previous notifications for same bill
+      final notificationId = isRecurring
+          ? (bill.id + '_seq_' + currentSequence.toString()).hashCode
+          : bill.id.hashCode;
+
       try {
         final nativeSuccess = await NativeAlarmService.scheduleAlarm(
           dateTime: alarmTime,
           title: title,
           body: finalBody,
-          notificationId: bill.id.hashCode,
+          notificationId: notificationId,
           userId: userId,
           billId: bill.id,
           isRecurring: isRecurring,

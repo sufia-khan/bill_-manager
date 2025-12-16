@@ -155,10 +155,11 @@ class AccountIsolationService {
     await HiveService.clearAllData();
 
     // Also clear any additional untyped boxes
+    // NOTE: 'userPreferences' is intentionally NOT cleared here
+    // because it stores per-user onboarding status that should persist
     final boxNames = [
       'scheduledNotifications',
       'notificationHistory',
-      'userPreferences',
       'pendingNotifications',
     ];
 

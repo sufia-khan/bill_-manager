@@ -5,6 +5,7 @@ import '../models/bill_hive.dart';
 import '../models/sync_queue_item.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
+import 'hive_service.dart';
 
 /// Optimized Firebase Sync Service
 /// - Offline-first: All operations save to Hive first
@@ -110,6 +111,13 @@ class FirebaseSyncService {
         '✅ Sync complete in ${duration.inMilliseconds}ms '
         '(Reads: $readCount, Writes: $writeCount)',
       );
+
+      // Purge locally deleted bills that have been synced to Firebase
+      // This ensures deleted bills don't reappear from stale local data
+      final purgedCount = await HiveService.purgeDeletedBills();
+      if (purgedCount > 0) {
+        print('🧹 Purged $purgedCount deleted bills from local storage');
+      }
     } catch (e) {
       print('❌ Sync error: $e');
     } finally {
@@ -138,9 +146,29 @@ class FirebaseSyncService {
       for (final item in batchItems) {
         try {
           final bill = _localDb.getBill(item.billId);
+
+          // CRITICAL FIX: If bill is null (e.g. cleared during login/cleanup)
+          // but operation is 'delete', we MUST still proceed with deletion!
           if (bill == null) {
-            itemsToRemove.add(item);
-            continue;
+            if (item.operation == 'delete') {
+              print(
+                '🗑️ Processing pending delete for missing local bill: ${item.billId}',
+              );
+              final docRef = _firestore
+                  .collection('users')
+                  .doc(_userId)
+                  .collection('bills')
+                  .doc(item.billId);
+
+              batch.delete(docRef);
+              batchWrites++;
+              itemsToRemove.add(item);
+              continue;
+            } else {
+              // For updates/creates, we need the bill data. If missing, we can't sync.
+              itemsToRemove.add(item);
+              continue;
+            }
           }
 
           final docRef = _firestore
@@ -223,18 +251,42 @@ class FirebaseSyncService {
         final remoteBill = BillHive.fromFirestore(data);
         final localBill = _localDb.getBill(remoteBill.id);
 
+        // IMPORTANT: Skip deleted bills from server entirely
+        // Don't store bills marked as deleted - they should not come back
+        if (remoteBill.isDeleted) {
+          print('🗑️ Skipping deleted bill from server: ${remoteBill.title}');
+          // Cancel any notification that might exist for this bill
+          await _notificationService.cancelBillNotification(remoteBill.id);
+          // If we have it locally, mark it as deleted too
+          if (localBill != null && !localBill.isDeleted) {
+            localBill.isDeleted = true;
+            localBill.needsSync = false; // Already synced
+            await localBill.save();
+          }
+          continue;
+        }
+
         if (localBill == null) {
-          // New bill from server
+          // New bill from server (only store if not deleted)
           await _localDb.billsBox.put(remoteBill.id, remoteBill);
 
-          // Schedule notification if not paid and not deleted
-          if (!remoteBill.isPaid && !remoteBill.isDeleted) {
+          // Schedule notification if not paid
+          if (!remoteBill.isPaid) {
             await _notificationService.scheduleBillNotification(
               remoteBill,
               userId: _userId, // Pass userId
             );
           }
         } else {
+          // CRITICAL: Protect local deletions from being overwritten
+          // If bill is deleted locally and pending sync, don't let remote restore it
+          if (localBill.isDeleted && localBill.needsSync) {
+            print(
+              '🛡️ Protecting local deletion: ${localBill.title} (pending sync)',
+            );
+            continue;
+          }
+
           // Conflict resolution: last-write-wins
           if (remoteBill.updatedAt.isAfter(localBill.updatedAt)) {
             // Remote is newer

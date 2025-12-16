@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'hive_service.dart';
 import 'firebase_service.dart';
 import 'notification_history_service.dart';
+import 'local_database_service.dart'; // Added
 import '../models/bill_hive.dart';
 import '../utils/bill_status_helper.dart';
 
@@ -45,6 +46,9 @@ class SyncService {
     startPeriodicSync();
     // Start Firestore listener for real-time sync
     startFirestoreListener(userId);
+
+    // Trigger initial sync specifically to process any pending deletions in queue
+    initialSync();
   }
 
   /// Stop sync service completely.
@@ -255,6 +259,87 @@ class SyncService {
     });
   }
 
+  // PROCESS SYNC QUEUE - The robust way to sync changes including deletions
+  // This replaces _pushLocalChanges logic with a queue-based approach
+  static Future<void> _processSyncQueue() async {
+    final localDb = LocalDatabaseService();
+    final syncQueue = localDb.getSyncQueue();
+
+    if (syncQueue.isEmpty) {
+      print('✅ Sync queue is empty');
+      return;
+    }
+
+    print('📤 Processing sync queue: ${syncQueue.length} items...');
+    final currentUserId = FirebaseService.currentUserId;
+    if (currentUserId == null) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    int batchWrites = 0;
+    final itemsToRemove = <dynamic>[];
+
+    for (final item in syncQueue) {
+      try {
+        final billId = item.billId;
+        final operation = item.operation;
+
+        print('   Processing $operation for $billId');
+
+        final docRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUserId)
+            .collection('bills')
+            .doc(billId);
+
+        // Handle DELETE explicitly
+        // CRITICAL FIX: Proceed even if local bill is missing (null)
+        if (operation == 'delete') {
+          batch.delete(docRef);
+          batchWrites++;
+          itemsToRemove.add(item);
+          continue;
+        }
+
+        // Handle UPDATE/CREATE
+        final bill = localDb.getBill(billId);
+        if (bill == null) {
+          // If bill is missing for update/create, we can't do anything
+          // But we should remove it from queue to stop retrying
+          print('⚠️ Bill $billId missing for $operation - removing from queue');
+          itemsToRemove.add(item);
+          continue;
+        }
+
+        // Sync bill data
+        if (bill.isDeleted) {
+          // Double check - if flagged deleted, ensure we delete
+          batch.delete(docRef);
+        } else {
+          batch.set(docRef, bill.toFirestore(), SetOptions(merge: true));
+          // Update local sync status
+          bill.needsSync = false;
+          await bill.save();
+        }
+
+        batchWrites++;
+        itemsToRemove.add(item);
+      } catch (e) {
+        print('❌ Error processing queue item ${item.billId}: $e');
+        // Keep in queue to retry later
+      }
+    }
+
+    if (batchWrites > 0) {
+      await batch.commit();
+      print('✅ Committed $batchWrites changes to Firestore');
+
+      // Clear processed items from queue
+      for (final item in itemsToRemove) {
+        await localDb.removeSyncQueueItem(item);
+      }
+    }
+  }
+
   // PUSH-ONLY sync - uploads local changes without reading from Firestore
   // This is the main sync method used for periodic and reconnection syncs
   static Future<void> _pushOnlySync() async {
@@ -265,15 +350,9 @@ class SyncService {
 
     _isSyncing = true;
     try {
-      final billsNeedingSync = HiveService.getBillsNeedingSync();
-      if (billsNeedingSync.isNotEmpty) {
-        print('📤 Push-only sync: ${billsNeedingSync.length} bills');
-        await FirebaseService.syncLocalBillsToServer(billsNeedingSync);
-        for (var bill in billsNeedingSync) {
-          await HiveService.markBillAsSynced(bill.id);
-        }
-        print('✅ Push-only sync completed');
-      }
+      // Use robust queue processing
+      await _processSyncQueue();
+      print('✅ Push-only sync completed (Queue processed)');
     } catch (e) {
       print('❌ Push-only sync failed: $e');
     } finally {
@@ -315,18 +394,15 @@ class SyncService {
 
     try {
       // ONLY push local changes - NO reads from Firestore
-      final pushedCount = await _pushLocalChanges();
+      // Use robust queue processing
+      await _processSyncQueue();
 
       await HiveService.saveUserData(
         lastSyncKey,
         DateTime.now().toIso8601String(),
       );
 
-      if (pushedCount > 0) {
-        print('✅ Pushed $pushedCount bills to Firebase');
-      } else {
-        print('✅ No changes to push');
-      }
+      print('✅ Sync completed');
     } catch (e) {
       print('❌ Sync failed: $e');
     } finally {
@@ -335,38 +411,8 @@ class SyncService {
     }
   }
 
-  // Push local changes to Firebase - returns count of pushed bills
-  static Future<int> _pushLocalChanges() async {
-    print('🔍 Checking for bills needing sync...');
-    final billsNeedingSync = HiveService.getBillsNeedingSync();
-
-    if (billsNeedingSync.isEmpty) {
-      print('✅ No bills need syncing');
-      return 0;
-    }
-
-    print('📤 Found ${billsNeedingSync.length} bills to sync:');
-    for (var bill in billsNeedingSync) {
-      print('   - ${bill.title} (${bill.id})');
-    }
-
-    try {
-      // Sync bills to Firebase using batch write (1 write operation)
-      await FirebaseService.syncLocalBillsToServer(billsNeedingSync);
-      print('✅ Successfully pushed to Firebase');
-
-      // Mark bills as synced locally
-      for (var bill in billsNeedingSync) {
-        await HiveService.markBillAsSynced(bill.id);
-      }
-      print('✅ Marked ${billsNeedingSync.length} bills as synced locally');
-
-      return billsNeedingSync.length;
-    } catch (e) {
-      print('❌ Error pushing bills to Firebase: $e');
-      rethrow;
-    }
-  }
+  // Helper moved to _processSyncQueue
+  // static Future<int> _pushLocalChanges() async { ... }
 
   // Initial sync after login - OPTIMIZED to minimize Firestore reads
   static Future<void> initialSync() async {
@@ -434,15 +480,10 @@ class SyncService {
 
     // STEP 1: Push any unsynced local bills FIRST (WRITES only)
     try {
-      final unsyncedBills = HiveService.getBillsNeedingSync();
-      if (unsyncedBills.isNotEmpty) {
-        print('📤 Pushing ${unsyncedBills.length} unsynced bills...');
-        await FirebaseService.syncLocalBillsToServer(unsyncedBills);
-        for (var bill in unsyncedBills) {
-          await HiveService.markBillAsSynced(bill.id);
-        }
-        print('✅ Pushed local changes');
-      }
+      // CRITICAL: Use robust queue processing for correct deletion handling
+      print('📤 Processing sync queue (initial sync)...');
+      await _processSyncQueue();
+      print('✅ Pushed local changes');
     } catch (e) {
       print('⚠️ Push failed: $e - continuing with local data');
     }
@@ -535,13 +576,7 @@ class SyncService {
     _isSyncing = true;
     try {
       // Push first
-      final unsyncedBills = HiveService.getBillsNeedingSync();
-      if (unsyncedBills.isNotEmpty) {
-        await FirebaseService.syncLocalBillsToServer(unsyncedBills);
-        for (var bill in unsyncedBills) {
-          await HiveService.markBillAsSynced(bill.id);
-        }
-      }
+      await _processSyncQueue();
 
       // Then pull
       final currentUserId = FirebaseService.currentUserId;

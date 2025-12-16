@@ -97,6 +97,11 @@ class AlarmReceiver : BroadcastReceiver() {
     }
     
     private fun isDuplicateNotification(context: Context, notificationKey: String): Boolean {
+        // DISABLED: App logic now handles deduplication better (unique IDs for sequences)
+        // Aggressive native deduplication was blocking valid sequences during testing
+        return false;
+        
+        /*
         try {
             val prefs = context.getSharedPreferences("shown_notifications", Context.MODE_PRIVATE)
             val lastShownTime = prefs.getLong(notificationKey, 0)
@@ -110,6 +115,7 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.e("AlarmReceiver", "Error checking duplicate: ${e.message}")
         }
         return false
+        */
     }
     
     private fun markNotificationShown(context: Context, notificationKey: String) {

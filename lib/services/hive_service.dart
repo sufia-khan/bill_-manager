@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/bill_hive.dart';
 import '../models/notification_history.dart';
 import '../models/notification_hive.dart';
+import 'local_database_service.dart';
 
 class HiveService {
   static const String billBoxName = 'bills';
@@ -330,20 +331,14 @@ class HiveService {
     return box.get(id);
   }
 
-  // Delete bill (soft delete)
+  // Delete bill (soft delete) - MUST sync deletion to Firestore
   static Future<void> deleteBill(String id) async {
-    final box = getBillsBox();
-    final bill = box.get(id);
-    if (bill != null) {
-      final updatedBill = bill.copyWith(
-        isDeleted: true,
-        needsSync: true,
-        updatedAt: DateTime.now(),
-        clientUpdatedAt: DateTime.now(),
-      );
-      await box.put(id, updatedBill);
-      _invalidateCache();
-    }
+    // Use LocalDatabaseService which properly adds to sync queue
+    // This ensures the deletion actually gets synced to Firestore
+    final localDb = LocalDatabaseService();
+    await localDb.deleteBill(id);
+    _invalidateCache();
+    print('🗑️ Deleted bill $id (added to sync queue)');
   }
 
   // Get bills that need sync - ONLY for current user and non-deleted
@@ -446,7 +441,11 @@ class HiveService {
   // Hard delete all soft-deleted bills (permanently remove from database)
   static Future<int> purgeDeletedBills() async {
     final box = getBillsBox();
-    final deletedBills = box.values.where((bill) => bill.isDeleted).toList();
+    // Only purge bills that are deleted AND have been synced to Firebase
+    // Bills with needsSync=true need to sync their deletion first
+    final deletedBills = box.values
+        .where((bill) => bill.isDeleted && !bill.needsSync)
+        .toList();
 
     int count = 0;
     for (final bill in deletedBills) {
@@ -454,8 +453,10 @@ class HiveService {
       count++;
     }
 
-    _invalidateCache();
-    print('🧹 Purged $count deleted bills from local storage');
+    if (count > 0) {
+      _invalidateCache();
+      print('🧹 Purged $count deleted bills from local storage');
+    }
     return count;
   }
 

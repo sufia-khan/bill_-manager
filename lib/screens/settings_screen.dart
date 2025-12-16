@@ -23,6 +23,8 @@ import 'onboarding_screen.dart';
 import 'terms_and_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'subscription_screen.dart';
+// App Lock feature - hidden for initial release, will enable in first update
+// import 'app_lock_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -1451,6 +1453,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   description:
                       'Your data is automatically backed up to prevent any loss of information.',
                 ),
+
+                // App Lock feature - hidden for initial release, will enable in first update
+                // const SizedBox(height: 32),
+                //
+                // // App Lock Section
+                // const Text(
+                //   'App Lock',
+                //   style: TextStyle(
+                //     fontSize: 18,
+                //     fontWeight: FontWeight.w700,
+                //     color: Color(0xFF1F2937),
+                //   ),
+                // ),
+                // const SizedBox(height: 16),
+                // _buildActionCard(
+                //   icon: Icons.lock_outline,
+                //   title: 'App Lock Settings',
+                //   description:
+                //       'Set up PIN or biometric lock to protect your app',
+                //   onTap: () {
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(
+                //         builder: (context) => const AppLockSettingsScreen(),
+                //       ),
+                //     );
+                //   },
+                // ),
               ],
             ),
           ),

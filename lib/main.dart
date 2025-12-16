@@ -29,6 +29,9 @@ import 'providers/theme_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/notification_settings_provider.dart';
 import 'providers/notification_badge_provider.dart';
+// App Lock feature - hidden for initial release, will enable in first update
+// import 'services/app_lock_service.dart';
+// import 'screens/lock_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -162,10 +165,13 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _hasShownPermissionDialog = false;
   bool _hasLoadedCurrency = false;
   bool _showSplash = true;
+  // App Lock feature - hidden for initial release
+  // bool _isLocked = false;
+  // final AppLockService _lockService = AppLockService();
   late AnimationController _controller;
   late Animation<double> _shadowOpacity;
   late Animation<double> _textOpacity;
@@ -175,6 +181,12 @@ class _AuthWrapperState extends State<AuthWrapper>
   @override
   void initState() {
     super.initState();
+
+    // Register lifecycle observer - hidden for initial release
+    // WidgetsBinding.instance.addObserver(this);
+
+    // Check if app should be locked on startup - hidden for initial release
+    // _checkLockOnStartup();
 
     // Initialize animations
     _controller = AnimationController(
@@ -226,12 +238,60 @@ class _AuthWrapperState extends State<AuthWrapper>
 
   @override
   void dispose() {
+    // App Lock feature - hidden for initial release
+    // WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
+  /// Handle app lifecycle changes for lock screen
+  // @override
+  // void didChangeAppLifecycleState(AppLifecycleState state) {
+  //   super.didChangeAppLifecycleState(state);
+
+  //   if (state == AppLifecycleState.paused) {
+  //     // App going to background - record time
+  //     _lockService.recordBackgroundTime();
+  //   } else if (state == AppLifecycleState.resumed) {
+  //     // App returning to foreground - check if should lock
+  //     _checkLockOnResume();
+  //   }
+  // }
+
+  /// Check if app should be locked on startup
+  // Future<void> _checkLockOnStartup() async {
+  //   final shouldLock = await _lockService.shouldShowLockScreen();
+  //   if (shouldLock && mounted) {
+  //     setState(() {
+  //       _isLocked = true;
+  //     });
+  //   }
+  // }
+
+  /// Check if app should be locked when resuming from background
+  // Future<void> _checkLockOnResume() async {
+  //   final shouldLock = await _lockService.shouldShowLockScreen();
+  //   if (shouldLock && mounted) {
+  //     setState(() {
+  //       _isLocked = true;
+  //     });
+  //   }
+  // }
+
+  /// Unlock the app
+  // void _unlockApp() {
+  //   setState(() {
+  //     _isLocked = false;
+  //   });
+  // }
+
   @override
   Widget build(BuildContext context) {
+    // App Lock feature - hidden for initial release
+    // if (_isLocked) {
+    //   return LockScreen(onUnlocked: _unlockApp);
+    // }
+
     // Show custom splash screen first
     if (_showSplash) {
       return Scaffold(
@@ -250,8 +310,8 @@ class _AuthWrapperState extends State<AuthWrapper>
                   animation: _controller,
                   builder: (context, child) {
                     return Container(
-                      width: 130,
-                      height: 130,
+                      width: 180,
+                      height: 180,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         boxShadow: [
@@ -270,8 +330,8 @@ class _AuthWrapperState extends State<AuthWrapper>
                   child: ClipOval(
                     child: Image.asset(
                       'assets/images/my_app_logo.png',
-                      width: 130,
-                      height: 130,
+                      width: 180,
+                      height: 180,
                       fit: BoxFit.cover,
                     ),
                   ),
