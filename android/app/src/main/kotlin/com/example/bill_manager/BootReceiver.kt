@@ -55,15 +55,17 @@ class BootReceiver : BroadcastReceiver() {
                     
                     // CRITICAL FIX: If due time is in the past, do NOT reschedule
                     // Past-due bills should remain overdue, not be rescheduled to future
-                    // The Flutter app will handle creating proper next instances for recurring bills
                     if (dueTime <= now) {
                         Log.d("BootReceiver", "Skipping past-due bill: $title (due: $dueTime, now: $now)")
                         continue
                     }
                     
                     val notificationId = (billId + sequence.toString()).hashCode()
-                    val notificationTitle = "Bill Due Today"
-                    val notificationBody = "$title - \$${"%.2f".format(amount)} due to $vendor"
+                    
+                    // Match the standard format used in NotificationService.dart
+                    val notificationTitle = "$title Overdue"
+                    // Removed "(X of Y)" suffix to match new standard and avoid duplicates
+                    val notificationBody = "$title of \$${"%.0f".format(amount)} is overdue"
                     
                     val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
                         putExtra("title", notificationTitle)
@@ -120,9 +122,33 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
             
+            // Clean up old alarms (remove past items)
+            cleanUpExpiredAlarms(context, bills, now)
+            
             Log.d("BootReceiver", "✅ Rescheduled $rescheduledCount alarms after boot")
         } catch (e: Exception) {
             Log.e("BootReceiver", "Error in reschedulePendingAlarms: ${e.message}")
+        }
+    }
+
+    private fun cleanUpExpiredAlarms(context: Context, bills: JSONArray, now: Long) {
+        try {
+            val newBills = JSONArray()
+            for (i in 0 until bills.length()) {
+                val bill = bills.getJSONObject(i)
+                val dueTime = bill.getLong("dueTime")
+                if (dueTime > now) {
+                    newBills.put(bill)
+                }
+            }
+            
+            if (newBills.length() != bills.length()) {
+                val prefs = context.getSharedPreferences("pending_recurring_bills", Context.MODE_PRIVATE)
+                prefs.edit().putString("bills", newBills.toString()).apply()
+                Log.d("BootReceiver", "🧹 Cleaned up ${bills.length() - newBills.length()} expired alarms")
+            }
+        } catch (e: Exception) {
+             Log.e("BootReceiver", "Error cleaning up alarms: ${e.message}")
         }
     }
     

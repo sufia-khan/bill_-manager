@@ -501,14 +501,16 @@ class NotificationService {
       final repeatCount = bill.repeatCount ?? -1;
 
       // Update body to include sequence number for recurring bills
+      // CRITICAL UPDATE: Removed occurrence number as per user request
+      // This also fixes the duplicate text issue "(3 of 5) (3 of 5)"
       String finalBody = body;
-      if (isRecurring && repeatCount > 0) {
-        // Include sequence number: "Title of $X is overdue (3 of 5)"
-        finalBody = '$body ($currentSequence of $repeatCount)';
-      } else if (isRecurring && repeatCount == -1) {
-        // Include sequence number for unlimited: "Title of $X is overdue (#3)"
-        finalBody = '$body (#$currentSequence)';
-      }
+      // if (isRecurring && repeatCount > 0) {
+      //   // Include sequence number: "Title of $X is overdue (3 of 5)"
+      //   finalBody = '$body ($currentSequence of $repeatCount)';
+      // } else if (isRecurring && repeatCount == -1) {
+      //   // Include sequence number for unlimited: "Title of $X is overdue (#3)"
+      //   finalBody = '$body (#$currentSequence)';
+      // }
 
       try {
         final nativeSuccess = await NativeAlarmService.scheduleAlarm(

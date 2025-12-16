@@ -36,32 +36,34 @@ class _NotificationScreenState extends State<NotificationScreen>
       duration: const Duration(milliseconds: 500),
     );
 
-    // Capture initially unseen notifications before marking as seen
+    // Capture initially unseen notifications BEFORE marking them as seen
+    // We do this synchronously so we don't miss any before the async markAllAsSeen runs
+    final notifications = OfflineFirstNotificationService.getNotifications();
+    _initiallyUnseenIds = notifications
+        .where((n) => !n.seen)
+        .map((n) => n.id)
+        .toSet();
+
+    // Now mark all as seen (fire-and-forget for instant badge clearing)
+    OfflineFirstNotificationService.markAllAsSeen();
+
+    // Start blinking if there are unseen notifications
+    if (_initiallyUnseenIds.isNotEmpty) {
+      _isBlinking = true;
+      _blinkController.repeat(reverse: true);
+
+      // Stop blinking after 2 seconds
+      _blinkTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _isBlinking = false);
+          _blinkController.stop();
+          _blinkController.value = 1.0;
+        }
+      });
+    }
+
+    // Refresh badge provider to update UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Get unseen notification IDs before marking all as seen
-      final notifications = OfflineFirstNotificationService.getNotifications();
-      _initiallyUnseenIds = notifications
-          .where((n) => !n.seen)
-          .map((n) => n.id)
-          .toSet();
-
-      // Start blinking if there are unseen notifications
-      if (_initiallyUnseenIds.isNotEmpty) {
-        setState(() => _isBlinking = true);
-        _blinkController.repeat(reverse: true);
-
-        // Stop blinking after 2 seconds
-        _blinkTimer = Timer(const Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() => _isBlinking = false);
-            _blinkController.stop();
-            _blinkController.value = 1.0;
-          }
-        });
-      }
-
-      // Mark all as seen and refresh badge
-      OfflineFirstNotificationService.markAllAsSeen();
       context.read<NotificationBadgeProvider>().forceRefresh();
     });
   }

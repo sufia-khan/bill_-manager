@@ -33,12 +33,12 @@ class NotificationBadgeProvider extends ChangeNotifier {
     try {
       // Process any pending notifications from native AlarmReceiver
       await PendingNotificationService.processPendingNotifications();
-
-      // Then refresh the count
-      refreshCount();
     } catch (e) {
       debugPrint('Error processing pending notifications: $e');
     } finally {
+      // ALWAYS refresh the count, regardless of processing success
+      // This ensures the badge appears even if network/processing fails
+      refreshCount();
       _isProcessing = false;
     }
   }

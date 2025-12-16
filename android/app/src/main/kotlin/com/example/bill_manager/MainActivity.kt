@@ -119,6 +119,12 @@ class MainActivity : FlutterActivity() {
         recurringType: String = "", billTitle: String = "", billAmount: Double = 0.0,
         billVendor: String = "", currentSequence: Int = 1, repeatCount: Int = -1
     ) {
+        // Save alarm details to SharedPreferences for BootReceiver
+        saveAlarmToPrefs(
+            timeInMillis, title, body, notificationId, userId, billId,
+            isRecurring, recurringType, billTitle, billAmount, billVendor, currentSequence, repeatCount
+        )
+
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
         val intent = Intent(this, AlarmReceiver::class.java).apply {
@@ -177,6 +183,9 @@ class MainActivity : FlutterActivity() {
     }
     
     private fun cancelAlarm(notificationId: Int) {
+        // Remove from SharedPreferences
+        removeAlarmFromPrefs(notificationId)
+
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(this, AlarmReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
@@ -186,5 +195,96 @@ class MainActivity : FlutterActivity() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
+    }
+
+    private fun saveAlarmToPrefs(
+        timeInMillis: Long, title: String, body: String, notificationId: Int, 
+        userId: String, billId: String, isRecurring: Boolean, 
+        recurringType: String, billTitle: String, billAmount: Double,
+        billVendor: String, currentSequence: Int, repeatCount: Int
+    ) {
+        try {
+            val prefs = getSharedPreferences("pending_recurring_bills", Context.MODE_PRIVATE)
+            val pendingData = prefs.getString("bills", "[]") ?: "[]"
+            
+            // Construct JSON object (manual string construction to avoid extra deps)
+            // Note: BootReceiver expects these fields
+            val safeTitle = title.replace("\"", "\\\"")
+            val safeBody = body.replace("\"", "\\\"")
+            val safeBillTitle = billTitle.replace("\"", "\\\"")
+            val safeVendor = billVendor.replace("\"", "\\\"")
+            
+            val alarmJson = """
+                {
+                    "notificationId": $notificationId,
+                    "dueTime": $timeInMillis,
+                    "title": "$safeBillTitle", 
+                    "body": "$safeBody",
+                    "billId": "$billId",
+                    "userId": "$userId",
+                    "isRecurring": $isRecurring,
+                    "recurringType": "$recurringType",
+                    "amount": $billAmount,
+                    "vendor": "$safeVendor",
+                    "sequence": $currentSequence,
+                    "repeatCount": $repeatCount
+                }
+            """.trimIndent()
+            
+            // Remove existing entry for same notificationId if exists
+            // This is a simple append strategy, but proper JSON parsing would be better.
+            // However, implementing full JSON manipulation here might be error prone without Gson/KotlinX.
+            // Let's use org.json since it's standard Android.
+            
+            val jsonArray = org.json.JSONArray(pendingData)
+            val newArray = org.json.JSONArray()
+            
+            // Filter out existing entry for this notificationId AND duplicates for same bill/sequence
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.getJSONObject(i)
+                // Filter by notificationId OR (billId + sequence)
+                val itemId = item.optInt("notificationId", -1)
+                val itemBillId = item.optString("billId", "")
+                val itemSeq = item.optInt("sequence", -1)
+                
+                if (itemId != notificationId && !(itemBillId == billId && itemSeq == currentSequence)) {
+                    newArray.put(item)
+                }
+            }
+            
+            // Add new item
+            newArray.put(org.json.JSONObject(alarmJson))
+            
+            prefs.edit().putString("bills", newArray.toString()).apply()
+            Log.d("MainActivity", "Saved alarm to prefs: $billTitle (seq $currentSequence)")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error saving alarm to prefs: ${e.message}")
+        }
+    }
+
+    private fun removeAlarmFromPrefs(notificationId: Int) {
+        try {
+            val prefs = getSharedPreferences("pending_recurring_bills", Context.MODE_PRIVATE)
+            val pendingData = prefs.getString("bills", "[]") ?: "[]"
+            val jsonArray = org.json.JSONArray(pendingData)
+            val newArray = org.json.JSONArray()
+            
+            var removed = false
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.getJSONObject(i)
+                if (item.optInt("notificationId") != notificationId) {
+                    newArray.put(item)
+                } else {
+                    removed = true
+                }
+            }
+            
+            if (removed) {
+                prefs.edit().putString("bills", newArray.toString()).apply()
+                Log.d("MainActivity", "Removed alarm from prefs: $notificationId")
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error removing alarm from prefs: ${e.message}")
+        }
     }
 }

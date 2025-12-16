@@ -112,8 +112,10 @@ class TrialService {
   }
 
   /// Check if user can access Pro features
+  /// During the 1-month free trial, all users have full access
   static bool canAccessProFeatures() {
-    return isInTrialPeriod() || hasProSubscription();
+    // All users get 1-month free trial with full access to all features
+    return true;
   }
 
   // ============ FEATURE LIMITS ============

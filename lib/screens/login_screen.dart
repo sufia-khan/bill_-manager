@@ -51,8 +51,8 @@ class LoginScreen extends StatelessWidget {
                 children: [
                   // App Logo
                   Container(
-                    width: 120,
-                    height: 120,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
@@ -66,8 +66,8 @@ class LoginScreen extends StatelessWidget {
                     child: ClipOval(
                       child: Image.asset(
                         'assets/images/my_app_logo.png',
-                        width: 120,
-                        height: 120,
+                        width: 80,
+                        height: 80,
                         fit: BoxFit.cover,
                       ),
                     ),

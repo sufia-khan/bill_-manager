@@ -313,11 +313,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 24),
 
-            // 🧪 TESTING SECTION (Remove in production)
-            _buildTestingSection(),
-
-            const SizedBox(height: 24),
-
             // Preferences Section
             _buildSectionHeader('Preferences'),
             const SizedBox(height: 12),
@@ -1711,433 +1706,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildSubscriptionCard() {
-    final status = TrialService.getMembershipStatus();
-    final registrationDate = TrialService.getRegistrationDate();
-    final daysRemaining = TrialService.getDaysRemaining();
     final trialEndDate = TrialService.getTrialEndDate();
 
-    // Format dates
+    // Format trial end date
     final dateFormat = DateFormat('MMM d, yyyy');
-    final memberSince = registrationDate != null
-        ? dateFormat.format(registrationDate)
-        : 'Unknown';
     final trialEnds = trialEndDate != null
         ? dateFormat.format(trialEndDate)
         : 'Unknown';
 
-    // Only show upgrade button if trial is expiring soon (< 14 days) or expired
-    final showUpgradeButton =
-        status == MembershipStatus.free ||
-        (status == MembershipStatus.trial && daysRemaining < 14);
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: status == MembershipStatus.trial
-              ? [
-                  const Color(0xFFD4AF37),
-                  const Color(0xFFF4C430),
-                ] // Gold gradient
-              : status == MembershipStatus.pro
-              ? [
-                  const Color(0xFFB8860B),
-                  const Color(0xFFDAA520),
-                ] // Dark gold for Pro
-              : [
-                  const Color(0xFF6B7280),
-                  const Color(0xFF9CA3AF),
-                ], // Gray for expired
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF10B981), // Green gradient for free trial
+            Color(0xFF059669),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFD4AF37).withValues(alpha: 0.4),
+            color: const Color(0xFF10B981).withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // Status badge row
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      status == MembershipStatus.pro
-                          ? Icons.workspace_premium
-                          : status == MembershipStatus.trial
-                          ? Icons.star
-                          : Icons.lock_outline,
-                      size: 14,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      status == MembershipStatus.pro
-                          ? 'PRO'
-                          : status == MembershipStatus.trial
-                          ? 'FREE TRIAL'
-                          : 'FREE',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              // Member since
-              Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today_outlined,
-                    size: 14,
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Since $memberSince',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Trial status message
-          if (status == MembershipStatus.trial) ...[
-            Text(
-              '$daysRemaining days remaining',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Enjoy all Pro features until $trialEnds',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            ),
-          ] else if (status == MembershipStatus.pro) ...[
-            const Text(
-              'Pro Member',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Unlimited access to all features',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            ),
-          ] else ...[
-            const Text(
-              'Trial Expired',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Consumer<BillProvider>(
-              builder: (context, billProvider, child) {
-                final remainingBills = billProvider.getRemainingFreeTierBills();
-                return Text(
-                  'You can add $remainingBills more bill${remainingBills != 1 ? 's' : ''} (${TrialService.freeMaxBills} max)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.95),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Upgrade to Pro for unlimited bills',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withValues(alpha: 0.8),
-              ),
-            ),
-          ],
-
-          // Upgrade button (only show if trial expiring soon or expired)
-          if (showUpgradeButton) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SubscriptionScreen(),
-                    ),
-                  );
-                  if (result == true && mounted) {
-                    setState(() {});
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFFB8860B), // Dark gold
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  status == MembershipStatus.free
-                      ? 'Upgrade to Pro'
-                      : 'Upgrade Now - $daysRemaining days left',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ] else if (status == MembershipStatus.pro) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SubscriptionScreen(),
-                    ),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.white),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text(
-                  'Manage Subscription',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTestingSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.purple.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.purple.shade200, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.science, color: Colors.purple.shade700, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                '🧪 TESTING MODE',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.purple.shade700,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'DEV ONLY',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Switch between trial states to test Pro features',
-            style: TextStyle(fontSize: 13, color: Colors.purple.shade700),
-          ),
-          const SizedBox(height: 16),
-
-          // Test mode buttons
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildTestModeButton(
-                'Trial Start',
-                'trial_start',
-                Icons.play_circle,
-                Colors.green,
-              ),
-              _buildTestModeButton(
-                'Trial Middle',
-                'trial_middle',
-                Icons.timelapse,
-                Colors.blue,
-              ),
-              _buildTestModeButton(
-                'Trial Ending',
-                'trial_ending',
-                Icons.warning,
-                Colors.orange,
-              ),
-              _buildTestModeButton(
-                'Trial Expired',
-                'trial_expired',
-                Icons.block,
-                Colors.red,
-              ),
-              _buildTestModeButton(
-                'Pro Member',
-                'pro',
-                Icons.workspace_premium,
-                Colors.amber,
-              ),
-              _buildTestModeButton(
-                'Real Mode',
-                null,
-                Icons.refresh,
-                Colors.grey,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          // Gift icon
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.purple.shade100,
-              borderRadius: BorderRadius.circular(6),
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
+            child: const Icon(
+              Icons.card_giftcard,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Trial info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: Colors.purple.shade700,
+                const Text(
+                  '🎉 1-Month Free Trial',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Current: ${TrialService.testMode ?? "Real Mode"}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.purple.shade700,
-                      fontWeight: FontWeight.w600,
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'Enjoy all features free! Trial expires on $trialEnds',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTestModeButton(
-    String label,
-    String? mode,
-    IconData icon,
-    Color color,
-  ) {
-    final isActive = TrialService.testMode == mode;
-
-    return InkWell(
-      onTap: () {
-        setState(() {
-          TrialService.testMode = mode;
-        });
-
-        // Notify BillProvider to refresh so home screen shows correct value
-        final billProvider = Provider.of<BillProvider>(context, listen: false);
-        billProvider.refreshUI();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Test mode: ${mode ?? "Real Mode"}'),
-            backgroundColor: color,
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? color : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color, width: isActive ? 2 : 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: isActive ? Colors.white : color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isActive ? Colors.white : color,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -138,6 +138,7 @@ class DeveloperToolsScreen extends StatelessWidget {
             _buildToolItem(
               context,
               icon: Icons.schedule_outlined,
+              title: 'View Scheduled Notifications',
               subtitle: 'See all pending notifications',
               onTap: () => _viewScheduledNotifications(context),
             ),
