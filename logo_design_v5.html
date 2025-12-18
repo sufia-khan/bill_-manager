@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillMinder Logo V5 - Bill Manager Focused</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #F97316;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            padding: 18px;
+            border-radius: 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(249, 115, 22, 0.2);
+        }
+
+        .label {
+            margin-top: 10px;
+            font-weight: 600;
+            color: #555;
+            font-size: 12px;
+        }
+
+        .icon-wrapper {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(249, 115, 22, 0.25);
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Bill Manager Logos</h1>
+    <p class="subtitle">Specifically Designed for Bill/Invoice Management Apps</p>
+
+    <div class="container">
+
+        <!-- 1: Receipt with Rupee -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <path
+                        d="M140 60 H372 V400 L340 375 L308 400 L276 375 L256 400 L236 375 L204 400 L172 375 L140 400 Z"
+                        fill="#F97316" />
+                    <text x="256" y="260" font-family="Arial" font-size="150" font-weight="bold" fill="white"
+                        text-anchor="middle">₹</text>
+                </svg>
+            </div>
+            <div class="label">Bill ₹</div>
+        </div>
+
+        <!-- 2: Invoice Document -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <path d="M120 50 H320 L392 122 V462 H120 Z" fill="#F97316" />
+                    <path d="M320 50 V122 H392" fill="none" stroke="white" stroke-width="12" />
+                    <rect x="160" y="170" width="140" height="16" rx="8" fill="white" />
+                    <rect x="160" y="210" width="100" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="160" y="245" width="180" height="2" fill="white" opacity="0.5" />
+                    <rect x="160" y="275" width="80" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="280" y="275" width="60" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="160" y="305" width="80" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="280" y="305" width="60" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="160" y="350" width="180" height="2" fill="white" opacity="0.5" />
+                    <rect x="230" y="380" width="110" height="20" rx="10" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Invoice</div>
+        </div>
+
+        <!-- 3: Bill with Check -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <path
+                        d="M100 80 H340 V360 L310 340 L280 360 L250 340 L220 360 L190 340 L160 360 L130 340 L100 360 Z"
+                        fill="#F97316" />
+                    <rect x="140" y="140" width="120" height="14" rx="7" fill="white" />
+                    <rect x="140" y="180" width="80" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="140" y="210" width="100" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="140" y="260" width="140" height="16" rx="8" fill="white" />
+                    <!-- Checkmark badge -->
+                    <circle cx="380" cy="380" r="80" fill="#22C55E" />
+                    <path d="M340 380 L365 410 L425 340" fill="none" stroke="white" stroke-width="20"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">Bill Paid</div>
+        </div>
+
+        <!-- 4: Calendar Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <rect x="80" y="100" width="352" height="332" rx="30" fill="#F97316" />
+                    <rect x="80" y="100" width="352" height="70" rx="30" fill="#EA580C" />
+                    <rect x="140" y="70" width="25" height="60" rx="8" fill="#F97316" />
+                    <rect x="347" y="70" width="25" height="60" rx="8" fill="#F97316" />
+                    <!-- Bill icon inside -->
+                    <path
+                        d="M200 220 H312 V380 L296 365 L280 380 L264 365 L256 380 L248 365 L232 380 L216 365 L200 380 Z"
+                        fill="white" />
+                    <rect x="220" y="250" width="72" height="8" rx="4" fill="#F97316" />
+                    <rect x="220" y="275" width="50" height="6" rx="3" fill="#F97316" opacity="0.6" />
+                    <rect x="220" y="300" width="72" height="10" rx="5" fill="#F97316" />
+                </svg>
+            </div>
+            <div class="label">Bill Due Date</div>
+        </div>
+
+        <!-- 5: Wallet + Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Wallet -->
+                    <rect x="60" y="160" width="320" height="200" rx="25" fill="#F97316" />
+                    <rect x="280" y="220" width="70" height="70" rx="15" fill="#EA580C" />
+                    <circle cx="315" cy="255" r="18" fill="white" />
+                    <!-- Bill sticking out -->
+                    <path d="M360 120 H432 V340 L420 325 L408 340 L396 325 L384 340 L372 325 L360 340 Z"
+                        fill="#FDBA74" />
+                    <rect x="375" y="160" width="40" height="8" rx="4" fill="white" />
+                    <rect x="375" y="185" width="30" height="6" rx="3" fill="white" opacity="0.7" />
+                    <rect x="375" y="220" width="40" height="10" rx="5" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Wallet Bill</div>
+        </div>
+
+        <!-- 6: Stack of Bills -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Back bill -->
+                    <path
+                        d="M160 100 H352 V340 L332 320 L312 340 L292 320 L272 340 L252 320 L232 340 L212 320 L192 340 L172 320 L160 340 Z"
+                        fill="#FDBA74" />
+                    <!-- Middle bill -->
+                    <path
+                        d="M140 130 H332 V370 L312 350 L292 370 L272 350 L252 370 L232 350 L212 370 L192 350 L172 370 L152 350 L140 370 Z"
+                        fill="#FB923C" />
+                    <!-- Front bill -->
+                    <path
+                        d="M120 160 H312 V400 L292 380 L272 400 L252 380 L232 400 L212 380 L192 400 L172 380 L152 400 L132 380 L120 400 Z"
+                        fill="#F97316" />
+                    <rect x="155" y="210" width="120" height="14" rx="7" fill="white" />
+                    <rect x="155" y="250" width="80" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="155" y="290" width="100" height="16" rx="8" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Bill Stack</div>
+        </div>
+
+        <!-- 7: Money Flow -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Bill on left -->
+                    <path
+                        d="M80 140 H200 V360 L188 345 L176 360 L164 345 L152 360 L140 345 L128 360 L116 345 L104 360 L92 345 L80 360 Z"
+                        fill="#F97316" />
+                    <rect x="100" y="180" width="80" height="10" rx="5" fill="white" />
+                    <rect x="100" y="210" width="60" height="8" rx="4" fill="white" opacity="0.7" />
+                    <rect x="100" y="260" width="80" height="12" rx="6" fill="white" />
+                    <!-- Arrow -->
+                    <path d="M230 250 H340" stroke="#F97316" stroke-width="20" stroke-linecap="round" />
+                    <path d="M310 210 L350 250 L310 290" fill="none" stroke="#F97316" stroke-width="20"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                    <!-- Coin/Check on right -->
+                    <circle cx="410" cy="250" r="70" fill="#F97316" />
+                    <path d="M375 250 L400 280 L450 220" fill="none" stroke="white" stroke-width="16"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">Bill Tracking</div>
+        </div>
+
+        <!-- 8: Bill with Timer -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Bill -->
+                    <path
+                        d="M90 100 H310 V420 L288 398 L266 420 L244 398 L222 420 L200 398 L178 420 L156 398 L134 420 L112 398 L90 420 Z"
+                        fill="#F97316" />
+                    <rect x="130" y="160" width="140" height="16" rx="8" fill="white" />
+                    <rect x="130" y="200" width="100" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="130" y="240" width="120" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="130" y="300" width="140" height="18" rx="9" fill="white" />
+                    <!-- Clock badge -->
+                    <circle cx="380" cy="140" r="70" fill="#EA580C" />
+                    <circle cx="380" cy="140" r="55" fill="white" />
+                    <rect x="375" y="100" width="10" height="45" rx="5" fill="#F97316" />
+                    <rect x="375" y="135" width="35" height="8" rx="4" fill="#F97316" />
+                </svg>
+            </div>
+            <div class="label">Bill Reminder</div>
+        </div>
+
+        <!-- 9: Receipt Roll -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Receipt roll top -->
+                    <ellipse cx="256" cy="100" rx="130" ry="35" fill="#EA580C" />
+                    <!-- Receipt body -->
+                    <path
+                        d="M126 100 V400 L146 385 L166 400 L186 385 L206 400 L226 385 L246 400 L266 385 L286 400 L306 385 L326 400 L346 385 L366 400 L386 385 V100"
+                        fill="#F97316" />
+                    <rect x="170" y="160" width="172" height="16" rx="8" fill="white" />
+                    <rect x="170" y="200" width="120" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="170" y="235" width="172" height="2" fill="white" opacity="0.5" />
+                    <rect x="170" y="260" width="90" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="290" y="260" width="52" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="170" y="290" width="90" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="290" y="290" width="52" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="170" y="330" width="172" height="2" fill="white" opacity="0.5" />
+                    <rect x="240" y="355" width="102" height="18" rx="9" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Receipt</div>
+        </div>
+
+        <!-- 10: Payment Card + Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Card -->
+                    <rect x="60" y="180" width="280" height="180" rx="20" fill="#F97316" />
+                    <rect x="60" y="230" width="280" height="40" fill="#EA580C" />
+                    <rect x="90" y="310" width="80" height="20" rx="5" fill="white" opacity="0.7" />
+                    <rect x="230" y="310" width="60" height="20" rx="5" fill="white" />
+                    <!-- Bill -->
+                    <path d="M360 120 H432 V380 L420 362 L408 380 L396 362 L384 380 L372 362 L360 380 Z"
+                        fill="#FB923C" />
+                    <rect x="372" y="160" width="48" height="10" rx="5" fill="white" />
+                    <rect x="372" y="190" width="36" height="8" rx="4" fill="white" opacity="0.7" />
+                    <rect x="372" y="240" width="48" height="12" rx="6" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Card Payment</div>
+        </div>
+
+        <!-- 11: Bill Clipboard -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Clipboard -->
+                    <rect x="100" y="80" width="312" height="372" rx="25" fill="#F97316" />
+                    <!-- Clip -->
+                    <rect x="190" y="50" width="132" height="60" rx="10" fill="#EA580C" />
+                    <rect x="220" y="70" width="72" height="30" rx="8" fill="white" />
+                    <!-- Bill content -->
+                    <rect x="140" y="150" width="180" height="16" rx="8" fill="white" />
+                    <rect x="140" y="190" width="130" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="140" y="225" width="232" height="2" fill="white" opacity="0.5" />
+                    <rect x="140" y="255" width="100" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="280" y="255" width="92" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="140" y="290" width="100" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="280" y="290" width="92" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="140" y="325" width="100" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="280" y="325" width="92" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="140" y="365" width="232" height="2" fill="white" opacity="0.5" />
+                    <rect x="260" y="390" width="112" height="22" rx="11" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Bill List</div>
+        </div>
+
+        <!-- 12: Simple Bill Icon -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <rect x="96" y="96" width="320" height="320" rx="50" fill="#F97316" />
+                    <!-- Minimal bill shape -->
+                    <path
+                        d="M180 150 H332 V340 L316 325 L300 340 L284 325 L268 340 L252 325 L236 340 L220 325 L204 340 L188 325 L180 340 Z"
+                        fill="white" />
+                    <rect x="205" y="190" width="102" height="12" rx="6" fill="#F97316" />
+                    <rect x="205" y="220" width="72" height="8" rx="4" fill="#F97316" opacity="0.6" />
+                    <rect x="205" y="260" width="102" height="14" rx="7" fill="#F97316" />
+                </svg>
+            </div>
+            <div class="label">Bill Icon</div>
+        </div>
+
+        <!-- 13: Bill + Notification -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Bill -->
+                    <path
+                        d="M100 120 H340 V420 L318 398 L296 420 L274 398 L252 420 L230 398 L208 420 L186 398 L164 420 L142 398 L120 420 L100 400 Z"
+                        fill="#F97316" />
+                    <rect x="140" y="180" width="160" height="16" rx="8" fill="white" />
+                    <rect x="140" y="220" width="110" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="140" y="270" width="160" height="18" rx="9" fill="white" />
+                    <!-- Bell badge -->
+                    <circle cx="380" cy="140" r="70" fill="#EF4444" />
+                    <path
+                        d="M380 100 C350 100 330 125 330 155 V185 L315 200 V210 H445 V200 L430 185 V155 C430 125 410 100 380 100 Z"
+                        fill="white" />
+                    <circle cx="380" cy="225" r="15" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Bill Alert</div>
+        </div>
+
+        <!-- 14: Organized Bills -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Folder -->
+                    <path d="M60 140 H200 L230 100 H452 V400 H60 Z" fill="#F97316" />
+                    <rect x="60" y="180" width="392" height="220" rx="10" fill="#FB923C" />
+                    <!-- Bills inside -->
+                    <path
+                        d="M120 220 H240 V360 L228 348 L216 360 L204 348 L192 360 L180 348 L168 360 L156 348 L144 360 L132 348 L120 360 Z"
+                        fill="white" />
+                    <rect x="140" y="250" width="80" height="8" rx="4" fill="#F97316" />
+                    <rect x="140" y="275" width="60" height="6" rx="3" fill="#F97316" opacity="0.6" />
+                    <path
+                        d="M280 220 H400 V360 L388 348 L376 360 L364 348 L352 360 L340 348 L328 360 L316 348 L304 360 L292 348 L280 360 Z"
+                        fill="white" />
+                    <rect x="300" y="250" width="80" height="8" rx="4" fill="#F97316" />
+                    <rect x="300" y="275" width="60" height="6" rx="3" fill="#F97316" opacity="0.6" />
+                </svg>
+            </div>
+            <div class="label">Bill Folder</div>
+        </div>
+
+        <!-- 15: Bill + Graph -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Bill -->
+                    <path
+                        d="M80 80 H280 V320 L262 302 L244 320 L226 302 L208 320 L190 302 L172 320 L154 302 L136 320 L118 302 L100 320 L80 302 Z"
+                        fill="#F97316" />
+                    <rect x="110" y="130" width="140" height="14" rx="7" fill="white" />
+                    <rect x="110" y="165" width="100" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="110" y="210" width="140" height="16" rx="8" fill="white" />
+                    <!-- Bar chart -->
+                    <rect x="320" y="280" width="40" height="140" rx="8" fill="#FDBA74" />
+                    <rect x="380" y="220" width="40" height="200" rx="8" fill="#FB923C" />
+                    <rect x="440" y="160" width="40" height="260" rx="8" fill="#F97316" />
+                    <path d="M300 420 L480 420" stroke="#F97316" stroke-width="8" stroke-linecap="round" />
+                </svg>
+            </div>
+            <div class="label">Bill Analytics</div>
+        </div>
+
+        <!-- 16: Simple Rupee Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Bill shape -->
+                    <path
+                        d="M130 60 H382 V420 L358 395 L334 420 L310 395 L286 420 L262 395 L238 420 L214 395 L190 420 L166 395 L142 420 L130 405 Z"
+                        fill="#F97316" />
+                    <!-- Rupee symbol stylized -->
+                    <path d="M200 150 H312 M200 200 H312 M200 150 C200 250 280 250 280 350" stroke="white"
+                        stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                    <path d="M200 200 L280 350" stroke="white" stroke-width="28" stroke-linecap="round" />
+                </svg>
+            </div>
+            <div class="label">Rupee Bill</div>
+        </div>
+
+        <!-- 17: Bill Management -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Central bill -->
+                    <path
+                        d="M180 100 H332 V380 L314 360 L296 380 L278 360 L256 380 L234 360 L216 380 L198 360 L180 380 Z"
+                        fill="#F97316" />
+                    <rect x="205" y="150" width="102" height="14" rx="7" fill="white" />
+                    <rect x="205" y="185" width="72" height="10" rx="5" fill="white" opacity="0.7" />
+                    <rect x="205" y="215" width="102" height="2" fill="white" opacity="0.5" />
+                    <rect x="205" y="240" width="102" height="16" rx="8" fill="white" />
+                    <!-- Orbiting elements -->
+                    <circle cx="100" cy="180" r="45" fill="#FDBA74" />
+                    <text x="100" y="195" font-family="Arial" font-size="40" font-weight="bold" fill="white"
+                        text-anchor="middle">+</text>
+                    <circle cx="412" cy="180" r="45" fill="#FB923C" />
+                    <text x="412" y="195" font-family="Arial" font-size="40" font-weight="bold" fill="white"
+                        text-anchor="middle">✓</text>
+                    <circle cx="100" cy="350" r="45" fill="#FB923C" />
+                    <text x="100" y="365" font-family="Arial" font-size="40" font-weight="bold" fill="white"
+                        text-anchor="middle">↺</text>
+                    <circle cx="412" cy="350" r="45" fill="#FDBA74" />
+                    <text x="412" y="360" font-family="Arial" font-size="32" font-weight="bold" fill="white"
+                        text-anchor="middle">📊</text>
+                </svg>
+            </div>
+            <div class="label">Bill Manager</div>
+        </div>
+
+        <!-- 18: Clean Bill Symbol -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <defs>
+                        <linearGradient id="billGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#FB923C" />
+                            <stop offset="100%" style="stop-color:#EA580C" />
+                        </linearGradient>
+                    </defs>
+                    <path
+                        d="M140 50 H372 V430 L348 405 L324 430 L300 405 L276 430 L256 410 L236 430 L212 405 L188 430 L164 405 L140 430 Z"
+                        fill="url(#billGrad)" />
+                    <!-- Abstract lines representing text -->
+                    <rect x="185" y="120" width="142" height="20" rx="10" fill="white" />
+                    <rect x="185" y="170" width="100" height="14" rx="7" fill="white" opacity="0.7" />
+                    <rect x="185" y="210" width="142" height="3" fill="white" opacity="0.4" />
+                    <rect x="185" y="245" width="70" height="14" rx="7" fill="white" opacity="0.7" />
+                    <rect x="275" y="245" width="52" height="14" rx="7" fill="white" opacity="0.7" />
+                    <rect x="185" y="285" width="70" height="14" rx="7" fill="white" opacity="0.7" />
+                    <rect x="275" y="285" width="52" height="14" rx="7" fill="white" opacity="0.7" />
+                    <rect x="185" y="330" width="142" height="3" fill="white" opacity="0.4" />
+                    <rect x="235" y="360" width="92" height="24" rx="12" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Bill Document</div>
+        </div>
+
+        <!-- 19: Minimalist Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="#F97316" />
+                    <path
+                        d="M160 80 H352 V400 L332 380 L312 400 L292 380 L272 400 L256 385 L240 400 L220 380 L200 400 L180 380 L160 400 Z"
+                        fill="white" />
+                    <rect x="195" y="140" width="122" height="14" rx="7" fill="#F97316" />
+                    <rect x="195" y="180" width="85" height="10" rx="5" fill="#F97316" opacity="0.5" />
+                    <rect x="195" y="220" width="122" height="2" fill="#F97316" opacity="0.3" />
+                    <rect x="195" y="255" width="60" height="10" rx="5" fill="#F97316" opacity="0.5" />
+                    <rect x="270" y="255" width="47" height="10" rx="5" fill="#F97316" opacity="0.5" />
+                    <rect x="195" y="305" width="122" height="16" rx="8" fill="#F97316" />
+                </svg>
+            </div>
+            <div class="label">Bill (Inverted)</div>
+        </div>
+
+        <!-- 20: Bill + Dollar -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <path
+                        d="M130 70 H350 V410 L328 388 L306 410 L284 388 L262 410 L240 388 L218 410 L196 388 L174 410 L152 388 L130 410 Z"
+                        fill="#F97316" />
+                    <!-- Large $ -->
+                    <text x="240" y="290" font-family="Georgia, serif" font-size="200" font-weight="bold" fill="white"
+                        text-anchor="middle">$</text>
+                </svg>
+            </div>
+            <div class="label">Dollar Bill</div>
+        </div>
+
+    </div>
+</body>
+
+</html>

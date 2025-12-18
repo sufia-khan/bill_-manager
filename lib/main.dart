@@ -21,6 +21,7 @@ import 'services/notification_history_service.dart';
 import 'services/offline_first_notification_service.dart';
 import 'services/user_preferences_service.dart';
 import 'services/archive_management_service.dart';
+import 'services/pending_deletions_service.dart';
 import 'utils/bill_status_helper.dart';
 import 'providers/bill_provider.dart';
 import 'providers/auth_provider.dart';
@@ -73,6 +74,9 @@ Future<void> _initializeBackgroundTasks() async {
 
     // Initialize notification history
     await NotificationHistoryService.init();
+
+    // Initialize pending deletions service (survives logout)
+    await PendingDeletionsService.init();
 
     // Run data migration
     await HiveService.migrateExistingBills();
@@ -169,6 +173,7 @@ class _AuthWrapperState extends State<AuthWrapper>
   bool _hasShownPermissionDialog = false;
   bool _hasLoadedCurrency = false;
   bool _showSplash = true;
+  bool _splashFadingOut = false; // Track fade out state
   // App Lock feature - hidden for initial release
   // bool _isLocked = false;
   // final AppLockService _lockService = AppLockService();
@@ -177,6 +182,7 @@ class _AuthWrapperState extends State<AuthWrapper>
   late Animation<double> _textOpacity;
   late Animation<Offset> _textSlide;
   late Animation<double> _loaderOpacity;
+  late Animation<double> _fadeOutOpacity; // For smooth fade transition
 
   @override
   void initState() {
@@ -223,17 +229,59 @@ class _AuthWrapperState extends State<AuthWrapper>
       ),
     );
 
-    // Start animations
+    // Fade out animation (will be triggered when transitioning out of splash)
+    _fadeOutOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
+    // Start intro animations
     _controller.forward();
 
-    // Hide splash after animation (longer duration to read features)
-    Future.delayed(const Duration(milliseconds: 2000), () {
+    // IMPROVED: Handle splash dismissal with auth check
+    // Wait for minimum 2 seconds, then check if auth is ready
+    _handleSplashTransition();
+  }
+
+  /// Handle smooth splash to content transition
+  /// Waits for both minimum splash duration AND auth check to complete
+  Future<void> _handleSplashTransition() async {
+    // Minimum 2 seconds for splash display + animations
+    await Future.delayed(const Duration(milliseconds: 2000));
+
+    // Check if auth provider is still loading
+    // We access it via context, using mounted check
+    if (!mounted) return;
+
+    // Wait for auth state to be determined (max additional 3 seconds)
+    final authProvider = context.read<AuthProvider>();
+    int waitCount = 0;
+    while (authProvider.isLoading && waitCount < 30) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitCount++;
+      if (!mounted) return;
+    }
+
+    // Start fade out animation
+    if (mounted) {
+      setState(() {
+        _splashFadingOut = true;
+      });
+
+      // Reset and run fade out animation
+      _controller.reset();
+      _controller.duration = const Duration(milliseconds: 300);
+      await _controller.forward();
+
       if (mounted) {
         setState(() {
           _showSplash = false;
+          _splashFadingOut = false;
         });
       }
-    });
+    }
   }
 
   @override
@@ -292,123 +340,145 @@ class _AuthWrapperState extends State<AuthWrapper>
     //   return LockScreen(onUnlocked: _unlockApp);
     // }
 
-    // Show custom splash screen first
+    // Show custom splash screen first (with fade-out animation)
     if (_showSplash) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: Colors.white,
-          child: SafeArea(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(flex: 2),
-                // Logo with animated shadow
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFFF97316,
-                            ).withValues(alpha: 0.25 * _shadowOpacity.value),
-                            blurRadius: 25 * _shadowOpacity.value,
-                            offset: Offset(0, 10 * _shadowOpacity.value),
-                          ),
-                        ],
-                      ),
-                      child: child,
-                    );
-                  },
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/my_app_logo.png',
-                      width: 180,
-                      height: 180,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                // Animated text
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return SlideTransition(
-                      position: _textSlide,
-                      child: Opacity(opacity: _textOpacity.value, child: child),
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      Text(
-                        'BillMinder',
-                        style: GoogleFonts.poppins(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1F2937),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Never miss a bill again',
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                          color: const Color(0xFF6B7280),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      // Feature points
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 48),
-                        child: Column(
-                          children: [
-                            _buildFeaturePoint(
-                              '📋 Track all your bills in one place',
+      return AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Opacity(
+            opacity: _splashFadingOut ? _fadeOutOpacity.value : 1.0,
+            child: child,
+          );
+        },
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.white,
+            child: SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(flex: 2),
+                  // Logo with animated shadow
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      // Don't animate shadow during fade-out
+                      final shadowVal = _splashFadingOut
+                          ? 1.0
+                          : _shadowOpacity.value;
+                      return Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFF97316,
+                              ).withValues(alpha: 0.25 * shadowVal),
+                              blurRadius: 25 * shadowVal,
+                              offset: Offset(0, 10 * shadowVal),
                             ),
-                            const SizedBox(height: 12),
-                            _buildFeaturePoint(
-                              '🔔 Get timely payment reminders',
-                            ),
-                            const SizedBox(height: 12),
-                            _buildFeaturePoint('📊 View spending analytics'),
-                            const SizedBox(height: 12),
-                            _buildFeaturePoint('☁️ Sync across all devices'),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(flex: 2),
-                // Loading indicator
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return Opacity(opacity: _loaderOpacity.value, child: child);
-                  },
-                  child: const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Color(0xFFF97316),
+                        child: child,
+                      );
+                    },
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/my_app_logo.png',
+                        width: 180,
+                        height: 180,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 48),
-              ],
+                  const SizedBox(height: 32),
+                  // Animated text
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      // During fade-out, keep text fully visible
+                      final textOp = _splashFadingOut
+                          ? 1.0
+                          : _textOpacity.value;
+                      return SlideTransition(
+                        position: _splashFadingOut
+                            ? const AlwaysStoppedAnimation(Offset.zero)
+                            : _textSlide,
+                        child: Opacity(opacity: textOp, child: child),
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        Text(
+                          'BillMinder',
+                          style: GoogleFonts.poppins(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1F2937),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Never miss a bill again',
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            color: const Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        // Feature points
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 48),
+                          child: Column(
+                            children: [
+                              _buildFeaturePoint(
+                                '📋 Track all your bills in one place',
+                              ),
+                              const SizedBox(height: 12),
+                              _buildFeaturePoint(
+                                '🔔 Get timely payment reminders',
+                              ),
+                              const SizedBox(height: 12),
+                              _buildFeaturePoint('📊 View spending analytics'),
+                              const SizedBox(height: 12),
+                              _buildFeaturePoint('☁️ Sync across all devices'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(flex: 2),
+                  // Loading indicator
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      final loaderOp = _splashFadingOut
+                          ? 1.0
+                          : _loaderOpacity.value;
+                      return Opacity(opacity: loaderOp, child: child);
+                    },
+                    child: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFF97316),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                ],
+              ),
             ),
           ),
         ),
@@ -417,14 +487,8 @@ class _AuthWrapperState extends State<AuthWrapper>
 
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
-        // Show loading indicator while checking auth state
-        if (authProvider.isLoading) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(color: Color(0xFFF97316)),
-            ),
-          );
-        }
+        // IMPROVED: No separate auth loading screen - handled during splash
+        // If auth is still loading here (edge case), show login which will handle it
 
         // If not authenticated, reset flags and show login
         if (!authProvider.isAuthenticated) {

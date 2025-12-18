@@ -9,6 +9,8 @@ import '../providers/currency_provider.dart';
 import '../providers/notification_badge_provider.dart';
 import '../widgets/animated_subtitle.dart';
 import '../widgets/expandable_bill_card.dart';
+import '../widgets/skeleton_loader.dart';
+import '../widgets/summary_card_skeleton.dart';
 import '../widgets/amount_info_bottom_sheet.dart';
 import '../utils/formatters.dart';
 import '../utils/text_styles.dart';
@@ -156,16 +158,13 @@ class _BillManagerScreenState extends State<BillManagerScreen>
 
     return Consumer<BillProvider>(
       builder: (context, billProvider, child) {
-        // CRITICAL FIX: Show loading indicator FIRST before any data
-        // This prevents flash of previous account's bills
-        if (!billProvider.isInitialized || billProvider.isLoading) {
-          return Scaffold(
-            backgroundColor: Colors.white,
-            body: const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF97316)),
-            ),
-          );
-        }
+        // IMPROVED: Show skeleton until we have actual data to display
+        // This prevents showing 0 values while sync is in progress
+        // hasInitialData is false until local data exists OR sync completes
+        final showSkeleton =
+            !billProvider.isInitialized ||
+            billProvider.isLoading ||
+            !billProvider.hasInitialData;
 
         // Optimizing: Use pre-processed lists from Provider
         List<Bill> statusBills;
@@ -214,7 +213,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
           next7DaysCount,
           filteredCount,
           filteredAmount,
-          billProvider.isLoading,
+          showSkeleton, // Pass loading/skeleton state to show skeletons
         );
       },
     );
@@ -244,6 +243,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
             thisMonthCount,
             next7DaysTotal,
             next7DaysCount,
+            isLoading, // Pass loading state for skeleton display
           ),
           Expanded(
             child: _buildBody(
@@ -252,6 +252,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
               next7DaysTotal,
               filteredCount,
               filteredAmount,
+              isLoading, // Pass loading state for skeleton display
             ),
           ),
         ],
@@ -265,6 +266,7 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     int thisMonthCount,
     double next7DaysTotal,
     int next7DaysCount,
+    bool isLoading, // Added loading parameter
   ) {
     return Container(
       decoration: BoxDecoration(
@@ -441,12 +443,16 @@ class _BillManagerScreenState extends State<BillManagerScreen>
                   ),
 
                 // Unified Summary Card with Two Color Sections
-                _buildUnifiedSummaryCard(
-                  thisMonthTotal,
-                  thisMonthCount,
-                  next7DaysTotal,
-                  next7DaysCount,
-                ),
+                // Show skeleton while loading, actual card when data is ready
+                if (isLoading)
+                  const SummaryCardSkeleton()
+                else
+                  _buildUnifiedSummaryCard(
+                    thisMonthTotal,
+                    thisMonthCount,
+                    next7DaysTotal,
+                    next7DaysCount,
+                  ),
               ],
             ),
           ),
@@ -461,21 +467,38 @@ class _BillManagerScreenState extends State<BillManagerScreen>
     double next7DaysTotal,
     int filteredCount,
     double filteredAmount,
+    bool isLoading, // Added loading parameter
   ) {
-    return Stack(
+    return Column(
       children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        // Fixed section - tabs and status card stay visible when scrolling
+        Container(
+          color: const Color(0xFFF8F9FA),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_showSettings) _buildSettingsSection(),
               _buildFilterSection(),
-              const SizedBox(height: 20),
-              _buildFilteredSection(filteredCount, filteredAmount),
-              const SizedBox(height: 20),
-              _buildBillsList(filteredBills),
+              const SizedBox(height: 16),
+              // Show skeleton for filtered section while loading
+              if (isLoading)
+                const FilteredSectionSkeleton()
+              else
+                _buildFilteredSection(filteredCount, filteredAmount),
+              const SizedBox(height: 16),
             ],
+          ),
+        ),
+        // Scrollable content - only the bills list scrolls
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_showSettings) _buildSettingsSection(),
+                _buildBillsList(filteredBills),
+              ],
+            ),
           ),
         ),
       ],
@@ -989,13 +1012,21 @@ class _BillManagerScreenState extends State<BillManagerScreen>
   }
 
   Widget _buildBillsList(List<Bill> filteredBills) {
-    // Show loading indicator while bills are being loaded
-    if (context.watch<BillProvider>().isLoading && filteredBills.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(48),
-        child: const Center(
-          child: CircularProgressIndicator(color: Color(0xFFF97316)),
+    // Show skeleton loader while bills are being loaded
+    final billProvider = context.watch<BillProvider>();
+    if (billProvider.isLoading && filteredBills.isEmpty) {
+      return Column(
+        children: List.generate(
+          4, // Show 4 skeleton cards as loading placeholders
+          (index) => const BillCardSkeleton(),
         ),
+      );
+    }
+
+    // Also show skeleton if not initialized yet
+    if (!billProvider.isInitialized) {
+      return Column(
+        children: List.generate(4, (index) => const BillCardSkeleton()),
       );
     }
 

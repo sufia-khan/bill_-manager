@@ -7,6 +7,7 @@ import 'notification_history_service.dart';
 import 'local_database_service.dart'; // Added
 import '../models/bill_hive.dart';
 import '../utils/bill_status_helper.dart';
+import 'pending_deletions_service.dart';
 
 /// Callback type for when remote changes are received from Firestore
 typedef OnRemoteChangesCallback = void Function();
@@ -333,9 +334,28 @@ class SyncService {
       await batch.commit();
       print('✅ Committed $batchWrites changes to Firestore');
 
+      // Track successfully synced deletions to clear from PendingDeletionsService
+      final syncedDeletionIds = <String>[];
+
       // Clear processed items from queue
       for (final item in itemsToRemove) {
+        // Track deletion operations that were successfully synced
+        if (item.operation == 'delete') {
+          syncedDeletionIds.add(item.billId);
+        }
         await localDb.removeSyncQueueItem(item);
+      }
+
+      // CRITICAL: Clear synced deletions from PendingDeletionsService
+      // Now that they're deleted from Firestore, we don't need to track them anymore
+      if (syncedDeletionIds.isNotEmpty) {
+        await PendingDeletionsService.removePendingDeletions(
+          currentUserId,
+          syncedDeletionIds,
+        );
+        print(
+          '✅ Cleared ${syncedDeletionIds.length} pending deletions (synced to Firestore)',
+        );
       }
     }
   }
@@ -501,8 +521,35 @@ class SyncService {
         final serverBills = await FirebaseService.getAllBills();
         print('✅ Fetched ${serverBills.length} bills');
 
+        // CRITICAL: Get pending deletions that survived logout
+        // These bills should NOT be restored from server
+        final pendingDeletions =
+            await PendingDeletionsService.getPendingDeletions(currentUserId!);
+        if (pendingDeletions.isNotEmpty) {
+          print(
+            '⚠️ Found ${pendingDeletions.length} pending deletions from previous session',
+          );
+        }
+
+        // Also get locally deleted bills that haven't been synced yet
+        final locallyDeletedBillIds = HiveService.getAllBillsIncludingDeleted()
+            .where((b) => b.isDeleted)
+            .map((b) => b.id)
+            .toSet();
+
+        // Track bills we need to delete from Firestore
+        final billsToDeleteFromFirestore = <String>[];
+
         // Merge with local - CRITICAL: Ensure userId is set correctly
         for (var serverBill in serverBills) {
+          // CRITICAL: Skip bills that are pending deletion
+          if (pendingDeletions.contains(serverBill.id) ||
+              locallyDeletedBillIds.contains(serverBill.id)) {
+            print('   ⏭️ Skipping ${serverBill.id} - pending local deletion');
+            billsToDeleteFromFirestore.add(serverBill.id);
+            continue;
+          }
+
           final localBill = HiveService.getBillById(serverBill.id);
           if (localBill == null || !localBill.needsSync) {
             // CRITICAL FIX: Recalculate status based on current time
@@ -517,6 +564,24 @@ class SyncService {
               status: recalculatedStatus, // Recalculate status for current time
             );
             await HiveService.saveBill(billWithUser);
+          }
+        }
+
+        // Re-queue the pending deletions to sync to Firestore
+        if (billsToDeleteFromFirestore.isNotEmpty) {
+          print(
+            '📤 Re-queuing ${billsToDeleteFromFirestore.length} deletions to sync...',
+          );
+          final localDb = LocalDatabaseService();
+          for (final billId in billsToDeleteFromFirestore) {
+            // Ensure the bill is locally deleted
+            final localBill = HiveService.getBillById(billId);
+            if (localBill == null) {
+              // Bill doesn't exist locally, add it as deleted
+              // This will be handled by the sync queue
+            }
+            // Add to sync queue for deletion
+            await localDb.deleteBill(billId);
           }
         }
 

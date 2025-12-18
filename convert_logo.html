@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Download Bell Icon as PNG</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            background: linear-gradient(135deg, #fff5eb 0%, #ffe4cc 100%);
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #F97316;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .preview {
+            margin: 20px;
+            box-shadow: 0 8px 30px rgba(249, 115, 22, 0.3);
+            border-radius: 24px;
+            overflow: hidden;
+            background: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        button {
+            background: #F97316;
+            color: white;
+            border: none;
+            padding: 18px 50px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #EA580C;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(249, 115, 22, 0.4);
+        }
+
+        .instructions {
+            background: white;
+            padding: 25px 35px;
+            border-radius: 16px;
+            margin-top: 30px;
+            max-width: 550px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .instructions h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+            line-height: 2;
+        }
+
+        code {
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .success {
+            color: #22C55E;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🔔 Reminder Bell Icon</h1>
+    <p class="subtitle">Your new BillMinder app icon</p>
+
+    <div class="preview">
+        <canvas id="canvas" width="1024" height="1024"></canvas>
+    </div>
+
+    <button onclick="downloadPNG()">⬇ Download as PNG (1024x1024)</button>
+
+    <div class="instructions">
+        <h3>📋 Instructions:</h3>
+        <ol>
+            <li>Click the <strong>Download</strong> button above</li>
+            <li>Save file to: <code>assets/images/my_app_logo.png</code></li>
+            <li>Replace the existing file when prompted</li>
+            <li>Run: <code>dart run flutter_launcher_icons</code></li>
+            <li class="success">Done! Your bell icon will appear everywhere!</li>
+        </ol>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const s = 2; // Scale factor (512 to 1024)
+
+        // Draw white background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        // Draw bell body using bezier curves
+        ctx.fillStyle = '#F97316';
+        ctx.beginPath();
+
+        // Starting point (top center of bell)
+        ctx.moveTo(256 * s, 80 * s);
+
+        // Left curve going down
+        ctx.bezierCurveTo(
+            180 * s, 80 * s,   // control point 1
+            130 * s, 140 * s,  // control point 2
+            130 * s, 210 * s   // end point
+        );
+
+        // Left side down to base
+        ctx.lineTo(130 * s, 300 * s);
+        ctx.lineTo(90 * s, 350 * s);
+        ctx.lineTo(90 * s, 380 * s);
+
+        // Bottom of bell
+        ctx.lineTo(422 * s, 380 * s);
+
+        // Right side going up
+        ctx.lineTo(422 * s, 350 * s);
+        ctx.lineTo(382 * s, 300 * s);
+        ctx.lineTo(382 * s, 210 * s);
+
+        // Right curve going to top
+        ctx.bezierCurveTo(
+            382 * s, 140 * s,  // control point 1
+            332 * s, 80 * s,   // control point 2
+            256 * s, 80 * s    // end point (back to start)
+        );
+
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw clapper (bottom circle)
+        ctx.beginPath();
+        ctx.arc(256 * s, 420 * s, 40 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw top handle (rounded rectangle)
+        ctx.beginPath();
+        const handleX = 236 * s;
+        const handleY = 60 * s;
+        const handleW = 40 * s;
+        const handleH = 30 * s;
+        const handleR = 10 * s;
+
+        ctx.moveTo(handleX + handleR, handleY);
+        ctx.lineTo(handleX + handleW - handleR, handleY);
+        ctx.arcTo(handleX + handleW, handleY, handleX + handleW, handleY + handleR, handleR);
+        ctx.lineTo(handleX + handleW, handleY + handleH - handleR);
+        ctx.arcTo(handleX + handleW, handleY + handleH, handleX + handleW - handleR, handleY + handleH, handleR);
+        ctx.lineTo(handleX + handleR, handleY + handleH);
+        ctx.arcTo(handleX, handleY + handleH, handleX, handleY + handleH - handleR, handleR);
+        ctx.lineTo(handleX, handleY + handleR);
+        ctx.arcTo(handleX, handleY, handleX + handleR, handleY, handleR);
+        ctx.closePath();
+        ctx.fill();
+
+        function downloadPNG() {
+            const link = document.createElement('a');
+            link.download = 'my_app_logo.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+
+</html>

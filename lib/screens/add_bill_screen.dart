@@ -51,7 +51,6 @@ class _AddBillScreenState extends State<AddBillScreen> {
     {'name': 'Education', 'emoji': '📚'},
     {'name': 'Entertainment', 'emoji': '🎬'},
     {'name': 'Credit Card', 'emoji': '💳'},
-    {'name': 'Loan', 'emoji': '💰'},
     {'name': 'Taxes', 'emoji': '📝'},
     {'name': 'Savings', 'emoji': '🏦'},
     {'name': 'Donations', 'emoji': '❤️'},

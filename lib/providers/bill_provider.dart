@@ -13,6 +13,7 @@ import '../services/notification_service.dart';
 import '../services/notification_history_service.dart';
 import '../services/trial_service.dart';
 import '../services/device_id_service.dart';
+import '../services/pending_deletions_service.dart';
 import '../models/bill.dart';
 import '../utils/bill_status_helper.dart';
 import '../providers/notification_settings_provider.dart';
@@ -53,6 +54,7 @@ class BillProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  bool _hasInitialData = false; // Tracks if we have actual bill data to display
   String? _initializedForUserId; // Track which user we initialized for
   NotificationSettingsProvider? _notificationSettings;
   Timer? _statusRefreshTimer;
@@ -73,6 +75,10 @@ class BillProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isInitialized => _isInitialized;
+
+  /// Returns true if we have data ready to display (prevents showing 0 values)
+  /// Used by UI to decide whether to show skeleton or actual data
+  bool get hasInitialData => _hasInitialData;
 
   // Real-time Firestore Streams for Tabs (Requirement 1)
   Stream<List<Bill>> getUpcomingBillsStream() {
@@ -166,6 +172,7 @@ class BillProvider with ChangeNotifier {
     _isLoading = false;
     _error = null;
     _isInitialized = false;
+    _hasInitialData = false; // Reset data availability flag
     _initializedForUserId = null;
     _statusRefreshTimer?.cancel();
     _statusRefreshTimer = null;
@@ -599,11 +606,18 @@ class BillProvider with ChangeNotifier {
         await _ensureFirestoreStatuses(currentUserId);
       }
 
-      // Update UI immediately with local data
+      // Update UI state - mark as initialized but data NOT ready yet
+      // Skeleton will stay visible until sync completes
       _isLoading = false;
       _isInitialized = true;
       _initializedForUserId = currentUserId;
       _processBills(); // Process bills before notifying
+
+      // CRITICAL FIX: Do NOT set hasInitialData = true here
+      // Keep skeleton visible until sync completes with actual data
+      // This prevents showing 0 values while Firebase loads
+      _hasInitialData = false;
+
       notifyListeners();
 
       // Sync with Firebase in background if user is authenticated
@@ -614,6 +628,10 @@ class BillProvider with ChangeNotifier {
               // Reload bills after sync completes
               _bills = _loadCurrentUsersBills(forceRefresh: true);
               _processBills();
+
+              // NOW mark data as ready - sync completed with actual data
+              _hasInitialData = true;
+
               print(
                 '✅ Background sync completed, UI updated with ${_bills.length} bills',
               );
@@ -647,8 +665,17 @@ class BillProvider with ChangeNotifier {
             .catchError((e) {
               print('⚠️ Background sync failed: $e');
               print('💾 Continuing with local data');
-              // Don't show error to user - offline mode is expected
+
+              // IMPORTANT: Even on sync failure, mark data as ready
+              // Otherwise skeleton would show forever on network errors
+              // User will see local data (even if 0 bills)
+              _hasInitialData = true;
+              notifyListeners();
             });
+      } else {
+        // No user authenticated - mark data ready (will be empty)
+        _hasInitialData = true;
+        notifyListeners();
       }
 
       _error = null;
@@ -1214,12 +1241,23 @@ class BillProvider with ChangeNotifier {
 
       final isPaidOrOverdue = bill.isPaid || isOverdue;
 
+      // Get current user ID for tracking deletions that survive logout
+      final currentUserId = FirebaseService.currentUserId;
+
       // If this is a PAID or OVERDUE bill, only delete this one
       // (It's just a history record, shouldn't affect future bills)
       if (isPaidOrOverdue) {
         print('🗑️ Deleting single paid/overdue bill: ${bill.title}');
         await NotificationService().cancelBillNotification(billId);
         await HiveService.deleteBill(billId);
+
+        // CRITICAL: Track in PendingDeletionsService so it survives logout
+        if (currentUserId != null) {
+          await PendingDeletionsService.addPendingDeletion(
+            currentUserId,
+            billId,
+          );
+        }
       }
       // If this is an UPCOMING recurring bill, delete this + ALL future instances
       // This cancels the recurring series from this point forward
@@ -1292,6 +1330,9 @@ class BillProvider with ChangeNotifier {
           '   Found ${billsToDelete.length} upcoming bills to delete (keeping paid & overdue history)',
         );
 
+        // Collect IDs for pending deletions tracking
+        final deletedBillIds = <String>[];
+
         // Delete all unpaid upcoming/future bills in the series
         // This soft-deletes them (isDeleted = true) which signals to
         // RecurringBillService to stop creating new instances
@@ -1301,6 +1342,15 @@ class BillProvider with ChangeNotifier {
           );
           await NotificationService().cancelBillNotification(billToDelete.id);
           await HiveService.deleteBill(billToDelete.id);
+          deletedBillIds.add(billToDelete.id);
+        }
+
+        // CRITICAL: Track all deletions in PendingDeletionsService so they survive logout
+        if (currentUserId != null && deletedBillIds.isNotEmpty) {
+          await PendingDeletionsService.addPendingDeletions(
+            currentUserId,
+            deletedBillIds,
+          );
         }
 
         print(
@@ -1310,6 +1360,14 @@ class BillProvider with ChangeNotifier {
         // Non-recurring upcoming bill - just delete this one
         await NotificationService().cancelBillNotification(billId);
         await HiveService.deleteBill(billId);
+
+        // CRITICAL: Track in PendingDeletionsService so it survives logout
+        if (currentUserId != null) {
+          await PendingDeletionsService.addPendingDeletion(
+            currentUserId,
+            billId,
+          );
+        }
       }
 
       // Force refresh to update UI immediately

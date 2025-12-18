@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillMinder Logo Concepts V2 - Minimal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #1a1a2e;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(249, 115, 22, 0.15);
+        }
+
+        .label {
+            margin-top: 15px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .icon-wrapper {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.25);
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>BillMinder Logo Concepts V2</h1>
+    <p class="subtitle">Ultra Minimal & Professional Designs</p>
+
+    <div class="container">
+
+        <!-- Concept 1: Simple Receipt -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Simple receipt/bill shape -->
+                    <path
+                        d="M160 80 H352 V380 L336 360 L306 380 L276 360 L256 380 L236 360 L206 380 L176 360 L160 380 Z"
+                        fill="#F97316" stroke="none" />
+                    <!-- Simple lines on receipt -->
+                    <rect x="200" y="140" width="112" height="12" rx="6" fill="white" />
+                    <rect x="200" y="180" width="80" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="200" y="220" width="95" height="12" rx="6" fill="white" opacity="0.7" />
+                    <rect x="200" y="280" width="112" height="16" rx="8" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Receipt</div>
+        </div>
+
+        <!-- Concept 2: Bold B with Coin -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Clean Bold B -->
+                    <path d="M140 100 H280 
+                             Q360 100 360 175 
+                             Q360 220 320 240 
+                             Q380 260 380 330 
+                             Q380 412 290 412 
+                             H140 Z" fill="#F97316" />
+                    <!-- B cutouts -->
+                    <path d="M200 155 H260 Q300 155 300 190 Q300 220 260 220 H200 Z" fill="white" />
+                    <path d="M200 275 H270 Q320 275 320 320 Q320 360 270 360 H200 Z" fill="white" />
+                </svg>
+            </div>
+            <div class="label">Bold B</div>
+        </div>
+
+        <!-- Concept 3: Wallet Minimal -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Wallet body -->
+                    <rect x="80" y="150" width="352" height="212" rx="30" fill="#F97316" />
+                    <!-- Wallet flap -->
+                    <path d="M80 200 V170 Q80 120 130 120 H382 Q432 120 432 170 V200" fill="none" stroke="#F97316"
+                        stroke-width="40" stroke-linecap="round" />
+                    <!-- Card slot indicator -->
+                    <rect x="300" y="230" width="80" height="52" rx="10" fill="white" />
+                    <circle cx="340" cy="256" r="15" fill="#F97316" />
+                </svg>
+            </div>
+            <div class="label">Wallet</div>
+        </div>
+
+        <!-- Concept 4: Currency Circle -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Main circle -->
+                    <circle cx="256" cy="256" r="160" fill="#F97316" />
+                    <!-- Rupee symbol -->
+                    <text x="256" y="300" font-family="Arial, sans-serif" font-size="180" font-weight="bold"
+                        fill="white" text-anchor="middle">₹</text>
+                </svg>
+            </div>
+            <div class="label">Currency</div>
+        </div>
+
+        <!-- Concept 5: Document with Arrow -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Document base -->
+                    <path d="M130 70 H320 L382 132 V442 H130 Z" fill="#F97316" />
+                    <!-- Folded corner -->
+                    <path d="M320 70 V132 H382" fill="none" stroke="white" stroke-width="16" />
+                    <!-- Check/Arrow mark -->
+                    <path d="M200 280 L245 330 L320 220" fill="none" stroke="white" stroke-width="28"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">Paid Bill</div>
+        </div>
+
+        <!-- Concept 6: Abstract BM -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- B shape -->
+                    <rect x="100" y="120" width="60" height="272" rx="10" fill="#F97316" />
+                    <circle cx="200" cy="195" r="60" fill="#F97316" />
+                    <circle cx="210" cy="310" r="75" fill="#F97316" />
+                    <!-- Inner cutouts -->
+                    <circle cx="200" cy="195" r="30" fill="white" />
+                    <circle cx="210" cy="310" r="40" fill="white" />
+                    <!-- M hint -->
+                    <path d="M300 392 V180 L345 260 L390 180 V392" fill="none" stroke="#F97316" stroke-width="35"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">BM Monogram</div>
+        </div>
+
+        <!-- Concept 7: Clean Checkmark Bill -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Rounded square background -->
+                    <rect x="96" y="96" width="320" height="320" rx="60" fill="#F97316" />
+                    <!-- Clean checkmark -->
+                    <path d="M175 265 L230 330 L345 195" fill="none" stroke="white" stroke-width="40"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">Paid ✓</div>
+        </div>
+
+        <!-- Concept 8: Layered Cards -->
+        <div class="card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" fill="white" />
+                    <!-- Back card -->
+                    <rect x="130" y="100" width="252" height="160" rx="20" fill="#FDBA74"
+                        transform="rotate(-8 256 180)" />
+                    <!-- Front card -->
+                    <rect x="130" y="140" width="252" height="160" rx="20" fill="#F97316" />
+                    <!-- Card details -->
+                    <circle cx="190" cy="220" r="25" fill="white" />
+                    <rect x="240" y="200" width="100" height="12" rx="6" fill="white" />
+                    <rect x="240" y="225" width="60" height="12" rx="6" fill="white" opacity="0.7" />
+                    <!-- Bottom receipt hint -->
+                    <path
+                        d="M150 320 H362 V390 L346 375 L322 390 L298 375 L274 390 L250 375 L226 390 L202 375 L178 390 L162 375 L150 390 Z"
+                        fill="#F97316" opacity="0.5" />
+                </svg>
+            </div>
+            <div class="label">Cards Stack</div>
+        </div>
+
+    </div>
+</body>
+
+</html>
